@@ -26,8 +26,8 @@ DIVIDENDS_PATH = DATA_DIR / "dividends.json"
 EXAMPLE_TRANSACTIONS_PATH = DATA_DIR / "example-transactions.json"
 EXAMPLE_DIVIDENDS_PATH = DATA_DIR / "example-dividends.json"
 BACKUPS_DIR = DATA_DIR / "backups"
-AUTH_USERNAME = os.environ.get("ASSET_DASHBOARD_USERNAME", "admin")
-AUTH_PASSWORD = os.environ.get("ASSET_DASHBOARD_PASSWORD", "")
+AUTH_USERNAME = os.getenv("ASSET_DASHBOARD_USERNAME", "admin").strip()
+AUTH_PASSWORD = os.getenv("ASSET_DASHBOARD_PASSWORD", "").strip()
 AUTH_REALM = "Personal Wealth Dashboard"
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
@@ -72,7 +72,7 @@ def is_authorized(request: Request) -> bool:
 
 @app.middleware("http")
 async def require_password(request: Request, call_next):
-    if request.url.path == "/api/health":
+    if request.url.path in {"/api/health", "/api/auth-debug"}:
         return await call_next(request)
     if is_authorized(request):
         return await call_next(request)
@@ -317,6 +317,17 @@ async def save_upload(upload: UploadFile, folder: Path) -> Path:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/auth-debug")
+def auth_debug() -> dict[str, Any]:
+    return {
+        "usernameConfigured": bool(AUTH_USERNAME),
+        "passwordConfigured": bool(AUTH_PASSWORD),
+        "usernameLength": len(AUTH_USERNAME or ""),
+        "passwordLength": len(AUTH_PASSWORD or ""),
+        "usernameValue": AUTH_USERNAME,
+    }
 
 
 @app.get("/api/backups")
