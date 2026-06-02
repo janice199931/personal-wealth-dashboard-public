@@ -1,0 +1,26 @@
+[
+  {
+    "id": "tx-example-buy",
+    "date": "2026-01-02",
+    "market": "TW",
+    "symbol": "0050",
+    "name": "Example Taiwan ETF",
+    "action": "BUY",
+    "shares": 1000,
+    "price": 100,
+    "fee": 20,
+    "note": "Example only. Replace with your own transaction."
+  },
+  {
+    "id": "tx-example-us-buy",
+    "date": "2026-01-03",
+    "market": "US",
+    "symbol": "VOO",
+    "name": "Example US ETF",
+    "action": "BUY",
+    "shares": 1,
+    "price": 500,
+    "fee": 1,
+    "note": "Example only. Replace with your own transaction."
+  }
+]

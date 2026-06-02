@@ -1,0 +1,13 @@
+[
+  {
+    "id": "div-example",
+    "date": "2026-03-15",
+    "symbol": "0050",
+    "name": "Example Taiwan ETF",
+    "market": "TW",
+    "amount": 1000,
+    "currency": "TWD",
+    "tax": 0,
+    "note": "Example only. Replace with your own dividend record."
+  }
+]

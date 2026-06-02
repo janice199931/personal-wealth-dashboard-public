@@ -1,0 +1,22 @@
+[
+  {
+    "date": "2025-10-01",
+    "totalAssets": 300000,
+    "netWorth": 285000
+  },
+  {
+    "date": "2025-11-01",
+    "totalAssets": 328000,
+    "netWorth": 309000
+  },
+  {
+    "date": "2025-12-01",
+    "totalAssets": 356000,
+    "netWorth": 337000
+  },
+  {
+    "date": "2026-01-15",
+    "totalAssets": 391200,
+    "netWorth": 371200
+  }
+]

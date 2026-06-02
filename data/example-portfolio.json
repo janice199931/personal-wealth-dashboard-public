@@ -1,0 +1,73 @@
+{
+  "updatedAt": "2026-01-15T18:30:00+08:00",
+  "fxRate": 31,
+  "summary": {
+    "totalAssets": 391200,
+    "netWorth": 371200,
+    "stockAssets": 311200,
+    "cash": 80000,
+    "debt": 20000,
+    "unrealizedGain": 42380,
+    "returnRate": 15.64
+  },
+  "allocation": {
+    "taiwanStocks": 150000,
+    "usStocks": 161200,
+    "cash": 80000,
+    "debt": 20000
+  },
+  "markets": {
+    "TW": {
+      "marketValue": 150000,
+      "cost": 120020,
+      "unrealizedGain": 29980,
+      "returnRate": 24.98,
+      "updatedAt": "2026-01-15 14:30"
+    },
+    "US": {
+      "marketValue": 161200,
+      "marketValueUSD": 5200,
+      "cost": 148800,
+      "unrealizedGain": 12400,
+      "returnRate": 8.33,
+      "cashUSD": 300,
+      "updatedAt": "2026-01-15 05:10"
+    }
+  },
+  "holdings": [
+    {
+      "symbol": "0050",
+      "name": "Demo Taiwan ETF",
+      "market": "TW",
+      "shares": 1000,
+      "price": 150,
+      "averageCost": 120.02,
+      "totalCost": 120020,
+      "realizedGain": 0,
+      "marketValue": 150000,
+      "unrealizedGain": 29980,
+      "returnRate": 24.98,
+      "marketValueTWD": 150000,
+      "totalCostTWD": 120020,
+      "unrealizedGainTWD": 29980,
+      "updatedAt": "2026-01-15 14:30"
+    },
+    {
+      "symbol": "VOO",
+      "name": "Demo US ETF",
+      "market": "US",
+      "shares": 10,
+      "price": 520,
+      "averageCost": 480,
+      "totalCost": 4800,
+      "realizedGain": 0,
+      "marketValue": 5200,
+      "unrealizedGain": 400,
+      "returnRate": 8.33,
+      "marketValueTWD": 161200,
+      "totalCostTWD": 148800,
+      "unrealizedGainTWD": 12400,
+      "updatedAt": "2026-01-15 05:10"
+    }
+  ]
+}
