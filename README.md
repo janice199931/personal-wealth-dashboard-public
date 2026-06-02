@@ -23,6 +23,9 @@
 - `data/test-backups/`
 - `.env`
 - `finance-data.js`
+- `*.db`
+- `*.sqlite`
+- `*.sqlite3`
 
 `.gitignore` 已經保護上述路徑。範例檔 `data/example-*.json` 會保留在 Git 內，方便看格式。
 
@@ -77,21 +80,68 @@ Environment variables：
 ```text
 ASSET_DASHBOARD_PASSWORD=replace-with-a-strong-password
 ASSET_DASHBOARD_USERNAME=admin
+ASSET_DB_PATH=/var/data/app.db
 ```
+
+### Render Persistent Disk
+
+正式資料會存進 SQLite。Render 若沒有 Persistent Disk，`data/app.db` 可能會在重新部署、服務重建或休眠後遺失。
+
+Render 建議設定：
+
+1. 在服務頁面新增 Disk
+2. Mount path 設為 `/var/data`
+3. Environment 加上：
+
+```text
+ASSET_DB_PATH=/var/data/app.db
+```
+
+Railway 或其他平台也可以用 `ASSET_DB_PATH` 指到持久化磁碟路徑。
 
 ## Import Your Own Data
 
-Public Edition 內建 Demo Mode。當正式資料不存在時，首頁和讀取 API 會自動使用範例資料：
+Public Edition 內建 Demo Mode。正式資料會優先從 SQLite 讀取；SQLite 沒資料時，首頁和讀取 API 會自動使用範例資料：
 
 - `data/example-portfolio.json`
 - `data/example-transactions.json`
 - `data/example-dividends.json`
 
-當正式資料存在時，系統會優先使用正式資料：
+SQLite 正式資料來源：
+
+- `accounts`
+- `transactions`
+- `dividends`
+- `portfolio_snapshots`
+- `net_worth_history`
+- `prices`
+
+可用 API：
+
+```text
+GET /api/db/status
+POST /api/db/import-json
+POST /api/db/rebuild-portfolio
+```
+
+以上 API 需要登入。只有 `/api/health` 和 `/api/auth-debug` 不需要登入。
+
+若本機已有正式 JSON，可以先把這些檔案放在本機或 Render Disk 的 `data/` 目錄：
 
 - `data/portfolio.json`
 - `data/transactions.json`
 - `data/dividends.json`
+- `data/accounts.json`
+- `data/prices.json`
+- `data/net-worth-history.json`
+
+再呼叫：
+
+```bash
+curl -u admin:your-password -X POST https://your-render-url/api/db/import-json
+```
+
+匯入後會寫入 SQLite 並重新計算 portfolio。正式 JSON 檔仍然不要 commit 到 GitHub。
 
 範例檔放在 `data/`：
 
@@ -102,7 +152,7 @@ Public Edition 內建 Demo Mode。當正式資料不存在時，首頁和讀取 
 - `data/example-prices.json`
 - `data/example-net-worth-history.json`
 
-使用自己的資料時，請在部署環境或本機建立正式檔名：
+本機測試匯入時，可以建立正式檔名：
 
 ```bash
 cp data/example-transactions.json data/transactions.json
@@ -118,16 +168,16 @@ cp data/example-net-worth-history.json data/net-worth-history.json
 重新產生首頁資料：
 
 ```bash
-python scripts/rebuild_portfolio.py
+curl -u admin:local-password -X POST http://127.0.0.1:8000/api/db/rebuild-portfolio
 ```
 
-注意：Render / Railway 的一般檔案系統不適合長期保存正式資產資料。如果部署後會新增交易、更新股價或匯入資料，請另外規劃資料庫、持久化磁碟或只在本機維護資料後重新部署。
+注意：Render / Railway 的一般檔案系統不適合長期保存正式資產資料。正式部署請使用 Persistent Disk，並設定 `ASSET_DB_PATH`。
 
 ## Safety Checklist Before GitHub Push
 
 ```bash
 git status --short
-git check-ignore -v data/transactions.json data/portfolio.json data/backups/example.json .env finance-data.js
+git check-ignore -v data/transactions.json data/portfolio.json data/backups/example.json .env finance-data.js data/app.db
 ```
 
 確認正式資料仍被忽略後，再推送 GitHub。

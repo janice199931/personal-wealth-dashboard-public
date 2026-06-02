@@ -16,6 +16,9 @@ data/backups/
 data/test-backups/
 backups/
 finance-data.js
+*.db
+*.sqlite
+*.sqlite3
 
 *.log
 *.tmp

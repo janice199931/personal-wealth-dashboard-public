@@ -148,8 +148,13 @@ def enrich_position(position: dict[str, Any], price_book: dict[str, Any], fx_rat
     }
 
 
-def build_portfolio() -> dict[str, Any]:
-    transactions, accounts, prices, current_portfolio = load_inputs()
+def build_portfolio_from_data(
+    transactions: list[dict[str, Any]],
+    accounts: dict[str, Any],
+    prices: dict[str, Any],
+    current_portfolio: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    current_portfolio = current_portfolio or {}
     fx_rate = float(current_portfolio.get("fxRate") or prices.get("fxRate", 31.451))
     price_book = {
         **prices.get("prices", {}),
@@ -221,9 +226,12 @@ def build_portfolio() -> dict[str, Any]:
     }
 
 
-def update_history(portfolio: dict[str, Any]) -> list[dict[str, Any]]:
-    history_path = DATA_DIR / "net-worth-history.json"
-    history = read_json(history_path, [])
+def build_portfolio() -> dict[str, Any]:
+    transactions, accounts, prices, current_portfolio = load_inputs()
+    return build_portfolio_from_data(transactions, accounts, prices, current_portfolio)
+
+
+def update_history_from_data(portfolio: dict[str, Any], history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     current = {"date": today_iso(), "netWorth": portfolio["summary"]["netWorth"]}
 
     by_date: dict[str, dict[str, Any]] = {}
@@ -241,7 +249,13 @@ def update_history(portfolio: dict[str, Any]) -> list[dict[str, Any]]:
         }
 
     by_date[current["date"]] = current
-    normalized_history = sorted(by_date.values(), key=lambda row: row["date"])
+    return sorted(by_date.values(), key=lambda row: row["date"])
+
+
+def update_history(portfolio: dict[str, Any]) -> list[dict[str, Any]]:
+    history_path = DATA_DIR / "net-worth-history.json"
+    history = read_json(history_path, [])
+    normalized_history = update_history_from_data(portfolio, history)
     write_json(history_path, normalized_history)
     return normalized_history
 

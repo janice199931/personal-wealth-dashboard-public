@@ -1042,9 +1042,12 @@ async function loadExternalData() {
     applyPortfolioData(window.portfolioData, window.netWorthHistory ?? []);
   }
 
-  async function fetchJson(primaryPath, examplePath, fallbackValue) {
+  async function fetchJson(primaryPath, examplePath, fallbackValue, payloadKey = "") {
     const primaryResponse = await fetch(primaryPath, { cache: "no-store" });
-    if (primaryResponse.ok) return primaryResponse.json();
+    if (primaryResponse.ok) {
+      const payload = await primaryResponse.json();
+      return payloadKey ? payload[payloadKey] : payload;
+    }
 
     const exampleResponse = await fetch(examplePath, { cache: "no-store" });
     if (exampleResponse.ok) return exampleResponse.json();
@@ -1054,9 +1057,9 @@ async function loadExternalData() {
 
   try {
     const [portfolio, history, dividends] = await Promise.all([
-      fetchJson("./data/portfolio.json", "./data/example-portfolio.json", null),
-      fetchJson("./data/net-worth-history.json", "./data/example-net-worth-history.json", []),
-      fetchJson("./data/dividends.json", "./data/example-dividends.json", []),
+      fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
+      fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
+      fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends"),
     ]);
     if (!portfolio) return;
     applyPortfolioData(portfolio, history);
