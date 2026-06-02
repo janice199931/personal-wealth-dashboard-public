@@ -165,6 +165,17 @@ def write_prices(prices: dict[str, Any]) -> None:
         connection.commit()
 
 
+def clear_all() -> None:
+    with connect() as connection:
+        connection.execute("DELETE FROM accounts")
+        connection.execute("DELETE FROM transactions")
+        connection.execute("DELETE FROM dividends")
+        connection.execute("DELETE FROM portfolio_snapshots")
+        connection.execute("DELETE FROM net_worth_history")
+        connection.execute("DELETE FROM prices")
+        connection.commit()
+
+
 def read_transactions() -> list[dict[str, Any]]:
     with connect() as connection:
         rows = connection.execute("SELECT payload FROM transactions ORDER BY date, id").fetchall()
@@ -242,6 +253,16 @@ def write_portfolio_snapshot(portfolio: dict[str, Any]) -> None:
         connection.commit()
 
 
+def replace_portfolio_snapshot(portfolio: dict[str, Any]) -> None:
+    with connect() as connection:
+        connection.execute("DELETE FROM portfolio_snapshots")
+        connection.execute(
+            "INSERT INTO portfolio_snapshots (created_at, payload) VALUES (?, ?)",
+            (now_iso(), encode(portfolio)),
+        )
+        connection.commit()
+
+
 def read_net_worth_history() -> list[dict[str, Any]]:
     with connect() as connection:
         rows = connection.execute("SELECT payload FROM net_worth_history ORDER BY date").fetchall()
@@ -268,3 +289,16 @@ def has_private_data() -> bool:
         counts[key] > 0
         for key in ["accounts", "transactions", "dividends", "portfolioSnapshots", "netWorthHistory", "prices"]
     )
+
+
+def export_backup() -> dict[str, Any]:
+    return {
+        "schemaVersion": 1,
+        "exportedAt": now_iso(),
+        "accounts": read_accounts({}),
+        "transactions": read_transactions(),
+        "dividends": read_dividends(),
+        "prices": read_prices({"fxRate": 31.451, "prices": {}}),
+        "net-worth-history": read_net_worth_history(),
+        "portfolio": read_latest_portfolio({}),
+    }

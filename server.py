@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from scripts.import_moze_csv import import_moze_csv
@@ -377,7 +378,54 @@ def get_net_worth_history() -> dict[str, Any]:
 
 
 @app.post("/api/db/import-json")
-def import_json_to_db() -> dict[str, Any]:
+async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[str, Any]:
+    if backup is not None and backup.filename:
+        try:
+            payload = json.loads((await backup.read()).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise HTTPException(status_code=400, detail="備份 JSON 格式錯誤。") from error
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="備份 JSON 必須是物件格式。")
+
+        imported: list[str] = []
+        db_store.clear_all()
+
+        accounts = payload.get("accounts")
+        if isinstance(accounts, dict):
+            db_store.write_accounts(accounts)
+            imported.append("accounts")
+
+        transactions = payload.get("transactions")
+        if isinstance(transactions, list):
+            transactions, _ = ensure_transaction_ids(transactions)
+            db_store.write_transactions(transactions)
+            imported.append("transactions")
+
+        dividends = payload.get("dividends")
+        if isinstance(dividends, list):
+            dividends, _ = ensure_dividend_ids(dividends)
+            db_store.write_dividends(dividends)
+            imported.append("dividends")
+
+        prices = payload.get("prices")
+        if isinstance(prices, dict):
+            db_store.write_prices(prices)
+            imported.append("prices")
+
+        history = payload.get("net-worth-history", payload.get("net_worth_history"))
+        if isinstance(history, list):
+            db_store.write_net_worth_history(history)
+            imported.append("net-worth-history")
+
+        portfolio = rebuild_portfolio_outputs()
+        return {
+            "ok": True,
+            "imported": imported,
+            "counts": db_store.status()["counts"],
+            "portfolioSummary": portfolio.get("summary", {}),
+            "message": "備份 JSON 已匯入 SQLite 並重建投資組合。",
+        }
+
     imported: list[str] = []
 
     accounts = read_json(DATA_DIR / "accounts.json", None)
@@ -415,6 +463,14 @@ def import_json_to_db() -> dict[str, Any]:
         "portfolioSummary": portfolio.get("summary", {}),
         "message": "JSON 匯入 SQLite 完成。正式 JSON 仍應留在本機並由 .gitignore 忽略。",
     }
+
+
+@app.get("/api/db/export-json")
+def export_json_backup() -> JSONResponse:
+    backup = db_store.export_backup()
+    response = JSONResponse(content=backup)
+    response.headers["Content-Disposition"] = f'attachment; filename="wealth-dashboard-backup-{datetime.now(TWD).strftime("%Y%m%d-%H%M%S")}.json"'
+    return response
 
 
 @app.post("/api/db/rebuild-portfolio")

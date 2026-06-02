@@ -872,6 +872,104 @@ function setupPriceUpdater() {
   });
 }
 
+async function readApiPayload(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { detail: text || "伺服器回傳格式錯誤" };
+  }
+}
+
+function setBackupStatus(message) {
+  const target = document.getElementById("backupStatus");
+  if (target) target.textContent = message;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function setupDataBackupControls() {
+  const exportButton = document.getElementById("exportBackupButton");
+  const importButton = document.getElementById("importBackupButton");
+  const rebuildButton = document.getElementById("rebuildPortfolioButton");
+  const fileInput = document.getElementById("backupFileInput");
+  if (!exportButton || !importButton || !rebuildButton || !fileInput || exportButton.dataset.ready) return;
+  exportButton.dataset.ready = "true";
+
+  exportButton.addEventListener("click", async () => {
+    exportButton.disabled = true;
+    setBackupStatus("正在匯出備份...");
+    try {
+      const response = await fetch("/api/db/export-json", { cache: "no-store" });
+      if (!response.ok) {
+        const payload = await readApiPayload(response);
+        throw new Error(payload.detail || `匯出失敗（HTTP ${response.status}）`);
+      }
+      const blob = await response.blob();
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+      downloadBlob(blob, `wealth-dashboard-backup-${stamp}.json`);
+      setBackupStatus("備份已下載到這台電腦。");
+    } catch (error) {
+      console.warn("匯出備份失敗", error);
+      setBackupStatus(error.message || "匯出備份失敗。");
+    } finally {
+      exportButton.disabled = false;
+    }
+  });
+
+  importButton.addEventListener("click", () => {
+    fileInput.value = "";
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    importButton.disabled = true;
+    setBackupStatus("正在匯入備份...");
+    try {
+      const formData = new FormData();
+      formData.append("backup", file);
+      const response = await fetch("/api/db/import-json", { method: "POST", body: formData });
+      const payload = await readApiPayload(response);
+      if (!response.ok) throw new Error(payload.detail || `匯入失敗（HTTP ${response.status}）`);
+      setBackupStatus("備份已匯入，正在重新整理...");
+      setTimeout(() => window.location.reload(), 900);
+    } catch (error) {
+      console.warn("匯入備份失敗", error);
+      setBackupStatus(error.message || "匯入備份失敗。");
+    } finally {
+      importButton.disabled = false;
+    }
+  });
+
+  rebuildButton.addEventListener("click", async () => {
+    rebuildButton.disabled = true;
+    setBackupStatus("正在重建投資組合...");
+    try {
+      const response = await fetch("/api/db/rebuild-portfolio", { method: "POST" });
+      const payload = await readApiPayload(response);
+      if (!response.ok) throw new Error(payload.detail || `重建失敗（HTTP ${response.status}）`);
+      setBackupStatus("投資組合已重建，正在重新整理...");
+      setTimeout(() => window.location.reload(), 900);
+    } catch (error) {
+      console.warn("重建投資組合失敗", error);
+      setBackupStatus(error.message || "重建投資組合失敗。");
+    } finally {
+      rebuildButton.disabled = false;
+    }
+  });
+}
+
 function renderInvestmentCards() {
   const { tw, us } = data.investments;
   const metrics = getPortfolioMetrics();
@@ -1071,4 +1169,5 @@ async function loadExternalData() {
 
 window.addEventListener("resize", render);
 setupPriceUpdater();
+setupDataBackupControls();
 loadExternalData().then(render);

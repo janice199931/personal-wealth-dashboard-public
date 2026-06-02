@@ -85,7 +85,7 @@ ASSET_DB_PATH=/var/data/app.db
 
 ### Render Persistent Disk
 
-正式資料會存進 SQLite。Render 若沒有 Persistent Disk，`data/app.db` 可能會在重新部署、服務重建或休眠後遺失。
+正式資料預設存進 `data/app.db`。Render Free 沒有 Persistent Disk，資料可能在重新部署、服務重建或休眠後消失。
 
 Render 建議設定：
 
@@ -120,13 +120,49 @@ SQLite 正式資料來源：
 
 ```text
 GET /api/db/status
+GET /api/db/export-json
 POST /api/db/import-json
 POST /api/db/rebuild-portfolio
 ```
 
 以上 API 需要登入。只有 `/api/health` 和 `/api/auth-debug` 不需要登入。
 
-若本機已有正式 JSON，可以先把這些檔案放在本機或 Render Disk 的 `data/` 目錄：
+### Free Tier Backup / Restore
+
+如果暫時沒有 Render Persistent Disk，可以使用手動備份流程：
+
+1. 首次部署後登入網站
+2. 按「匯入備份」匯入你 MacBook 上的備份 JSON
+3. 網站會把資料寫入 SQLite 並顯示真實資產
+4. 每次更新資料後，按「匯出備份」下載 JSON 到自己的 MacBook
+5. 如果 Render 重新部署後資料消失，再登入網站並重新匯入備份 JSON
+
+備份 JSON 會包含：
+
+- `accounts`
+- `transactions`
+- `dividends`
+- `prices`
+- `net-worth-history`
+- `portfolio`
+
+也可以用 API 下載備份：
+
+```bash
+curl -u admin:your-password \
+  https://your-render-url/api/db/export-json \
+  -o wealth-dashboard-backup.json
+```
+
+上傳備份：
+
+```bash
+curl -u admin:your-password \
+  -F backup=@wealth-dashboard-backup.json \
+  https://your-render-url/api/db/import-json
+```
+
+若本機已有舊版正式 JSON，也可以先把這些檔案放在本機或 Render Disk 的 `data/` 目錄：
 
 - `data/portfolio.json`
 - `data/transactions.json`
