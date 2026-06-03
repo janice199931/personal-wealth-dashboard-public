@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,7 @@ TABLES = {
 _SUPABASE_FALLBACK_REASON = ""
 _SUPABASE_READY = False
 _SQLITE_READY_PATH = ""
+logger = logging.getLogger(__name__)
 
 
 def db_path() -> Path:
@@ -37,6 +40,32 @@ def supabase_url() -> str:
         or os.getenv("SUPABASE_DATABASE_URL", "").strip()
         or os.getenv("DATABASE_URL", "").strip()
     )
+
+
+def supabase_components(url: str | None = None) -> dict[str, Any]:
+    raw_url = url if url is not None else supabase_url()
+    if not raw_url:
+        return {"hasSupabaseUrl": False, "host": "", "database": "", "sslmode": ""}
+
+    parsed = urlparse(raw_url)
+    query = parse_qs(parsed.query)
+    return {
+        "hasSupabaseUrl": True,
+        "host": parsed.hostname or "",
+        "database": parsed.path.lstrip("/"),
+        "sslmode": (query.get("sslmode") or [""])[0],
+    }
+
+
+def supabase_connection_url() -> str:
+    raw_url = supabase_url()
+    if not raw_url:
+        return ""
+
+    parsed = urlparse(raw_url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    query.setdefault("sslmode", ["require"])
+    return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
 
 
 def now_iso() -> str:
@@ -66,7 +95,7 @@ def _connect_postgres():
     import psycopg
     from psycopg.rows import dict_row
 
-    return psycopg.connect(supabase_url(), row_factory=dict_row, connect_timeout=6)
+    return psycopg.connect(supabase_connection_url(), row_factory=dict_row, connect_timeout=6)
 
 
 def _sqlite_script() -> str:
@@ -185,6 +214,48 @@ def _mark_supabase_failed(error: Exception) -> None:
     global _SUPABASE_FALLBACK_REASON, _SUPABASE_READY
     _SUPABASE_FALLBACK_REASON = str(error)
     _SUPABASE_READY = False
+    details = supabase_components(supabase_connection_url())
+    logger.exception(
+        "Supabase connection failed; falling back to SQLite. host=%s database=%s sslmode=%s errorType=%s errorMessage=%s",
+        details["host"] or "(empty)",
+        details["database"] or "(empty)",
+        details["sslmode"] or "(empty)",
+        type(error).__name__,
+        str(error),
+    )
+
+
+def reset_supabase_fallback() -> None:
+    global _SUPABASE_FALLBACK_REASON, _SUPABASE_READY
+    _SUPABASE_FALLBACK_REASON = ""
+    _SUPABASE_READY = False
+
+
+def debug_supabase() -> dict[str, Any]:
+    details = supabase_components(supabase_connection_url() or supabase_url())
+    error_type = ""
+    error_message = ""
+
+    if not details["hasSupabaseUrl"]:
+        return {**details, "errorType": "MissingSupabaseUrl", "errorMessage": "SUPABASE_DB_URL is not configured."}
+
+    try:
+        import psycopg  # noqa: F401
+        reset_supabase_fallback()
+        init_supabase()
+    except Exception as error:
+        _mark_supabase_failed(error)
+        error_type = type(error).__name__
+        error_message = str(error)
+    else:
+        logger.info(
+            "Supabase connection succeeded. host=%s database=%s sslmode=%s",
+            details["host"] or "(empty)",
+            details["database"] or "(empty)",
+            details["sslmode"] or "(empty)",
+        )
+
+    return {**details, "errorType": error_type, "errorMessage": error_message}
 
 
 def init_sqlite() -> None:

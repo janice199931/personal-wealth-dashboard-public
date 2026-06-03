@@ -365,6 +365,11 @@ def db_status() -> dict[str, Any]:
     return db_store.status()
 
 
+@app.get("/api/db/debug-supabase")
+def debug_supabase() -> dict[str, Any]:
+    return db_store.debug_supabase()
+
+
 @app.get("/api/portfolio")
 def get_portfolio() -> dict[str, Any]:
     portfolio = read_portfolio(use_examples=True)
