@@ -270,7 +270,7 @@ def init_sqlite() -> None:
 
 
 def init_supabase() -> None:
-    global _SUPABASE_READY
+    global _SUPABASE_FALLBACK_REASON, _SUPABASE_READY
     if _SUPABASE_READY:
         return
     with _connect_postgres() as connection:
@@ -279,11 +279,12 @@ def init_supabase() -> None:
                 cursor.execute(statement)
         connection.commit()
     _SUPABASE_READY = True
+    _SUPABASE_FALLBACK_REASON = ""
 
 
 def init_db() -> None:
     init_sqlite()
-    if not supabase_url() or _SUPABASE_FALLBACK_REASON:
+    if not supabase_url():
         return
     try:
         init_supabase()
@@ -292,9 +293,11 @@ def init_db() -> None:
 
 
 def active_backend() -> Backend:
-    if not supabase_url() or _SUPABASE_FALLBACK_REASON:
+    if not supabase_url():
         init_sqlite()
         return "sqlite"
+    if _SUPABASE_READY:
+        return "supabase"
     try:
         init_supabase()
         return "supabase"
@@ -334,6 +337,7 @@ def _execute_read(sqlite_sql: str, postgres_sql: str | None = None, params: tupl
     except Exception as error:
         if backend == "supabase":
             _mark_supabase_failed(error)
+            init_sqlite()
             with _connect_sqlite() as connection:
                 rows = connection.execute(sqlite_sql, params).fetchall()
             return rows, "sqlite"
@@ -355,6 +359,7 @@ def _execute_write(sqlite_sql: str, postgres_sql: str | None = None, params: tup
     except Exception as error:
         if backend == "supabase":
             _mark_supabase_failed(error)
+            init_sqlite()
             with _connect_sqlite() as connection:
                 connection.execute(sqlite_sql, params)
                 connection.commit()
@@ -377,6 +382,7 @@ def _execute_many(sqlite_sql: str, postgres_sql: str | None, rows: list[tuple[An
     except Exception as error:
         if backend == "supabase":
             _mark_supabase_failed(error)
+            init_sqlite()
             with _connect_sqlite() as connection:
                 connection.executemany(sqlite_sql, rows)
                 connection.commit()
@@ -509,6 +515,7 @@ def clear_all() -> None:
         if backend != "supabase":
             raise
         _mark_supabase_failed(error)
+        init_sqlite()
         with _connect_sqlite() as connection:
             for table in ["accounts", "transactions", "dividends", "portfolio_snapshots", "net_worth_history", "prices"]:
                 connection.execute(f"DELETE FROM {table}")
