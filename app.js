@@ -686,9 +686,28 @@ function formatStatusDate(value) {
 function dataStatusMessage(status) {
   if (!status) return "讀取中";
   if (status.fallbackActive) return "Supabase 失敗，已自動改用 SQLite";
-  if (status.dataStatus === "範例資料") return "目前顯示範例資料";
-  if (status.currentDb === "supabase") return "雲端資料同步中";
-  return "正式資料在 SQLite";
+  return status.dataStatus || "讀取中";
+}
+
+function currentDbNote(status) {
+  if (!status) return "";
+  if (status.fallbackActive) return "SQLite Fallback active";
+  if (status.currentDb === "supabase") return "Connected";
+  return status.supabaseConfigured ? "SQLite fallback ready" : "Local SQLite";
+}
+
+function dataStatusNote(status) {
+  if (!status) return "";
+  if (status.fallbackActive) return "SQLite fallback active";
+  if (status.currentDb === "supabase") return "Supabase Connected";
+  if (status.dataStatus === "範例資料") return "請先匯入正式備份";
+  return "SQLite data";
+}
+
+function databaseHealth(status) {
+  if (!status) return { value: "讀取中", note: "" };
+  if (status.fallbackActive) return { value: "Fallback", note: "SQLite Online" };
+  return { value: "Online", note: status.currentDb === "supabase" ? "Supabase Connected" : "SQLite Online" };
 }
 
 function backupReminder(status) {
@@ -705,11 +724,13 @@ function renderDataStatusCards() {
   if (!target) return;
   const status = dataStatus;
   const metadata = status?.metadata ?? {};
+  const health = databaseHealth(status);
   const rows = [
-    { label: "Current DB", value: status?.currentDbLabel ?? "讀取中", note: status?.fallbackActive ? "Fallback active" : "" },
+    { label: "Current DB", value: status?.currentDbLabel ?? "讀取中", note: currentDbNote(status) },
+    { label: "Database Health", value: health.value, note: health.note },
     { label: "Last Backup", value: formatStatusDate(metadata.lastBackup), note: backupReminder(status) },
     { label: "Last Price Update", value: formatStatusDate(metadata.lastPriceUpdate || data.updatedAt), note: "" },
-    { label: "Data Status", value: dataStatusMessage(status), note: status?.supabaseConfigured ? "Supabase configured" : "SQLite fallback ready" },
+    { label: "Data Status", value: dataStatusMessage(status), note: dataStatusNote(status) },
   ];
   target.innerHTML = rows
     .map((row) => `<article class="data-status-card">
