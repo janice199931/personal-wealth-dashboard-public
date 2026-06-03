@@ -53,6 +53,13 @@ BACKUP_FILES = {
 app = FastAPI(title="Personal Wealth Dashboard Local API")
 
 
+def utf8_json(payload: Any) -> Response:
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        media_type="application/json; charset=utf-8",
+    )
+
+
 def unauthorized_response() -> Response:
     return Response(
         status_code=401,
@@ -361,8 +368,8 @@ def auth_debug() -> dict[str, Any]:
 
 
 @app.get("/api/db/status")
-def db_status() -> dict[str, Any]:
-    return db_store.status()
+def db_status() -> Response:
+    return utf8_json(db_store.status())
 
 
 @app.get("/api/db/debug-supabase")
