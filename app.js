@@ -51,6 +51,7 @@ const usd = new Intl.NumberFormat("en-US", {
 });
 const number = new Intl.NumberFormat("zh-TW");
 let usdToTwd = 31.451;
+const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 
 function setText(id, value) {
   document.getElementById(id).textContent = value;
@@ -824,6 +825,22 @@ function renderUpdateResult(payload) {
     .join("");
 }
 
+function renderPriceUpdateNotice(message) {
+  document.getElementById("dataUpdates").innerHTML = `
+    <div class="update-row"><span>Auto Price</span><strong>${message}</strong></div>
+  `;
+}
+
+function markTodayPriceUpdated() {
+  if (!window.localStorage) return;
+  window.localStorage.setItem(AUTO_PRICE_UPDATE_KEY, todayKey());
+}
+
+function hasAutoUpdatedToday() {
+  if (!window.localStorage) return false;
+  return window.localStorage.getItem(AUTO_PRICE_UPDATE_KEY) === todayKey();
+}
+
 function setupPriceUpdater() {
   const button = document.getElementById("updatePricesButton");
   if (!button || button.dataset.ready) return;
@@ -849,6 +866,7 @@ function setupPriceUpdater() {
         throw new Error(payload.detail || missingRouteMessage || `股價更新失敗（HTTP ${response.status}）`);
       }
       localStorage.removeItem("wealthDashboardUpdateWarning");
+      markTodayPriceUpdated();
       renderUpdateResult(payload);
       button.textContent = payload.warnings?.length ? "部分更新完成" : "股價更新完成";
       if (payload.warnings?.length) {
@@ -870,6 +888,29 @@ function setupPriceUpdater() {
       }, 1600);
     }
   });
+}
+
+async function runAutomaticPriceUpdate() {
+  if (hasAutoUpdatedToday()) return;
+  renderPriceUpdateNotice("正在自動更新股價…");
+  try {
+    const response = await fetch("/api/update-prices", { method: "POST" });
+    const payload = await readApiPayload(response);
+    if (!response.ok) throw new Error(payload.detail || `自動更新失敗（HTTP ${response.status}）`);
+    markTodayPriceUpdated();
+    localStorage.removeItem("wealthDashboardUpdateWarning");
+    await loadExternalData();
+    render();
+    if (payload.warnings?.length) {
+      console.warn("自動更新股價警告", payload.warnings);
+      renderPriceUpdateNotice("自動更新失敗，可手動按更新股價");
+      return;
+    }
+    renderPriceUpdateNotice("今日股價已自動更新");
+  } catch (error) {
+    console.warn("自動更新股價失敗", error);
+    renderPriceUpdateNotice("自動更新失敗，可手動按更新股價");
+  }
 }
 
 async function readApiPayload(response) {
@@ -1170,4 +1211,11 @@ async function loadExternalData() {
 window.addEventListener("resize", render);
 setupPriceUpdater();
 setupDataBackupControls();
-loadExternalData().then(render);
+
+async function initializeDashboard() {
+  await loadExternalData();
+  render();
+  await runAutomaticPriceUpdate();
+}
+
+initializeDashboard();

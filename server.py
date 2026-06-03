@@ -788,27 +788,46 @@ def update_prices(request: Request) -> dict:
         return {"ok": True, "method": "POST", "message": "股價更新 API 已就緒。"}
 
     try:
-        current_portfolio = read_portfolio(use_examples=True)
-        holdings = current_portfolio.get("holdings", [])
-        fx_rate = fetch_fx_rate(float(current_portfolio.get("fxRate") or 31.451))
-        latest_prices, warnings = fetch_prices(holdings)
         has_formal_data = bool(
             db_store.read_transactions()
             or db_store.read_accounts({})
             or db_store.read_latest_portfolio({})
         )
-        if has_formal_data:
-            stored_prices = db_store.read_prices({"fxRate": fx_rate, "prices": {}})
-            stored_prices["fxRate"] = fx_rate
-            stored_prices["prices"] = {**stored_prices.get("prices", {}), **latest_prices}
-            db_store.write_prices(stored_prices)
-            portfolio = rebuild_portfolio_outputs()
-        else:
+        if not has_formal_data:
+            portfolio = read_portfolio(use_examples=True)
+            warnings = ["目前是範例資料，請先匯入正式備份"]
+            return {
+                "ok": True,
+                "source": "demo",
+                "updatedAt": portfolio.get("updatedAt", ""),
+                "fxRate": portfolio.get("fxRate"),
+                "warnings": warnings,
+                "marketUpdates": {
+                    "TW": portfolio.get("markets", {}).get("TW", {}).get("updatedAt", ""),
+                    "US": portfolio.get("markets", {}).get("US", {}).get("updatedAt", ""),
+                },
+                "portfolioSummary": portfolio.get("summary", {}),
+                "updatedHoldings": 0,
+                "totalHoldings": len(portfolio.get("holdings", [])),
+            }
+
+        current_portfolio = read_portfolio(use_examples=False)
+        holdings = current_portfolio.get("holdings", [])
+        fx_rate = fetch_fx_rate(float(current_portfolio.get("fxRate") or 31.451))
+        latest_prices, warnings = fetch_prices(holdings)
+        stored_prices = db_store.read_prices({"fxRate": fx_rate, "prices": {}})
+        stored_prices["fxRate"] = fx_rate
+        stored_prices["prices"] = {**stored_prices.get("prices", {}), **latest_prices}
+        db_store.write_prices(stored_prices)
+        portfolio = rebuild_portfolio_outputs()
+        source = "sqlite"
+        if not portfolio:
             portfolio = current_portfolio
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"股價更新失敗：{error}") from error
     return {
         "ok": True,
+        "source": source,
         "updatedAt": portfolio.get("updatedAt", ""),
         "fxRate": portfolio.get("fxRate"),
         "warnings": warnings,
