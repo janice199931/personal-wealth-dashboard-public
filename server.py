@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from scripts.import_moze_csv import import_moze_csv
@@ -886,6 +886,16 @@ def update_prices(request: Request) -> dict:
 @app.get("/api/update-prices")
 def update_prices_status() -> dict:
     return {"ok": True, "method": "POST", "message": "股價更新 API 已就緒。"}
+
+
+@app.api_route("/settings.html", methods=["GET", "HEAD"])
+def settings_page() -> FileResponse:
+    return FileResponse(ROOT / "settings.html")
+
+
+@app.api_route("/settings", methods=["GET", "HEAD"])
+def settings_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/settings.html", status_code=307)
 
 
 app.mount("/", StaticFiles(directory=ROOT, html=True), name="static")
