@@ -83,6 +83,12 @@ ASSET_DASHBOARD_USERNAME=admin
 ASSET_DB_PATH=/var/data/app.db
 ```
 
+如果使用 Supabase，另外加上：
+
+```text
+SUPABASE_DB_URL=postgresql://postgres.your-project:your-password@aws-0-region.pooler.supabase.com:6543/postgres
+```
+
 ### Render Persistent Disk
 
 正式資料預設存進 `data/app.db`。Render Free 沒有 Persistent Disk，資料可能在重新部署、服務重建或休眠後消失。
@@ -208,6 +214,79 @@ curl -u admin:local-password -X POST http://127.0.0.1:8000/api/db/rebuild-portfo
 ```
 
 注意：Render / Railway 的一般檔案系統不適合長期保存正式資產資料。正式部署請使用 Persistent Disk，並設定 `ASSET_DB_PATH`。
+
+## Supabase Cloud Database
+
+Supabase 版會優先使用 PostgreSQL。若 Supabase 連線失敗、環境變數錯誤或服務暫時不可用，網站會自動改用 SQLite，不會影響既有 Render 網站開啟。
+
+支援的環境變數，擇一設定即可：
+
+```text
+SUPABASE_DB_URL=your-supabase-postgres-url
+SUPABASE_DATABASE_URL=your-supabase-postgres-url
+DATABASE_URL=your-supabase-postgres-url
+```
+
+建議使用 `SUPABASE_DB_URL`，避免和其他平台預設資料庫設定混淆。
+
+### Supabase 設定步驟
+
+1. 到 [Supabase](https://supabase.com/) 建立新 Project。
+2. 進入 Project Settings -> Database。
+3. 找到 Connection string，選擇 URI 格式。
+4. 建議 Render 使用 Transaction pooler 連線字串，連接埠通常是 `6543`。
+5. 將連線字串中的 `[YOUR-PASSWORD]` 換成 Supabase database password。
+6. 到 Render 服務的 Environment 新增：
+
+```text
+SUPABASE_DB_URL=你的 Supabase PostgreSQL 連線字串
+```
+
+7. 保留 SQLite fallback：
+
+```text
+ASSET_DB_PATH=data/app.db
+```
+
+8. 重新部署 Render。
+9. 登入網站後看首頁「Current DB」卡片，若顯示 `Supabase PostgreSQL` 代表已使用雲端資料庫。
+10. 若顯示 `SQLite` 並出現 fallback 提示，代表 Supabase 連線失敗，網站仍可正常使用，但資料會暫存在 SQLite。
+
+### 資料遷移到 Supabase
+
+方式一：用網站按鈕
+
+1. 先在 Render 設好 `SUPABASE_DB_URL` 並重新部署。
+2. 登入網站。
+3. 按「遷移 Supabase」。
+4. 完成後首頁 Current DB 應顯示 `Supabase PostgreSQL`。
+
+方式二：用 API
+
+```bash
+curl -u admin:your-password \
+  -X POST https://your-render-url/api/db/migrate-to-supabase
+```
+
+方式三：重新匯入備份
+
+1. 設定 Supabase 環境變數並重新部署。
+2. 登入網站。
+3. 按「匯入備份」，選擇 MacBook 上的備份 JSON。
+4. 匯入後資料會寫入目前可用的正式資料庫。Supabase 正常時會寫入 Supabase；Supabase 失敗時會自動寫入 SQLite。
+
+### 資料狀態卡
+
+首頁會顯示：
+
+- `Current DB`：目前使用 Supabase PostgreSQL 或 SQLite
+- `Last Backup`：上次匯出備份時間
+- `Last Price Update`：上次更新股價時間
+- `Data Status`：正式資料、範例資料或 fallback 狀態
+
+### 備份提醒
+
+即使使用 Supabase，仍建議定期按「匯出備份」下載 JSON 到自己的 MacBook。若超過 7 天沒有匯出備份，首頁會提醒。
 
 ## Safety Checklist Before GitHub Push
 

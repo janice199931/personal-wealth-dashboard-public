@@ -52,6 +52,7 @@ const usd = new Intl.NumberFormat("en-US", {
 const number = new Intl.NumberFormat("zh-TW");
 let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
+let dataStatus = null;
 
 function setText(id, value) {
   document.getElementById(id).textContent = value;
@@ -677,6 +678,48 @@ function renderKpis() {
     .join("");
 }
 
+function formatStatusDate(value) {
+  if (!value) return "尚未記錄";
+  return formatUpdateTime(value);
+}
+
+function dataStatusMessage(status) {
+  if (!status) return "讀取中";
+  if (status.fallbackActive) return "Supabase 失敗，已自動改用 SQLite";
+  if (status.dataStatus === "範例資料") return "目前顯示範例資料";
+  if (status.currentDb === "supabase") return "雲端資料同步中";
+  return "正式資料在 SQLite";
+}
+
+function backupReminder(status) {
+  const lastBackup = status?.metadata?.lastBackup;
+  if (!lastBackup) return "尚未匯出備份，建議先下載一份。";
+  const backupTime = new Date(lastBackup).getTime();
+  if (!Number.isFinite(backupTime)) return "";
+  const days = Math.floor((Date.now() - backupTime) / 86400000);
+  return days >= 7 ? `已 ${days} 天未備份，建議今天匯出。` : "";
+}
+
+function renderDataStatusCards() {
+  const target = document.getElementById("dataStatusCards");
+  if (!target) return;
+  const status = dataStatus;
+  const metadata = status?.metadata ?? {};
+  const rows = [
+    { label: "Current DB", value: status?.currentDbLabel ?? "讀取中", note: status?.fallbackActive ? "Fallback active" : "" },
+    { label: "Last Backup", value: formatStatusDate(metadata.lastBackup), note: backupReminder(status) },
+    { label: "Last Price Update", value: formatStatusDate(metadata.lastPriceUpdate || data.updatedAt), note: "" },
+    { label: "Data Status", value: dataStatusMessage(status), note: status?.supabaseConfigured ? "Supabase configured" : "SQLite fallback ready" },
+  ];
+  target.innerHTML = rows
+    .map((row) => `<article class="data-status-card">
+      <span>${row.label}</span>
+      <strong>${row.value}</strong>
+      ${row.note ? `<small>${row.note}</small>` : ""}
+    </article>`)
+    .join("");
+}
+
 let chartState = { points: [], rows: [] };
 
 function drawNetWorthChart() {
@@ -948,6 +991,7 @@ function setupDataBackupControls() {
   const exportButton = document.getElementById("exportBackupButton");
   const importButton = document.getElementById("importBackupButton");
   const rebuildButton = document.getElementById("rebuildPortfolioButton");
+  const migrateButton = document.getElementById("migrateSupabaseButton");
   const fileInput = document.getElementById("backupFileInput");
   if (!exportButton || !importButton || !rebuildButton || !fileInput || exportButton.dataset.ready) return;
   exportButton.dataset.ready = "true";
@@ -965,6 +1009,8 @@ function setupDataBackupControls() {
       const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
       downloadBlob(blob, `wealth-dashboard-backup-${stamp}.json`);
       setBackupStatus("備份已下載到這台電腦。");
+      await refreshDataStatus();
+      renderDataStatusCards();
     } catch (error) {
       console.warn("匯出備份失敗", error);
       setBackupStatus(error.message || "匯出備份失敗。");
@@ -1015,6 +1061,25 @@ function setupDataBackupControls() {
       rebuildButton.disabled = false;
     }
   });
+
+  if (migrateButton) {
+    migrateButton.addEventListener("click", async () => {
+      migrateButton.disabled = true;
+      setBackupStatus("正在遷移到 Supabase...");
+      try {
+        const response = await fetch("/api/db/migrate-to-supabase", { method: "POST" });
+        const payload = await readApiPayload(response);
+        if (!response.ok) throw new Error(payload.detail || `遷移失敗（HTTP ${response.status}）`);
+        setBackupStatus("Supabase 遷移完成，正在重新整理...");
+        setTimeout(() => window.location.reload(), 900);
+      } catch (error) {
+        console.warn("Supabase 遷移失敗", error);
+        setBackupStatus(error.message || "Supabase 遷移失敗。");
+      } finally {
+        migrateButton.disabled = false;
+      }
+    });
+  }
 }
 
 function renderInvestmentCards() {
@@ -1178,8 +1243,19 @@ function render() {
   setupChartHover();
   renderMilestones();
   renderDataUpdates();
+  renderDataStatusCards();
   renderInvestmentCards();
   renderLedger();
+}
+
+async function refreshDataStatus() {
+  try {
+    const response = await fetch("/api/db/status", { cache: "no-store" });
+    if (!response.ok) return;
+    dataStatus = await response.json();
+  } catch {
+    dataStatus = null;
+  }
 }
 
 async function loadExternalData() {
@@ -1205,6 +1281,7 @@ async function loadExternalData() {
       fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
       fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
       fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends"),
+      refreshDataStatus(),
     ]);
     if (!portfolio) return;
     applyPortfolioData(portfolio, history);

@@ -368,13 +368,13 @@ def db_status() -> dict[str, Any]:
 @app.get("/api/portfolio")
 def get_portfolio() -> dict[str, Any]:
     portfolio = read_portfolio(use_examples=True)
-    return {"ok": True, "portfolio": portfolio, "source": "sqlite" if db_store.read_latest_portfolio({}) else "example"}
+    return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if db_store.read_latest_portfolio({}) else "example"}
 
 
 @app.get("/api/net-worth-history")
 def get_net_worth_history() -> dict[str, Any]:
     history = read_net_worth_history(use_examples=True)
-    return {"ok": True, "history": history, "source": "sqlite" if db_store.read_net_worth_history() else "example"}
+    return {"ok": True, "history": history, "source": db_store.active_backend() if db_store.read_net_worth_history() else "example"}
 
 
 @app.post("/api/db/import-json")
@@ -388,42 +388,45 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
             raise HTTPException(status_code=400, detail="備份 JSON 必須是物件格式。")
 
         imported: list[str] = []
-        db_store.clear_all()
-
         accounts = payload.get("accounts")
+        clean_payload: dict[str, Any] = {}
         if isinstance(accounts, dict):
-            db_store.write_accounts(accounts)
+            clean_payload["accounts"] = accounts
             imported.append("accounts")
 
         transactions = payload.get("transactions")
         if isinstance(transactions, list):
             transactions, _ = ensure_transaction_ids(transactions)
-            db_store.write_transactions(transactions)
+            clean_payload["transactions"] = transactions
             imported.append("transactions")
 
         dividends = payload.get("dividends")
         if isinstance(dividends, list):
             dividends, _ = ensure_dividend_ids(dividends)
-            db_store.write_dividends(dividends)
+            clean_payload["dividends"] = dividends
             imported.append("dividends")
 
         prices = payload.get("prices")
         if isinstance(prices, dict):
-            db_store.write_prices(prices)
+            clean_payload["prices"] = prices
             imported.append("prices")
 
         history = payload.get("net-worth-history", payload.get("net_worth_history"))
         if isinstance(history, list):
-            db_store.write_net_worth_history(history)
+            clean_payload["net-worth-history"] = history
             imported.append("net-worth-history")
 
+        db_store.import_backup_payload(clean_payload)
+
         portfolio = rebuild_portfolio_outputs()
+        db_store.set_metadata("lastImport", db_store.now_iso())
         return {
             "ok": True,
             "imported": imported,
             "counts": db_store.status()["counts"],
             "portfolioSummary": portfolio.get("summary", {}),
-            "message": "備份 JSON 已匯入 SQLite 並重建投資組合。",
+            "currentDb": db_store.active_backend(),
+            "message": "備份 JSON 已匯入資料庫並重建投資組合。",
         }
 
     imported: list[str] = []
@@ -456,18 +459,21 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
         imported.append("net-worth-history.json")
 
     portfolio = rebuild_portfolio_outputs()
+    db_store.set_metadata("lastImport", db_store.now_iso())
     return {
         "ok": True,
         "imported": imported,
         "counts": db_store.status()["counts"],
         "portfolioSummary": portfolio.get("summary", {}),
-        "message": "JSON 匯入 SQLite 完成。正式 JSON 仍應留在本機並由 .gitignore 忽略。",
+        "currentDb": db_store.active_backend(),
+        "message": "JSON 匯入資料庫完成。正式 JSON 仍應留在本機並由 .gitignore 忽略。",
     }
 
 
 @app.get("/api/db/export-json")
 def export_json_backup() -> JSONResponse:
     backup = db_store.export_backup()
+    db_store.set_metadata("lastBackup", backup["exportedAt"])
     response = JSONResponse(content=backup)
     response.headers["Content-Disposition"] = f'attachment; filename="wealth-dashboard-backup-{datetime.now(TWD).strftime("%Y%m%d-%H%M%S")}.json"'
     return response
@@ -478,9 +484,20 @@ def rebuild_portfolio_from_db() -> dict[str, Any]:
     portfolio = rebuild_portfolio_outputs()
     return {
         "ok": True,
+        "currentDb": db_store.active_backend(),
         "counts": db_store.status()["counts"],
         "portfolioSummary": portfolio.get("summary", {}),
     }
+
+
+@app.post("/api/db/migrate-to-supabase")
+def migrate_to_supabase() -> dict[str, Any]:
+    try:
+        result = db_store.migrate_sqlite_to_supabase()
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Supabase 遷移失敗：{error}") from error
+    db_store.set_metadata("lastMigration", db_store.now_iso())
+    return result
 
 
 @app.get("/api/backups")
@@ -820,9 +837,10 @@ def update_prices(request: Request) -> dict:
         stored_prices["prices"] = {**stored_prices.get("prices", {}), **latest_prices}
         db_store.write_prices(stored_prices)
         portfolio = rebuild_portfolio_outputs()
-        source = "sqlite"
+        source = db_store.active_backend()
         if not portfolio:
             portfolio = current_portfolio
+        db_store.set_metadata("lastPriceUpdate", db_store.now_iso())
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"股價更新失敗：{error}") from error
     return {

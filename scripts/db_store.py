@@ -5,16 +5,38 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB_PATH = ROOT / "data" / "app.db"
+Backend = Literal["sqlite", "supabase"]
+TABLES = {
+    "accounts",
+    "transactions",
+    "dividends",
+    "portfolio_snapshots",
+    "net_worth_history",
+    "prices",
+    "app_metadata",
+}
+
+_SUPABASE_FALLBACK_REASON = ""
+_SUPABASE_READY = False
+_SQLITE_READY_PATH = ""
 
 
 def db_path() -> Path:
     configured = os.getenv("ASSET_DB_PATH", "").strip()
     return Path(configured).expanduser() if configured else DEFAULT_DB_PATH
+
+
+def supabase_url() -> str:
+    return (
+        os.getenv("SUPABASE_DB_URL", "").strip()
+        or os.getenv("SUPABASE_DATABASE_URL", "").strip()
+        or os.getenv("DATABASE_URL", "").strip()
+    )
 
 
 def now_iso() -> str:
@@ -31,31 +53,84 @@ def decode(value: str | None, default: Any) -> Any:
     return json.loads(value)
 
 
-def connect() -> sqlite3.Connection:
+def _connect_sqlite() -> sqlite3.Connection:
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    init_db(connection)
     return connection
 
 
-def init_db(connection: sqlite3.Connection | None = None) -> None:
-    owns_connection = connection is None
-    if connection is None:
-        path = db_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(path)
+def _connect_postgres():
+    import psycopg
+    from psycopg.rows import dict_row
 
-    connection.executescript(
+    return psycopg.connect(supabase_url(), row_factory=dict_row, connect_timeout=6)
+
+
+def _sqlite_script() -> str:
+    return """
+    CREATE TABLE IF NOT EXISTS accounts (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS transactions (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        market TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS dividends (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        market TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at TEXT NOT NULL,
+        payload TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS net_worth_history (
+        date TEXT PRIMARY KEY,
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS prices (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        payload TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS app_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    );
+    """
+
+
+def _postgres_statements() -> list[str]:
+    return [
         """
         CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             payload TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        );
-
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS transactions (
             id TEXT PRIMARY KEY,
             date TEXT NOT NULL,
@@ -63,8 +138,9 @@ def init_db(connection: sqlite3.Connection | None = None) -> None:
             symbol TEXT NOT NULL,
             payload TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        );
-
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS dividends (
             id TEXT PRIMARY KEY,
             date TEXT NOT NULL,
@@ -72,30 +148,169 @@ def init_db(connection: sqlite3.Connection | None = None) -> None:
             symbol TEXT NOT NULL,
             payload TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        );
-
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS portfolio_snapshots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id BIGSERIAL PRIMARY KEY,
             created_at TEXT NOT NULL,
             payload TEXT NOT NULL
-        );
-
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS net_worth_history (
             date TEXT PRIMARY KEY,
             payload TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        );
-
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS prices (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             payload TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        );
+        )
+        """,
         """
-    )
-    connection.commit()
-    if owns_connection:
-        connection.close()
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+    ]
+
+
+def _mark_supabase_failed(error: Exception) -> None:
+    global _SUPABASE_FALLBACK_REASON, _SUPABASE_READY
+    _SUPABASE_FALLBACK_REASON = str(error)
+    _SUPABASE_READY = False
+
+
+def init_sqlite() -> None:
+    global _SQLITE_READY_PATH
+    path = str(db_path())
+    if _SQLITE_READY_PATH == path:
+        return
+    with _connect_sqlite() as connection:
+        connection.executescript(_sqlite_script())
+        connection.commit()
+    _SQLITE_READY_PATH = path
+
+
+def init_supabase() -> None:
+    global _SUPABASE_READY
+    if _SUPABASE_READY:
+        return
+    with _connect_postgres() as connection:
+        with connection.cursor() as cursor:
+            for statement in _postgres_statements():
+                cursor.execute(statement)
+        connection.commit()
+    _SUPABASE_READY = True
+
+
+def init_db() -> None:
+    init_sqlite()
+    if not supabase_url() or _SUPABASE_FALLBACK_REASON:
+        return
+    try:
+        init_supabase()
+    except Exception as error:
+        _mark_supabase_failed(error)
+
+
+def active_backend() -> Backend:
+    if not supabase_url() or _SUPABASE_FALLBACK_REASON:
+        init_sqlite()
+        return "sqlite"
+    try:
+        init_supabase()
+        return "supabase"
+    except Exception as error:
+        _mark_supabase_failed(error)
+        init_sqlite()
+        return "sqlite"
+
+
+def current_db_label() -> str:
+    return "Supabase PostgreSQL" if active_backend() == "supabase" else "SQLite"
+
+
+def connect():
+    backend = active_backend()
+    return _connect_postgres() if backend == "supabase" else _connect_sqlite()
+
+
+def _placeholder(backend: Backend) -> str:
+    return "%s" if backend == "supabase" else "?"
+
+
+def _row_value(row: Any, key: str) -> Any:
+    return row[key]
+
+
+def _execute_read(sqlite_sql: str, postgres_sql: str | None = None, params: tuple[Any, ...] = ()):
+    backend = active_backend()
+    query = postgres_sql if backend == "supabase" and postgres_sql else sqlite_sql
+    try:
+        with connect() as connection:
+            cursor = connection.execute(query, params) if backend == "sqlite" else connection.cursor()
+            if backend == "supabase":
+                cursor.execute(query, params)
+            rows = cursor.fetchall()
+        return rows, backend
+    except Exception as error:
+        if backend == "supabase":
+            _mark_supabase_failed(error)
+            with _connect_sqlite() as connection:
+                rows = connection.execute(sqlite_sql, params).fetchall()
+            return rows, "sqlite"
+        raise
+
+
+def _execute_write(sqlite_sql: str, postgres_sql: str | None = None, params: tuple[Any, ...] = ()) -> Backend:
+    backend = active_backend()
+    query = postgres_sql if backend == "supabase" and postgres_sql else sqlite_sql
+    try:
+        with connect() as connection:
+            if backend == "sqlite":
+                connection.execute(query, params)
+            else:
+                with connection.cursor() as cursor:
+                    cursor.execute(query, params)
+            connection.commit()
+        return backend
+    except Exception as error:
+        if backend == "supabase":
+            _mark_supabase_failed(error)
+            with _connect_sqlite() as connection:
+                connection.execute(sqlite_sql, params)
+                connection.commit()
+            return "sqlite"
+        raise
+
+
+def _execute_many(sqlite_sql: str, postgres_sql: str | None, rows: list[tuple[Any, ...]]) -> Backend:
+    backend = active_backend()
+    query = postgres_sql if backend == "supabase" and postgres_sql else sqlite_sql
+    try:
+        with connect() as connection:
+            if backend == "sqlite":
+                connection.executemany(query, rows)
+            else:
+                with connection.cursor() as cursor:
+                    cursor.executemany(query, rows)
+            connection.commit()
+        return backend
+    except Exception as error:
+        if backend == "supabase":
+            _mark_supabase_failed(error)
+            with _connect_sqlite() as connection:
+                connection.executemany(sqlite_sql, rows)
+                connection.commit()
+            return "sqlite"
+        raise
 
 
 def db_exists() -> bool:
@@ -103,184 +318,222 @@ def db_exists() -> bool:
 
 
 def table_count(table: str) -> int:
-    with connect() as connection:
-        row = connection.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
-    return int(row["count"])
+    if table not in TABLES:
+        raise ValueError(f"Unknown table: {table}")
+    rows, _ = _execute_read(f"SELECT COUNT(*) AS count FROM {table}")
+    return int(_row_value(rows[0], "count")) if rows else 0
+
+
+def read_metadata() -> dict[str, Any]:
+    rows, _ = _execute_read("SELECT key, value FROM app_metadata ORDER BY key")
+    output: dict[str, Any] = {}
+    for row in rows:
+        key = _row_value(row, "key")
+        output[key] = decode(_row_value(row, "value"), None)
+    return output
+
+
+def set_metadata(key: str, value: Any) -> None:
+    timestamp = now_iso()
+    params = (key, encode(value), timestamp)
+    _execute_write(
+        """
+        INSERT INTO app_metadata (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        """,
+        """
+        INSERT INTO app_metadata (key, value, updated_at)
+        VALUES (%s, %s, %s)
+        ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+        """,
+        params,
+    )
 
 
 def status() -> dict[str, Any]:
-    init_db()
+    backend = active_backend()
     path = db_path()
+    counts = {
+        "accounts": table_count("accounts"),
+        "transactions": table_count("transactions"),
+        "dividends": table_count("dividends"),
+        "portfolioSnapshots": table_count("portfolio_snapshots"),
+        "netWorthHistory": table_count("net_worth_history"),
+        "prices": table_count("prices"),
+    }
+    has_data = any(counts.values())
     return {
         "ok": True,
+        "currentDb": backend,
+        "currentDbLabel": "Supabase PostgreSQL" if backend == "supabase" else "SQLite",
+        "dataStatus": "正式資料" if has_data else "範例資料",
+        "fallbackActive": backend == "sqlite" and bool(supabase_url()) and bool(_SUPABASE_FALLBACK_REASON),
+        "fallbackReason": _SUPABASE_FALLBACK_REASON,
+        "supabaseConfigured": bool(supabase_url()),
         "dbPath": str(path),
         "dbExists": path.exists(),
         "usingConfiguredPath": bool(os.getenv("ASSET_DB_PATH", "").strip()),
-        "counts": {
-            "accounts": table_count("accounts"),
-            "transactions": table_count("transactions"),
-            "dividends": table_count("dividends"),
-            "portfolioSnapshots": table_count("portfolio_snapshots"),
-            "netWorthHistory": table_count("net_worth_history"),
-            "prices": table_count("prices"),
-        },
+        "counts": counts,
+        "metadata": read_metadata(),
     }
 
 
 def read_accounts(default: dict[str, Any] | None = None) -> dict[str, Any]:
-    with connect() as connection:
-        row = connection.execute("SELECT payload FROM accounts WHERE id = 1").fetchone()
-    return decode(row["payload"], default or {}) if row else (default or {})
+    rows, _ = _execute_read("SELECT payload FROM accounts WHERE id = 1")
+    return decode(_row_value(rows[0], "payload"), default or {}) if rows else (default or {})
 
 
 def write_accounts(accounts: dict[str, Any]) -> None:
-    with connect() as connection:
-        connection.execute(
-            """
-            INSERT INTO accounts (id, payload, updated_at)
-            VALUES (1, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
-            """,
-            (encode(accounts), now_iso()),
-        )
-        connection.commit()
+    _execute_write(
+        """
+        INSERT INTO accounts (id, payload, updated_at)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+        """,
+        """
+        INSERT INTO accounts (id, payload, updated_at)
+        VALUES (1, %s, %s)
+        ON CONFLICT(id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
+        """,
+        (encode(accounts), now_iso()),
+    )
 
 
 def read_prices(default: dict[str, Any] | None = None) -> dict[str, Any]:
-    with connect() as connection:
-        row = connection.execute("SELECT payload FROM prices WHERE id = 1").fetchone()
-    return decode(row["payload"], default or {"fxRate": 31.451, "prices": {}}) if row else (default or {"fxRate": 31.451, "prices": {}})
+    fallback = default or {"fxRate": 31.451, "prices": {}}
+    rows, _ = _execute_read("SELECT payload FROM prices WHERE id = 1")
+    return decode(_row_value(rows[0], "payload"), fallback) if rows else fallback
 
 
 def write_prices(prices: dict[str, Any]) -> None:
-    with connect() as connection:
-        connection.execute(
-            """
-            INSERT INTO prices (id, payload, updated_at)
-            VALUES (1, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
-            """,
-            (encode(prices), now_iso()),
-        )
-        connection.commit()
+    _execute_write(
+        """
+        INSERT INTO prices (id, payload, updated_at)
+        VALUES (1, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+        """,
+        """
+        INSERT INTO prices (id, payload, updated_at)
+        VALUES (1, %s, %s)
+        ON CONFLICT(id) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
+        """,
+        (encode(prices), now_iso()),
+    )
 
 
 def clear_all() -> None:
-    with connect() as connection:
-        connection.execute("DELETE FROM accounts")
-        connection.execute("DELETE FROM transactions")
-        connection.execute("DELETE FROM dividends")
-        connection.execute("DELETE FROM portfolio_snapshots")
-        connection.execute("DELETE FROM net_worth_history")
-        connection.execute("DELETE FROM prices")
-        connection.commit()
+    backend = active_backend()
+    try:
+        with connect() as connection:
+            if backend == "sqlite":
+                for table in ["accounts", "transactions", "dividends", "portfolio_snapshots", "net_worth_history", "prices"]:
+                    connection.execute(f"DELETE FROM {table}")
+            else:
+                with connection.cursor() as cursor:
+                    for table in ["accounts", "transactions", "dividends", "portfolio_snapshots", "net_worth_history", "prices"]:
+                        cursor.execute(f"DELETE FROM {table}")
+            connection.commit()
+    except Exception as error:
+        if backend != "supabase":
+            raise
+        _mark_supabase_failed(error)
+        with _connect_sqlite() as connection:
+            for table in ["accounts", "transactions", "dividends", "portfolio_snapshots", "net_worth_history", "prices"]:
+                connection.execute(f"DELETE FROM {table}")
+            connection.commit()
 
 
 def read_transactions() -> list[dict[str, Any]]:
-    with connect() as connection:
-        rows = connection.execute("SELECT payload FROM transactions ORDER BY date, id").fetchall()
-    return [decode(row["payload"], {}) for row in rows]
+    rows, _ = _execute_read("SELECT payload FROM transactions ORDER BY date, id")
+    return [decode(_row_value(row, "payload"), {}) for row in rows]
 
 
 def write_transactions(transactions: list[dict[str, Any]]) -> None:
     timestamp = now_iso()
-    with connect() as connection:
-        connection.execute("DELETE FROM transactions")
-        connection.executemany(
-            """
-            INSERT INTO transactions (id, date, market, symbol, payload, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    str(row["id"]),
-                    str(row.get("date", "")),
-                    str(row.get("market", "")).upper(),
-                    str(row.get("symbol", "")).upper(),
-                    encode(row),
-                    timestamp,
-                )
-                for row in transactions
-            ],
+    clear_table("transactions")
+    rows = [
+        (
+            str(row["id"]),
+            str(row.get("date", "")),
+            str(row.get("market", "")).upper(),
+            str(row.get("symbol", "")).upper(),
+            encode(row),
+            timestamp,
         )
-        connection.commit()
+        for row in transactions
+    ]
+    _execute_many(
+        "INSERT INTO transactions (id, date, market, symbol, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO transactions (id, date, market, symbol, payload, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+        rows,
+    )
 
 
 def read_dividends() -> list[dict[str, Any]]:
-    with connect() as connection:
-        rows = connection.execute("SELECT payload FROM dividends ORDER BY date, id").fetchall()
-    return [decode(row["payload"], {}) for row in rows]
+    rows, _ = _execute_read("SELECT payload FROM dividends ORDER BY date, id")
+    return [decode(_row_value(row, "payload"), {}) for row in rows]
 
 
 def write_dividends(dividends: list[dict[str, Any]]) -> None:
     timestamp = now_iso()
-    with connect() as connection:
-        connection.execute("DELETE FROM dividends")
-        connection.executemany(
-            """
-            INSERT INTO dividends (id, date, market, symbol, payload, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            [
-                (
-                    str(row["id"]),
-                    str(row.get("date", "")),
-                    str(row.get("market", "")).upper(),
-                    str(row.get("symbol", "")).upper(),
-                    encode(row),
-                    timestamp,
-                )
-                for row in dividends
-            ],
+    clear_table("dividends")
+    rows = [
+        (
+            str(row["id"]),
+            str(row.get("date", "")),
+            str(row.get("market", "")).upper(),
+            str(row.get("symbol", "")).upper(),
+            encode(row),
+            timestamp,
         )
-        connection.commit()
+        for row in dividends
+    ]
+    _execute_many(
+        "INSERT INTO dividends (id, date, market, symbol, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO dividends (id, date, market, symbol, payload, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+        rows,
+    )
+
+
+def clear_table(table: str) -> None:
+    if table not in TABLES:
+        raise ValueError(f"Unknown table: {table}")
+    _execute_write(f"DELETE FROM {table}")
 
 
 def read_latest_portfolio(default: dict[str, Any] | None = None) -> dict[str, Any]:
-    with connect() as connection:
-        row = connection.execute(
-            "SELECT payload FROM portfolio_snapshots ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-    return decode(row["payload"], default or {}) if row else (default or {})
+    rows, _ = _execute_read("SELECT payload FROM portfolio_snapshots ORDER BY id DESC LIMIT 1")
+    return decode(_row_value(rows[0], "payload"), default or {}) if rows else (default or {})
 
 
 def write_portfolio_snapshot(portfolio: dict[str, Any]) -> None:
-    with connect() as connection:
-        connection.execute(
-            "INSERT INTO portfolio_snapshots (created_at, payload) VALUES (?, ?)",
-            (now_iso(), encode(portfolio)),
-        )
-        connection.commit()
+    _execute_write(
+        "INSERT INTO portfolio_snapshots (created_at, payload) VALUES (?, ?)",
+        "INSERT INTO portfolio_snapshots (created_at, payload) VALUES (%s, %s)",
+        (now_iso(), encode(portfolio)),
+    )
 
 
 def replace_portfolio_snapshot(portfolio: dict[str, Any]) -> None:
-    with connect() as connection:
-        connection.execute("DELETE FROM portfolio_snapshots")
-        connection.execute(
-            "INSERT INTO portfolio_snapshots (created_at, payload) VALUES (?, ?)",
-            (now_iso(), encode(portfolio)),
-        )
-        connection.commit()
+    clear_table("portfolio_snapshots")
+    write_portfolio_snapshot(portfolio)
 
 
 def read_net_worth_history() -> list[dict[str, Any]]:
-    with connect() as connection:
-        rows = connection.execute("SELECT payload FROM net_worth_history ORDER BY date").fetchall()
-    return [decode(row["payload"], {}) for row in rows]
+    rows, _ = _execute_read("SELECT payload FROM net_worth_history ORDER BY date")
+    return [decode(_row_value(row, "payload"), {}) for row in rows]
 
 
 def write_net_worth_history(history: list[dict[str, Any]]) -> None:
     timestamp = now_iso()
-    with connect() as connection:
-        connection.execute("DELETE FROM net_worth_history")
-        connection.executemany(
-            """
-            INSERT INTO net_worth_history (date, payload, updated_at)
-            VALUES (?, ?, ?)
-            """,
-            [(str(row.get("date", "")), encode(row), timestamp) for row in history if row.get("date")]
-        )
-        connection.commit()
+    clear_table("net_worth_history")
+    rows = [(str(row.get("date", "")), encode(row), timestamp) for row in history if row.get("date")]
+    _execute_many(
+        "INSERT INTO net_worth_history (date, payload, updated_at) VALUES (?, ?, ?)",
+        "INSERT INTO net_worth_history (date, payload, updated_at) VALUES (%s, %s, %s)",
+        rows,
+    )
 
 
 def has_private_data() -> bool:
@@ -295,6 +548,7 @@ def export_backup() -> dict[str, Any]:
     return {
         "schemaVersion": 1,
         "exportedAt": now_iso(),
+        "sourceDb": active_backend(),
         "accounts": read_accounts({}),
         "transactions": read_transactions(),
         "dividends": read_dividends(),
@@ -302,3 +556,94 @@ def export_backup() -> dict[str, Any]:
         "net-worth-history": read_net_worth_history(),
         "portfolio": read_latest_portfolio({}),
     }
+
+
+def import_backup_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    clear_all()
+    imported: list[str] = []
+
+    accounts = payload.get("accounts")
+    if isinstance(accounts, dict):
+        write_accounts(accounts)
+        imported.append("accounts")
+
+    transactions = payload.get("transactions")
+    if isinstance(transactions, list):
+        write_transactions(transactions)
+        imported.append("transactions")
+
+    dividends = payload.get("dividends")
+    if isinstance(dividends, list):
+        write_dividends(dividends)
+        imported.append("dividends")
+
+    prices = payload.get("prices")
+    if isinstance(prices, dict):
+        write_prices(prices)
+        imported.append("prices")
+
+    history = payload.get("net-worth-history", payload.get("net_worth_history"))
+    if isinstance(history, list):
+        write_net_worth_history(history)
+        imported.append("net-worth-history")
+
+    portfolio = payload.get("portfolio")
+    if isinstance(portfolio, dict) and portfolio:
+        write_portfolio_snapshot(portfolio)
+        imported.append("portfolio")
+
+    return {"imported": imported, "counts": status()["counts"]}
+
+
+def migrate_sqlite_to_supabase() -> dict[str, Any]:
+    if not supabase_url():
+        raise RuntimeError("尚未設定 SUPABASE_DB_URL。")
+
+    global _SUPABASE_FALLBACK_REASON, _SUPABASE_READY
+    _SUPABASE_FALLBACK_REASON = ""
+    _SUPABASE_READY = False
+    init_supabase()
+
+    active_backup = export_backup()
+    sqlite_payload = _export_sqlite_backup()
+    if not any(
+        sqlite_payload.get(key)
+        for key in ["accounts", "transactions", "dividends", "prices", "net-worth-history", "portfolio"]
+    ):
+        sqlite_payload = active_backup
+
+    _import_payload_to_backend(sqlite_payload, "supabase")
+    return {
+        "ok": True,
+        "currentDb": active_backend(),
+        "counts": status()["counts"],
+        "message": "SQLite 資料已遷移到 Supabase。",
+    }
+
+
+def _export_sqlite_backup() -> dict[str, Any]:
+    original_reason = _SUPABASE_FALLBACK_REASON
+    try:
+        globals()["_SUPABASE_FALLBACK_REASON"] = "force-sqlite-export"
+        return export_backup()
+    finally:
+        globals()["_SUPABASE_FALLBACK_REASON"] = original_reason
+
+
+def _import_payload_to_backend(payload: dict[str, Any], backend: Backend) -> None:
+    if backend == "supabase":
+        with _connect_postgres() as connection:
+            with connection.cursor() as cursor:
+                for table in ["accounts", "transactions", "dividends", "portfolio_snapshots", "net_worth_history", "prices"]:
+                    cursor.execute(f"DELETE FROM {table}")
+            connection.commit()
+    else:
+        clear_all()
+
+    original_reason = _SUPABASE_FALLBACK_REASON
+    try:
+        if backend == "supabase":
+            globals()["_SUPABASE_FALLBACK_REASON"] = ""
+        import_backup_payload(payload)
+    finally:
+        globals()["_SUPABASE_FALLBACK_REASON"] = original_reason
