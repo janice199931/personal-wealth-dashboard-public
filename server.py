@@ -383,6 +383,18 @@ def get_portfolio() -> dict[str, Any]:
     return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if db_store.read_latest_portfolio({}) else "example"}
 
 
+@app.get("/api/accounts")
+def get_accounts() -> dict[str, Any]:
+    accounts = db_store.read_accounts({})
+    return {"ok": True, "accounts": accounts, "source": db_store.active_backend() if db_store.table_count("accounts") else "empty"}
+
+
+@app.get("/api/prices")
+def get_prices() -> dict[str, Any]:
+    prices = db_store.read_prices({"fxRate": 31.451, "prices": {}})
+    return {"ok": True, "prices": prices, "source": db_store.active_backend() if db_store.table_count("prices") else "empty"}
+
+
 @app.get("/api/net-worth-history")
 def get_net_worth_history() -> dict[str, Any]:
     history = read_net_worth_history(use_examples=True)
@@ -572,7 +584,7 @@ def get_transactions() -> dict:
     transactions, changed = ensure_transaction_ids(transactions)
     if changed:
         write_transactions(transactions)
-    return {"ok": True, "transactions": transactions}
+    return {"ok": True, "transactions": transactions, "source": db_store.active_backend() if db_store.read_transactions() else "example"}
 
 
 @app.post("/api/transactions")
@@ -640,7 +652,7 @@ def get_dividends() -> dict:
     dividends, changed = ensure_dividend_ids(dividends)
     if changed:
         write_dividends(dividends)
-    return {"ok": True, "dividends": dividends}
+    return {"ok": True, "dividends": dividends, "source": db_store.active_backend() if db_store.read_dividends() else "example"}
 
 
 @app.post("/api/dividends")

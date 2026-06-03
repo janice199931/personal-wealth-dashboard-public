@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>設定｜Janice的小天地</title>
+    <link rel="stylesheet" href="./styles.css?v=20260603-diagnostics" />
+  </head>
+  <body>
+    <aside class="sidebar" aria-label="主選單">
+      <div class="sidebar-brand">
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <rect width="48" height="48" rx="16"></rect>
+          <circle cx="17" cy="19" r="4.2"></circle>
+          <circle cx="24" cy="15" r="4.2"></circle>
+          <circle cx="31" cy="19" r="4.2"></circle>
+          <path d="M15.5 31.2c0-5 3.7-9 8.5-9s8.5 4 8.5 9c0 3.2-2.3 5-5 4.2-1.6-.5-3.4-.5-5 0-2.7.8-5-.6-5-4.2Z"></path>
+        </svg>
+        <strong>Wealth<br />Dashboard</strong>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="./index.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.2 12 4l8 7.2"></path><path d="M6.5 10.5V20h5v-5h3v5h5v-9.5"></path></svg>
+          總覽
+        </a>
+        <a class="active" href="./settings.html">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"></circle><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7.6 7.6 0 0 0-1.7-1L14.5 3h-5l-.3 3.1a7.6 7.6 0 0 0-1.7 1l-2.4-1-2 3.4L5.1 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7.6 7.6 0 0 0 1.7 1l.3 3.1h5l.3-3.1a7.6 7.6 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5a7 7 0 0 0 .1-1Z"></path></svg>
+          設定
+        </a>
+      </nav>
+    </aside>
+
+    <main>
+      <section class="settings-header" aria-label="設定">
+        <p class="eyebrow">System</p>
+        <h1>設定</h1>
+      </section>
+
+      <section class="panel full diagnostics-panel" aria-label="System Diagnostics">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">System Diagnostics</p>
+            <h2>系統診斷</h2>
+          </div>
+          <button class="action-button" id="refreshDiagnosticsButton" type="button">重新整理</button>
+        </div>
+        <div id="diagnosticsGrid" class="diagnostics-grid"></div>
+      </section>
+    </main>
+
+    <script>
+      const diagnosticsRows = [
+        ["Database", "database"],
+        ["Status", "status"],
+        ["Fallback", "fallback"],
+        ["Last Import Time", "lastImport"],
+        ["Transactions Count", "transactions"],
+        ["Accounts Count", "accounts"],
+      ];
+
+      function formatDiagnosticsDate(value) {
+        if (!value) return "尚未記錄";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return value;
+        return new Intl.DateTimeFormat("zh-TW", {
+          timeZone: "Asia/Taipei",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).format(date);
+      }
+
+      function diagnosticsValues(status) {
+        return {
+          database: status.currentDbLabel || "讀取中",
+          status: status.currentDb === "supabase" && !status.fallbackActive ? "Online" : "Fallback",
+          fallback: status.fallbackActive ? "Enabled" : "Disabled",
+          lastImport: formatDiagnosticsDate(status.metadata?.lastImport),
+          transactions: status.counts?.transactions ?? 0,
+          accounts: status.counts?.accounts ?? 0,
+        };
+      }
+
+      function renderDiagnostics(status) {
+        const values = diagnosticsValues(status);
+        document.getElementById("diagnosticsGrid").innerHTML = diagnosticsRows
+          .map(([label, key]) => `<article class="diagnostics-card">
+            <span>${label}</span>
+            <strong>${values[key]}</strong>
+          </article>`)
+          .join("");
+      }
+
+      async function loadDiagnostics() {
+        const target = document.getElementById("diagnosticsGrid");
+        target.innerHTML = '<article class="diagnostics-card"><span>Status</span><strong>讀取中</strong></article>';
+        try {
+          const statusUrl = new URL("/api/db/status", window.location.origin);
+          const response = await fetch(statusUrl, { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          renderDiagnostics(await response.json());
+        } catch (error) {
+          target.innerHTML = `<article class="diagnostics-card">
+            <span>Status</span>
+            <strong>讀取失敗</strong>
+            <small>${error.message || "請稍後再試"}</small>
+          </article>`;
+        }
+      }
+
+      document.getElementById("refreshDiagnosticsButton").addEventListener("click", loadDiagnostics);
+      loadDiagnostics();
+    </script>
+  </body>
+</html>
