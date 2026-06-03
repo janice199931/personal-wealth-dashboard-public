@@ -56,12 +56,12 @@
     </aside>
 
     <header class="topbar">
-      <button class="snapshot-button" id="updatePricesButton" type="button">更新股價</button>
-      <a class="snapshot-button" href="./snapshot-manager.html">更新資產快照</a>
-      <div class="backup-controls" aria-label="資料備份與還原">
-        <button class="snapshot-button" id="exportBackupButton" type="button">匯出備份</button>
-        <button class="snapshot-button" id="importBackupButton" type="button">匯入備份</button>
-        <button class="snapshot-button" id="rebuildPortfolioButton" type="button">重建投資組合</button>
+      <div class="topbar-actions" aria-label="主要操作">
+        <button class="action-button" id="updatePricesButton" type="button">更新股價</button>
+        <a class="action-button" href="./snapshot-manager.html">更新資產快照</a>
+        <button class="action-button" id="exportBackupButton" type="button">匯出備份</button>
+        <button class="action-button" id="importBackupButton" type="button">匯入備份</button>
+        <button class="action-button" id="rebuildPortfolioButton" type="button">重建投資組合</button>
         <input id="backupFileInput" type="file" accept="application/json,.json" hidden />
         <span id="backupStatus" class="backup-status" aria-live="polite"></span>
       </div>
