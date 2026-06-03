@@ -792,7 +792,7 @@ function renderDataUpdates() {
   setSidebarUpdatedAt(data.updatedAt);
   const warning = localStorage.getItem("wealthDashboardUpdateWarning");
   if (warning) {
-    renderUpdateWarning();
+    renderUpdateWarning(warning === "1" ? undefined : warning);
     return;
   }
   const rows = [
@@ -805,9 +805,9 @@ function renderDataUpdates() {
     .join("");
 }
 
-function renderUpdateWarning() {
+function renderUpdateWarning(message = "部分資料更新失敗，請查看更新結果") {
   document.getElementById("dataUpdates").innerHTML = `
-    <div class="update-row"><span>Warning</span><strong>部分資料更新失敗，請查看更新結果</strong></div>
+    <div class="update-row"><span>Warning</span><strong>${message}</strong></div>
   `;
 }
 
@@ -871,8 +871,14 @@ function setupPriceUpdater() {
       button.textContent = payload.warnings?.length ? "部分更新完成" : "股價更新完成";
       if (payload.warnings?.length) {
         console.warn("股價更新警告", payload.warnings);
-        localStorage.setItem("wealthDashboardUpdateWarning", "1");
-        renderUpdateWarning();
+        const warningMessage = payload.warnings[0] || "部分資料更新失敗，請查看更新結果";
+        if (payload.source === "demo") {
+          button.textContent = "範例資料";
+          renderPriceUpdateNotice(warningMessage);
+        } else {
+          localStorage.setItem("wealthDashboardUpdateWarning", warningMessage);
+          renderUpdateWarning(warningMessage);
+        }
       }
       setTimeout(() => {
         window.location.reload();
@@ -880,8 +886,8 @@ function setupPriceUpdater() {
     } catch (error) {
       button.textContent = "更新失敗";
       console.warn("股價更新失敗", error);
-      localStorage.setItem("wealthDashboardUpdateWarning", "1");
-      renderUpdateWarning();
+      localStorage.setItem("wealthDashboardUpdateWarning", error.message || "股價更新失敗");
+      renderUpdateWarning(error.message || "股價更新失敗");
       setTimeout(() => {
         button.textContent = originalText;
         button.disabled = false;
@@ -903,7 +909,7 @@ async function runAutomaticPriceUpdate() {
     render();
     if (payload.warnings?.length) {
       console.warn("自動更新股價警告", payload.warnings);
-      renderPriceUpdateNotice("自動更新失敗，可手動按更新股價");
+      renderPriceUpdateNotice(payload.warnings[0] || "自動更新失敗，可手動按更新股價");
       return;
     }
     renderPriceUpdateNotice("今日股價已自動更新");
