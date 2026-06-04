@@ -1326,35 +1326,43 @@ async function loadExternalData() {
   }
 
   async function fetchJson(primaryPath, examplePath, fallbackValue, payloadKey = "") {
-    const primaryResponse = await fetch(primaryPath, { cache: "no-store" });
-    if (primaryResponse.ok) {
-      const payload = await primaryResponse.json();
-      return payloadKey ? payload[payloadKey] : payload;
+    try {
+      const primaryResponse = await fetch(primaryPath, { cache: "no-store" });
+      if (primaryResponse.ok) {
+        const payload = await primaryResponse.json();
+        return payloadKey ? payload[payloadKey] : payload;
+      }
+    } catch {
+      // Fall through to example data or fallback value.
     }
 
-    const exampleResponse = await fetch(examplePath, { cache: "no-store" });
-    if (exampleResponse.ok) return exampleResponse.json();
+    if (examplePath) {
+      try {
+        const exampleResponse = await fetch(examplePath, { cache: "no-store" });
+        if (exampleResponse.ok) return exampleResponse.json();
+      } catch {
+        // Use fallback value below.
+      }
+    }
 
     return fallbackValue;
   }
 
-  try {
-    const [portfolio, pricesPayload, history, dividends, financeData] = await Promise.all([
-      fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
-      fetchJson("/api/prices", "./data/example-prices.json", null, "prices"),
-      fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
-      fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends"),
-      fetchJson("/api/finance-data", "", null, "financeData"),
-      refreshDataStatus(),
-    ]);
-    void pricesPayload;
-    if (!portfolio) return;
+  const [portfolio, history, dividends, financeData] = await Promise.all([
+    fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
+    fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
+    fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends"),
+    fetchJson("/api/finance-data", "", null, "financeData"),
+    refreshDataStatus().catch(() => {}),
+  ]);
+
+  if (portfolio) {
     applyPortfolioData(portfolio, history);
-    applyDividendData(dividends);
-    if (financeData?.years?.length) window.financeData = financeData;
-  } catch {
-    // Keep the built-in empty dashboard if static JSON cannot be loaded.
   }
+  if (dividends) {
+    applyDividendData(dividends);
+  }
+  if (financeData?.years?.length) window.financeData = financeData;
 }
 
 window.addEventListener("resize", render);
