@@ -97,7 +97,10 @@ def _connect_postgres():
     import psycopg
     from psycopg.rows import dict_row
 
-    return psycopg.connect(supabase_connection_url(), row_factory=dict_row, connect_timeout=6)
+    connection = psycopg.connect(supabase_connection_url(), row_factory=dict_row, connect_timeout=6)
+    connection.execute("SET statement_timeout TO '8000ms'")
+    connection.execute("SET lock_timeout TO '5000ms'")
+    return connection
 
 
 def _sqlite_script() -> str:

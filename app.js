@@ -57,8 +57,14 @@ let dataStatus = null;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = window.setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Request timeout: ${url}`));
+    }, timeoutMs);
+  });
+  return Promise.race([fetch(url, { ...options, signal: controller.signal }), timeout]).finally(() => {
     window.clearTimeout(timer);
   });
 }
@@ -1416,10 +1422,10 @@ async function loadExternalData() {
     return fallbackValue;
   }
 
+  const financeData = await fetchJson("/api/finance-data", "", null, "financeData");
   const portfolio = await fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio");
   const history = await fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history");
   const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
-  const financeData = await fetchJson("/api/finance-data", "", null, "financeData");
   await refreshDataStatus().catch(() => {});
 
   if (portfolio) {
