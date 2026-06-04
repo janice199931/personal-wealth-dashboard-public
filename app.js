@@ -774,6 +774,7 @@ function renderDataStatusCards() {
   const target = document.getElementById("dataStatusCards");
   if (!target) return;
   const status = dataStatus;
+  updateMigrateButtonVisibility(status);
   const metadata = status?.metadata ?? {};
   const health = databaseHealth(status);
   const rows = [
@@ -790,6 +791,22 @@ function renderDataStatusCards() {
       ${row.note ? `<small>${row.note}</small>` : ""}
     </article>`)
     .join("");
+}
+
+function updateMigrateButtonVisibility(status) {
+  const button = document.getElementById("migrateSupabaseButton");
+  if (!button) return;
+  button.hidden = status?.currentDb === "supabase" && !status?.fallbackActive;
+}
+
+function renderInitialLoading() {
+  renderPriceUpdateNotice("正在載入正式資料...");
+  const ledger = document.getElementById("yearAccordion");
+  if (ledger) ledger.innerHTML = '<div class="loading-row">正在載入年度/月度對帳...</div>';
+  const statusCards = document.getElementById("dataStatusCards");
+  if (statusCards) {
+    statusCards.innerHTML = '<article class="data-status-card"><span>Status</span><strong>讀取中</strong></article>';
+  }
 }
 
 let chartState = { points: [], rows: [] };
@@ -1131,6 +1148,7 @@ function setupDataBackupControls() {
   fileInput.addEventListener("change", async () => {
     const file = fileInput.files?.[0];
     if (!file) return;
+    if (!window.confirm("匯入前會檢查備份完整性；完整備份會覆蓋正式資料。確定匯入？")) return;
     importButton.disabled = true;
     setBackupStatus("正在匯入備份...");
     try {
@@ -1416,6 +1434,7 @@ async function initializeDashboard() {
     renderPriceUpdateNotice("請用啟動檔開啟新版網站：http://127.0.0.1:8000/");
     return;
   }
+  renderInitialLoading();
   await loadExternalData();
   render();
   await runAutomaticPriceUpdate();

@@ -4,6 +4,7 @@ import json
 import ssl
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -215,30 +216,29 @@ def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, An
             tw_result["failedSymbols"].append(key)
             tw_result["symbols"][key] = price_result(False, symbol, "TW", error=message, source="twse-symbol-or-yahoo")
 
-    for holding in holdings:
-        market = str(holding.get("market", "")).upper()
-        symbol = str(holding.get("symbol", "")).upper()
-        if market != "US" or not symbol:
-            continue
+    us_symbols = sorted({
+        str(holding.get("symbol", "")).upper()
+        for holding in holdings
+        if str(holding.get("market", "")).upper() == "US" and holding.get("symbol")
+    })
 
+    def fetch_us_symbol(symbol: str) -> tuple[str, dict[str, Any] | None, str]:
         try:
-            row = yahoo_chart(symbol)
+            return symbol, yahoo_chart(symbol), ""
+        except (URLError, TimeoutError, ValueError, KeyError, TypeError) as error:
+            return symbol, None, f"{type(error).__name__}: {error}"
+
+    with ThreadPoolExecutor(max_workers=min(6, max(1, len(us_symbols)))) as executor:
+        futures = [executor.submit(fetch_us_symbol, symbol) for symbol in us_symbols]
+        for future in as_completed(futures):
+            symbol, row, error = future.result()
+            key = f"US:{symbol}"
             if row:
-                key = f"US:{symbol}"
                 prices[key] = row
                 us_result["updatedSymbols"].append(key)
                 us_result["symbols"][key] = price_result(True, symbol, "US", row, source="yahoo")
-            else:
-                key = f"US:{symbol}"
-                message = f"{key} 更新失敗，Yahoo 沒有回傳可用價格"
-                warnings.append(message)
-                error_messages.append(message)
-                us_result["failedSymbols"].append(key)
-                us_result["symbols"][key] = price_result(False, symbol, "US", error=message, source="yahoo")
-            time.sleep(0.2)
-        except (URLError, TimeoutError, ValueError, KeyError, TypeError) as error:
-            key = f"US:{symbol}"
-            message = f"{key} 更新失敗，保留原價格：{type(error).__name__}: {error}"
+                continue
+            message = f"{key} 更新失敗，保留原價格：{error or 'Yahoo 沒有回傳可用價格'}"
             warnings.append(message)
             error_messages.append(message)
             us_result["failedSymbols"].append(key)

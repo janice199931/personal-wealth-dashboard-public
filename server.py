@@ -315,6 +315,55 @@ def read_local_finance_data() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def is_full_backup_payload(payload: dict[str, Any]) -> bool:
+    return any(key in payload for key in ["accounts", "transactions", "prices", "net-worth-history", "net_worth_history", "portfolio"])
+
+
+def validate_full_backup_payload(payload: dict[str, Any]) -> None:
+    required = {
+        "accounts": isinstance(payload.get("accounts"), dict),
+        "transactions": isinstance(payload.get("transactions"), list),
+        "prices": isinstance(payload.get("prices"), dict),
+        "net-worth-history": isinstance(payload.get("net-worth-history", payload.get("net_worth_history")), list),
+        "portfolio": isinstance(payload.get("portfolio"), dict) and bool(payload.get("portfolio")),
+    }
+    missing = [label for label, ok in required.items() if not ok]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"完整備份缺少或格式錯誤：{', '.join(missing)}。")
+
+
+def backfill_history_from_finance_data(portfolio: dict[str, Any]) -> list[dict[str, Any]]:
+    history = db_store.read_net_worth_history()
+    finance_data = db_store.read_finance_data({})
+    months = sorted(
+        (
+            month
+            for year in finance_data.get("years", [])
+            for month in year.get("months", [])
+            if isinstance(month, dict) and isinstance(month.get("month"), str)
+        ),
+        key=lambda month: month["month"],
+    )
+    if not months:
+        return history
+
+    current_net_worth = round(float(portfolio.get("summary", {}).get("netWorth", 0)))
+    by_date: dict[str, dict[str, Any]] = {
+        str(row.get("date")): {"date": str(row.get("date")), "netWorth": round(float(row.get("netWorth", 0)))}
+        for row in history
+        if row.get("date")
+    }
+    running = current_net_worth
+    for month in reversed(months):
+        month_key = month["month"]
+        date_key = f"{month_key}-01"
+        by_date.setdefault(date_key, {"date": date_key, "netWorth": running})
+        running -= round(float(month.get("net", 0) or 0))
+    output = sorted(by_date.values(), key=lambda row: row["date"])
+    db_store.write_net_worth_history(output)
+    return output
+
+
 def transaction_response(transactions: list[dict[str, Any]], transaction: dict[str, Any] | None, portfolio: dict[str, Any]) -> dict:
     return {
         "ok": True,
@@ -441,12 +490,15 @@ async def import_finance_data(request: Request) -> dict[str, Any]:
 
     saved_to = db_store.write_finance_data(finance_data)
     db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
+    portfolio = read_portfolio(use_examples=False)
+    history = backfill_history_from_finance_data(portfolio) if portfolio else db_store.read_net_worth_history()
     return {
         "ok": True,
         "currentDb": db_store.active_backend(),
         "savedTo": saved_to,
         "years": len(finance_data.get("years", [])),
         "recordCount": finance_data.get("recordCount", 0),
+        "historyCount": len(history),
     }
 
 
@@ -459,6 +511,8 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
             raise HTTPException(status_code=400, detail="備份 JSON 格式錯誤。") from error
         if not isinstance(payload, dict):
             raise HTTPException(status_code=400, detail="備份 JSON 必須是物件格式。")
+        if is_full_backup_payload(payload):
+            validate_full_backup_payload(payload)
 
         imported: list[str] = []
         accounts = payload.get("accounts")
@@ -497,16 +551,24 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
         if imported == ["financeData"]:
             saved_to = db_store.write_finance_data(finance_data)
             db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
+            portfolio = read_portfolio(use_examples=False)
+            history = backfill_history_from_finance_data(portfolio) if portfolio else db_store.read_net_worth_history()
             return {
                 "ok": True,
                 "imported": imported,
                 "counts": db_store.status()["counts"],
                 "currentDb": db_store.active_backend(),
                 "savedTo": saved_to,
+                "historyCount": len(history),
                 "message": "年度/月度對帳資料已匯入，不影響投資與資產資料。",
             }
 
-        db_store.import_backup_payload(clean_payload)
+        safety_backup = db_store.export_backup()
+        try:
+            db_store.import_backup_payload(clean_payload)
+        except Exception:
+            db_store.import_backup_payload(safety_backup)
+            raise
 
         portfolio = rebuild_portfolio_outputs()
         db_store.set_metadata("lastImport", db_store.now_iso())
@@ -572,6 +634,21 @@ def export_json_backup() -> JSONResponse:
     response = JSONResponse(content=backup)
     response.headers["Content-Disposition"] = f'attachment; filename="wealth-dashboard-backup-{datetime.now(TWD).strftime("%Y%m%d-%H%M%S")}.json"'
     return response
+
+
+@app.post("/api/db/backfill-net-worth-history")
+def backfill_net_worth_history() -> dict[str, Any]:
+    portfolio = read_portfolio(use_examples=False)
+    if not portfolio:
+        raise HTTPException(status_code=400, detail="尚無正式 portfolio，無法補齊淨資產歷史。")
+    history = backfill_history_from_finance_data(portfolio)
+    return {
+        "ok": True,
+        "currentDb": db_store.active_backend(),
+        "historyCount": len(history),
+        "firstDate": history[0]["date"] if history else "",
+        "lastDate": history[-1]["date"] if history else "",
+    }
 
 
 @app.post("/api/db/rebuild-portfolio")
