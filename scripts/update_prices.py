@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -29,10 +30,17 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def fetch_json(url: str) -> Any:
+def fetch_json(url: str, allow_insecure_retry: bool = False) -> Any:
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urlopen(request, timeout=20) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(request, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except URLError as error:
+        if allow_insecure_retry and isinstance(error.reason, ssl.SSLCertVerificationError):
+            context = ssl._create_unverified_context()
+            with urlopen(request, timeout=20, context=context) as response:
+                return json.loads(response.read().decode("utf-8"))
+        raise
 
 
 def parse_number(value: Any, default: float = 0.0) -> float:
@@ -95,7 +103,7 @@ def fetch_tw_prices(symbols: set[str]) -> dict[str, dict[str, Any]]:
 
     prices: dict[str, dict[str, Any]] = {}
     url = "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
-    rows = fetch_json(url)
+    rows = fetch_json(url, allow_insecure_retry=True)
     rows_by_code = {str(row.get("Code")): row for row in rows if row.get("Code")}
 
     for symbol in symbols:
@@ -125,7 +133,7 @@ def fetch_tw_price_fallback(symbol: str) -> dict[str, Any] | None:
         "https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY"
         f"?date={today}&stockNo={quote(symbol)}&response=json"
     )
-    payload = fetch_json(url)
+    payload = fetch_json(url, allow_insecure_retry=True)
     rows = payload.get("data") or []
     if not rows:
         return yahoo_chart(f"{symbol}.TW")
