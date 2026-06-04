@@ -52,6 +52,7 @@ const usd = new Intl.NumberFormat("en-US", {
 const number = new Intl.NumberFormat("zh-TW");
 let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
+const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 let dataStatus = null;
 
 function escapeHtml(value) {
@@ -635,15 +636,56 @@ function getPortfolioMetrics() {
 }
 
 function getNextMilestone() {
-  const { netWorth, monthNet } = getPortfolioMetrics();
-  const annualRunRate = Math.max(1, monthNet * 12);
+  const { netWorth } = getPortfolioMetrics();
+  const annualRunRate = estimateAnnualRunRate();
   const target = [5000000, 10000000, 15000000, 20000000].find((item) => item > netWorth) ?? 20000000;
   const progress = Math.min(100, Math.round((netWorth / target) * 100));
   const remaining = Math.max(0, target - netWorth);
-  const years = Math.max(0, Math.ceil(remaining / annualRunRate));
-  const eta = new Date().getFullYear() + years;
-  const age = eta - 2000;
-  return { target, progress, remaining, eta, age };
+  const etaDate = estimateMilestoneDate(remaining, annualRunRate);
+  const age = etaDate ? ageOnDate(etaDate) : null;
+  return { target, progress, remaining, etaDate, age, annualRunRate };
+}
+
+function financeMonths() {
+  return (window.financeData?.years ?? [])
+    .flatMap((year) => year.months ?? [])
+    .filter((month) => /^\d{4}-\d{2}$/.test(String(month.month || "")))
+    .sort((a, b) => String(a.month).localeCompare(String(b.month)));
+}
+
+function estimateAnnualRunRate() {
+  const months = financeMonths()
+    .map((month) => Number(month.net) || 0)
+    .filter((net) => Number.isFinite(net));
+  if (!months.length) return 0;
+  const recent = months.slice(-12);
+  const positive = recent.filter((net) => net > 0);
+  const basis = positive.length >= 3 ? positive : recent;
+  const averageMonthly = basis.reduce((sum, net) => sum + net, 0) / Math.max(1, basis.length);
+  return Math.max(0, averageMonthly * 12);
+}
+
+function estimateMilestoneDate(remaining, annualRunRate) {
+  if (remaining <= 0) return new Date();
+  if (!annualRunRate) return null;
+  const monthsNeeded = Math.ceil(remaining / (annualRunRate / 12));
+  if (!Number.isFinite(monthsNeeded) || monthsNeeded > 600) return null;
+  const date = new Date();
+  date.setMonth(date.getMonth() + monthsNeeded);
+  return date;
+}
+
+function ageOnDate(date) {
+  let age = date.getFullYear() - BIRTH_DATE.getFullYear();
+  const beforeBirthday =
+    date.getMonth() < BIRTH_DATE.getMonth()
+    || (date.getMonth() === BIRTH_DATE.getMonth() && date.getDate() < BIRTH_DATE.getDate());
+  return beforeBirthday ? age - 1 : age;
+}
+
+function formatEtaDate(date) {
+  if (!date) return "持續追蹤中";
+  return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
 }
 
 function renderHero() {
@@ -662,7 +704,7 @@ function renderHero() {
         <span style="width:${next.progress}%"></span>
       </div>
       <strong>${next.progress}%</strong>
-      <em>預估 ${next.age} 歲達成</em>
+      <em>${next.age === null ? "預估持續追蹤中" : `預估 ${next.age} 歲達成`}</em>
     </div>
     <p>還差 ${money.format(next.remaining)} 到下一個財富里程碑</p>`;
 }
@@ -837,20 +879,20 @@ function setupChartHover() {
 }
 
 function renderMilestones() {
-  const { netWorth, monthNet } = getPortfolioMetrics();
-  const annualRunRate = Math.max(1, monthNet * 12);
-  const birthYear = 2000;
+  const { netWorth } = getPortfolioMetrics();
+  const annualRunRate = estimateAnnualRunRate();
   const targets = [5000000, 10000000, 15000000, 20000000];
   document.getElementById("milestones").innerHTML = targets
     .map((target) => {
       const progress = Math.min(100, Math.round((netWorth / target) * 100));
-      const years = Math.max(0, Math.ceil((target - netWorth) / annualRunRate));
-      const eta = new Date().getFullYear() + years;
-      const age = eta - birthYear;
+      const remaining = Math.max(0, target - netWorth);
+      const etaDate = estimateMilestoneDate(remaining, annualRunRate);
+      const age = etaDate ? ageOnDate(etaDate) : null;
+      const etaText = age === null ? "持續追蹤中" : `${formatEtaDate(etaDate)}（${age}歲）`;
       return `<div class="milestone-row">
         <div>
           <strong>${number.format(target / 10000)}萬</strong>
-          <span>預估 ${eta}（${age}歲）</span>
+          <span>預估 ${etaText}</span>
         </div>
         <em>${progress}%</em>
         <span class="bar-track"><i style="width:${progress}%"></i></span>
