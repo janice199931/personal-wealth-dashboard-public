@@ -837,8 +837,16 @@ def update_prices(request: Request) -> dict:
         if not has_formal_data:
             portfolio = read_portfolio(use_examples=True)
             warnings = ["目前是範例資料，請先匯入正式備份"]
+            current_db = db_store.active_backend()
             return {
                 "ok": True,
+                "currentDb": current_db,
+                "savedTo": "none",
+                "updatedSymbols": [],
+                "failedSymbols": [],
+                "errorMessages": warnings,
+                "twResult": {"updatedSymbols": [], "failedSymbols": [], "symbols": {}},
+                "usResult": {"updatedSymbols": [], "failedSymbols": [], "symbols": {}},
                 "source": "demo",
                 "updatedAt": portfolio.get("updatedAt", ""),
                 "fxRate": portfolio.get("fxRate"),
@@ -855,13 +863,13 @@ def update_prices(request: Request) -> dict:
         current_portfolio = read_portfolio(use_examples=False)
         holdings = current_portfolio.get("holdings", [])
         fx_rate = fetch_fx_rate(float(current_portfolio.get("fxRate") or 31.451))
-        latest_prices, warnings = fetch_prices(holdings)
+        latest_prices, warnings, price_details = fetch_prices(holdings)
         stored_prices = db_store.read_prices({"fxRate": fx_rate, "prices": {}})
         stored_prices["fxRate"] = fx_rate
         stored_prices["prices"] = {**stored_prices.get("prices", {}), **latest_prices}
-        db_store.write_prices(stored_prices)
+        saved_to = db_store.write_prices(stored_prices)
         portfolio = rebuild_portfolio_outputs()
-        source = db_store.active_backend()
+        current_db = db_store.active_backend()
         if not portfolio:
             portfolio = current_portfolio
         db_store.set_metadata("lastPriceUpdate", db_store.now_iso())
@@ -869,7 +877,14 @@ def update_prices(request: Request) -> dict:
         raise HTTPException(status_code=500, detail=f"股價更新失敗：{error}") from error
     return {
         "ok": True,
-        "source": source,
+        "currentDb": current_db,
+        "savedTo": saved_to,
+        "updatedSymbols": price_details["updatedSymbols"],
+        "failedSymbols": price_details["failedSymbols"],
+        "errorMessages": price_details["errorMessages"],
+        "twResult": price_details["twResult"],
+        "usResult": price_details["usResult"],
+        "source": current_db,
         "updatedAt": portfolio.get("updatedAt", ""),
         "fxRate": portfolio.get("fxRate"),
         "warnings": warnings,

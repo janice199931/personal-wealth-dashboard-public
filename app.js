@@ -54,6 +54,15 @@ let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 let dataStatus = null;
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function setText(id, value) {
   document.getElementById(id).textContent = value;
 }
@@ -871,8 +880,19 @@ function renderDataUpdates() {
 
 function renderUpdateWarning(message = "部分資料更新失敗，請查看更新結果") {
   document.getElementById("dataUpdates").innerHTML = `
-    <div class="update-row"><span>Warning</span><strong>${message}</strong></div>
+    <div class="update-row"><span>Warning</span><strong>${escapeHtml(message)}</strong></div>
   `;
+}
+
+function priceUpdateMessages(payload) {
+  const messages = [];
+  if (payload.currentDb) messages.push(`Current DB: ${payload.currentDb}`);
+  if (payload.savedTo) messages.push(`Saved to: ${payload.savedTo}`);
+  if (payload.updatedSymbols?.length) messages.push(`Updated: ${payload.updatedSymbols.join(", ")}`);
+  if (payload.failedSymbols?.length) messages.push(`Failed: ${payload.failedSymbols.join(", ")}`);
+  if (payload.errorMessages?.length) messages.push(...payload.errorMessages);
+  if (payload.twResult?.batchError) messages.push(`TW batch: ${payload.twResult.batchError}`);
+  return [...new Set(messages.filter(Boolean))];
 }
 
 function renderUpdateResult(payload) {
@@ -889,9 +909,28 @@ function renderUpdateResult(payload) {
     .join("");
 }
 
+function renderDetailedPriceUpdate(payload) {
+  const marketUpdates = payload.marketUpdates ?? {};
+  setSidebarUpdatedAt(payload.updatedAt || data.updatedAt);
+  const rows = [
+    { label: "股價更新", value: payload.failedSymbols?.length ? "部分完成" : "完成" },
+    { label: "Current DB", value: payload.currentDb || payload.source || "" },
+    { label: "Saved To", value: payload.savedTo || "" },
+    { label: "Updated", value: (payload.updatedSymbols || []).join(", ") || "無" },
+    { label: "Failed", value: (payload.failedSymbols || []).join(", ") || "無" },
+    { label: "資料更新", value: formatUpdateTime(payload.updatedAt || data.updatedAt) },
+    { label: "台股更新", value: formatUpdateTime(marketUpdates.TW || data.investments.tw.updatedAt) },
+    { label: "美股更新", value: formatUpdateTime(marketUpdates.US || data.investments.us.updatedAt) },
+    ...priceUpdateMessages(payload).map((message) => ({ label: "Detail", value: message })),
+  ];
+  document.getElementById("dataUpdates").innerHTML = rows
+    .map((row) => `<div class="update-row"><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(row.value)}</strong></div>`)
+    .join("");
+}
+
 function renderPriceUpdateNotice(message) {
   document.getElementById("dataUpdates").innerHTML = `
-    <div class="update-row"><span>Auto Price</span><strong>${message}</strong></div>
+    <div class="update-row"><span>Auto Price</span><strong>${escapeHtml(message)}</strong></div>
   `;
 }
 
@@ -931,22 +970,23 @@ function setupPriceUpdater() {
       }
       localStorage.removeItem("wealthDashboardUpdateWarning");
       markTodayPriceUpdated();
-      renderUpdateResult(payload);
+      await loadExternalData();
+      await fetch("/api/prices", { cache: "no-store" });
+      render();
+      renderDetailedPriceUpdate(payload);
       button.textContent = payload.warnings?.length ? "部分更新完成" : "股價更新完成";
       if (payload.warnings?.length) {
         console.warn("股價更新警告", payload.warnings);
-        const warningMessage = payload.warnings[0] || "部分資料更新失敗，請查看更新結果";
+        const warningMessage = priceUpdateMessages(payload).join("｜") || "部分資料更新失敗，請查看更新結果";
         if (payload.source === "demo") {
           button.textContent = "範例資料";
           renderPriceUpdateNotice(warningMessage);
         } else {
           localStorage.setItem("wealthDashboardUpdateWarning", warningMessage);
-          renderUpdateWarning(warningMessage);
+          renderDetailedPriceUpdate(payload);
         }
       }
-      setTimeout(() => {
-        window.location.reload();
-      }, 1200);
+      button.disabled = false;
     } catch (error) {
       button.textContent = "更新失敗";
       console.warn("股價更新失敗", error);
@@ -970,13 +1010,14 @@ async function runAutomaticPriceUpdate() {
     markTodayPriceUpdated();
     localStorage.removeItem("wealthDashboardUpdateWarning");
     await loadExternalData();
+    await fetch("/api/prices", { cache: "no-store" });
     render();
     if (payload.warnings?.length) {
       console.warn("自動更新股價警告", payload.warnings);
-      renderPriceUpdateNotice(payload.warnings[0] || "自動更新失敗，可手動按更新股價");
+      renderDetailedPriceUpdate(payload);
       return;
     }
-    renderPriceUpdateNotice("今日股價已自動更新");
+    renderDetailedPriceUpdate(payload);
   } catch (error) {
     console.warn("自動更新股價失敗", error);
     renderPriceUpdateNotice("自動更新失敗，可手動按更新股價");
@@ -1298,12 +1339,14 @@ async function loadExternalData() {
   }
 
   try {
-    const [portfolio, history, dividends] = await Promise.all([
+    const [portfolio, pricesPayload, history, dividends] = await Promise.all([
       fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
+      fetchJson("/api/prices", "./data/example-prices.json", null, "prices"),
       fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
       fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends"),
       refreshDataStatus(),
     ]);
+    void pricesPayload;
     if (!portfolio) return;
     applyPortfolioData(portfolio, history);
     applyDividendData(dividends);

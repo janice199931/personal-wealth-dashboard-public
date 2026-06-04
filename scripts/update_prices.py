@@ -78,6 +78,17 @@ def yahoo_chart(symbol: str) -> dict[str, Any] | None:
     }
 
 
+def price_result(ok: bool, symbol: str, market: str, row: dict[str, Any] | None = None, error: str = "", source: str = "") -> dict[str, Any]:
+    return {
+        "ok": ok,
+        "symbol": f"{market}:{symbol}",
+        "source": source,
+        "price": (row or {}).get("price"),
+        "updatedAt": (row or {}).get("updatedAt", ""),
+        "error": error,
+    }
+
+
 def fetch_tw_prices(symbols: set[str]) -> dict[str, dict[str, Any]]:
     if not symbols:
         return {}
@@ -137,9 +148,22 @@ def fetch_tw_price_fallback(symbol: str) -> dict[str, Any] | None:
     }
 
 
-def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], list[str]]:
+def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], list[str], dict[str, Any]]:
     warnings: list[str] = []
+    error_messages: list[str] = []
     prices: dict[str, dict[str, Any]] = {}
+    tw_result: dict[str, Any] = {
+        "batchOk": True,
+        "batchError": "",
+        "updatedSymbols": [],
+        "failedSymbols": [],
+        "symbols": {},
+    }
+    us_result: dict[str, Any] = {
+        "updatedSymbols": [],
+        "failedSymbols": [],
+        "symbols": {},
+    }
     tw_symbols = {
         str(holding.get("symbol", "")).upper()
         for holding in holdings
@@ -148,9 +172,16 @@ def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, An
 
     try:
         for symbol, row in fetch_tw_prices(tw_symbols).items():
-            prices[f"TW:{symbol}"] = row
+            key = f"TW:{symbol}"
+            prices[key] = row
+            tw_result["updatedSymbols"].append(key)
+            tw_result["symbols"][key] = price_result(True, symbol, "TW", row, source="twse-batch")
     except Exception as error:
-        warnings.append(f"台股批次更新失敗，改用逐檔更新：{error}")
+        message = f"台股批次更新失敗，改用逐檔更新：{type(error).__name__}: {error}"
+        warnings.append(message)
+        error_messages.append(message)
+        tw_result["batchOk"] = False
+        tw_result["batchError"] = str(error)
 
     for symbol in sorted(tw_symbols):
         key = f"TW:{symbol}"
@@ -160,9 +191,21 @@ def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, An
             row = fetch_tw_price_fallback(symbol)
             if row:
                 prices[key] = row
+                tw_result["updatedSymbols"].append(key)
+                tw_result["symbols"][key] = price_result(True, symbol, "TW", row, source="twse-symbol-or-yahoo")
+            else:
+                message = f"{key} 更新失敗，資料來源沒有回傳可用價格"
+                warnings.append(message)
+                error_messages.append(message)
+                tw_result["failedSymbols"].append(key)
+                tw_result["symbols"][key] = price_result(False, symbol, "TW", error=message, source="twse-symbol-or-yahoo")
             time.sleep(0.2)
         except (URLError, TimeoutError, ValueError, KeyError, TypeError) as error:
-            warnings.append(f"{key} 更新失敗，保留原價格：{error}")
+            message = f"{key} 更新失敗，保留原價格：{type(error).__name__}: {error}"
+            warnings.append(message)
+            error_messages.append(message)
+            tw_result["failedSymbols"].append(key)
+            tw_result["symbols"][key] = price_result(False, symbol, "TW", error=message, source="twse-symbol-or-yahoo")
 
     for holding in holdings:
         market = str(holding.get("market", "")).upper()
@@ -173,12 +216,34 @@ def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, An
         try:
             row = yahoo_chart(symbol)
             if row:
-                prices[f"US:{symbol}"] = row
+                key = f"US:{symbol}"
+                prices[key] = row
+                us_result["updatedSymbols"].append(key)
+                us_result["symbols"][key] = price_result(True, symbol, "US", row, source="yahoo")
+            else:
+                key = f"US:{symbol}"
+                message = f"{key} 更新失敗，Yahoo 沒有回傳可用價格"
+                warnings.append(message)
+                error_messages.append(message)
+                us_result["failedSymbols"].append(key)
+                us_result["symbols"][key] = price_result(False, symbol, "US", error=message, source="yahoo")
             time.sleep(0.2)
         except (URLError, TimeoutError, ValueError, KeyError, TypeError) as error:
-            warnings.append(f"US:{symbol} 更新失敗，保留原價格：{error}")
+            key = f"US:{symbol}"
+            message = f"{key} 更新失敗，保留原價格：{type(error).__name__}: {error}"
+            warnings.append(message)
+            error_messages.append(message)
+            us_result["failedSymbols"].append(key)
+            us_result["symbols"][key] = price_result(False, symbol, "US", error=message, source="yahoo")
 
-    return prices, warnings
+    details = {
+        "updatedSymbols": sorted(prices.keys()),
+        "failedSymbols": sorted(set(tw_result["failedSymbols"] + us_result["failedSymbols"])),
+        "errorMessages": error_messages,
+        "twResult": tw_result,
+        "usResult": us_result,
+    }
+    return prices, warnings, details
 
 
 def fetch_fx_rate(current_fx_rate: float) -> float:
@@ -293,7 +358,7 @@ def update_prices() -> dict[str, Any]:
     portfolio = read_json(PORTFOLIO_PATH)
     holdings = portfolio.get("holdings", [])
     fx_rate = fetch_fx_rate(parse_number(portfolio.get("fxRate"), DEFAULT_FX_RATE))
-    prices, warnings = fetch_prices(holdings)
+    prices, warnings, details = fetch_prices(holdings)
     updated = recalculate_portfolio(portfolio, prices, fx_rate)
     write_portfolio_outputs(updated)
 
@@ -301,6 +366,7 @@ def update_prices() -> dict[str, Any]:
         "updatedHoldings": len(prices),
         "totalHoldings": len(holdings),
         "warnings": warnings,
+        **details,
         "portfolio": updated,
     }
 

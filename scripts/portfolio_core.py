@@ -157,8 +157,8 @@ def build_portfolio_from_data(
     current_portfolio = current_portfolio or {}
     fx_rate = float(current_portfolio.get("fxRate") or prices.get("fxRate", 31.451))
     price_book = {
-        **prices.get("prices", {}),
         **current_portfolio_price_book(current_portfolio),
+        **prices.get("prices", {}),
     }
     positions = calculate_positions(transactions)
     holdings = [enrich_position(position, price_book, fx_rate) for position in positions.values()]

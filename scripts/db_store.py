@@ -483,8 +483,8 @@ def read_prices(default: dict[str, Any] | None = None) -> dict[str, Any]:
     return decode(_row_value(rows[0], "payload"), fallback) if rows else fallback
 
 
-def write_prices(prices: dict[str, Any]) -> None:
-    _execute_write(
+def write_prices(prices: dict[str, Any]) -> Backend:
+    return _execute_write(
         """
         INSERT INTO prices (id, payload, updated_at)
         VALUES (1, ?, ?)
