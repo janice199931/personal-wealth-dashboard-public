@@ -1416,13 +1416,11 @@ async function loadExternalData() {
     return fallbackValue;
   }
 
-  const [portfolio, history, dividends, financeData] = await Promise.all([
-    fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
-    fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
-    fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends"),
-    fetchJson("/api/finance-data", "", null, "financeData"),
-    refreshDataStatus().catch(() => {}),
-  ]);
+  const portfolio = await fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio");
+  const history = await fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history");
+  const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
+  const financeData = await fetchJson("/api/finance-data", "", null, "financeData");
+  await refreshDataStatus().catch(() => {});
 
   if (portfolio) {
     applyPortfolioData(portfolio, history);

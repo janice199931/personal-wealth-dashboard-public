@@ -444,7 +444,7 @@ def debug_supabase() -> dict[str, Any]:
 @app.get("/api/portfolio")
 def get_portfolio() -> dict[str, Any]:
     portfolio = read_portfolio(use_examples=True)
-    return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if db_store.read_latest_portfolio({}) else "example"}
+    return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if portfolio else "example"}
 
 
 @app.get("/api/accounts")
@@ -456,13 +456,13 @@ def get_accounts() -> dict[str, Any]:
 @app.get("/api/prices")
 def get_prices() -> dict[str, Any]:
     prices = db_store.read_prices({"fxRate": 31.451, "prices": {}})
-    return {"ok": True, "prices": prices, "source": db_store.active_backend() if db_store.table_count("prices") else "empty"}
+    return {"ok": True, "prices": prices, "source": db_store.active_backend() if prices.get("prices") else "empty"}
 
 
 @app.get("/api/net-worth-history")
 def get_net_worth_history() -> dict[str, Any]:
     history = read_net_worth_history(use_examples=True)
-    return {"ok": True, "history": history, "source": db_store.active_backend() if db_store.read_net_worth_history() else "example"}
+    return {"ok": True, "history": history, "source": db_store.active_backend() if history else "example"}
 
 
 @app.get("/api/finance-data")
@@ -800,7 +800,7 @@ def get_dividends() -> dict:
     dividends, changed = ensure_dividend_ids(dividends)
     if changed:
         write_dividends(dividends)
-    return {"ok": True, "dividends": dividends, "source": db_store.active_backend() if db_store.read_dividends() else "example"}
+    return {"ok": True, "dividends": dividends, "source": db_store.active_backend() if dividends else "example"}
 
 
 @app.post("/api/dividends")
