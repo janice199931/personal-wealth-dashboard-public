@@ -55,6 +55,14 @@ const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 let dataStatus = null;
 
+function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+    window.clearTimeout(timer);
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1372,7 +1380,7 @@ function render() {
 
 async function refreshDataStatus() {
   try {
-    const response = await fetch("/api/db/status", { cache: "no-store" });
+    const response = await fetchWithTimeout("/api/db/status", { cache: "no-store" });
     if (!response.ok) return;
     dataStatus = await response.json();
   } catch {
@@ -1387,7 +1395,7 @@ async function loadExternalData() {
 
   async function fetchJson(primaryPath, examplePath, fallbackValue, payloadKey = "") {
     try {
-      const primaryResponse = await fetch(primaryPath, { cache: "no-store" });
+      const primaryResponse = await fetchWithTimeout(primaryPath, { cache: "no-store" });
       if (primaryResponse.ok) {
         const payload = await primaryResponse.json();
         return payloadKey ? payload[payloadKey] : payload;
@@ -1398,7 +1406,7 @@ async function loadExternalData() {
 
     if (examplePath) {
       try {
-        const exampleResponse = await fetch(examplePath, { cache: "no-store" });
+        const exampleResponse = await fetchWithTimeout(examplePath, { cache: "no-store" });
         if (exampleResponse.ok) return exampleResponse.json();
       } catch {
         // Use fallback value below.

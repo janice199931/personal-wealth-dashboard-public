@@ -65,6 +65,8 @@ def supabase_connection_url() -> str:
     parsed = urlparse(raw_url)
     query = parse_qs(parsed.query, keep_blank_values=True)
     query.setdefault("sslmode", ["require"])
+    query.setdefault("connect_timeout", ["6"])
+    query.setdefault("options", ["-c statement_timeout=8000 -c lock_timeout=5000"])
     return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
 
 
