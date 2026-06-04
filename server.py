@@ -36,6 +36,7 @@ EXAMPLE_TRANSACTIONS_PATH = DATA_DIR / "example-transactions.json"
 EXAMPLE_DIVIDENDS_PATH = DATA_DIR / "example-dividends.json"
 EXAMPLE_PORTFOLIO_PATH = DATA_DIR / "example-portfolio.json"
 EXAMPLE_HISTORY_PATH = DATA_DIR / "example-net-worth-history.json"
+FINANCE_DATA_PATH = ROOT / "finance-data.js"
 BACKUPS_DIR = DATA_DIR / "backups"
 AUTH_USERNAME = os.getenv("ASSET_DASHBOARD_USERNAME", "admin").strip()
 AUTH_PASSWORD = os.getenv("ASSET_DASHBOARD_PASSWORD", "").strip()
@@ -300,6 +301,20 @@ def read_net_worth_history(use_examples: bool = False) -> list[dict[str, Any]]:
     return history
 
 
+def read_local_finance_data() -> dict[str, Any]:
+    if not FINANCE_DATA_PATH.exists():
+        return {}
+    text = FINANCE_DATA_PATH.read_text(encoding="utf-8").strip()
+    prefix = "window.financeData = "
+    if not text.startswith(prefix):
+        return {}
+    payload = text[len(prefix):].strip()
+    if payload.endswith(";"):
+        payload = payload[:-1]
+    data = json.loads(payload)
+    return data if isinstance(data, dict) else {}
+
+
 def transaction_response(transactions: list[dict[str, Any]], transaction: dict[str, Any] | None, portfolio: dict[str, Any]) -> dict:
     return {
         "ok": True,
@@ -401,6 +416,40 @@ def get_net_worth_history() -> dict[str, Any]:
     return {"ok": True, "history": history, "source": db_store.active_backend() if db_store.read_net_worth_history() else "example"}
 
 
+@app.get("/api/finance-data")
+def get_finance_data() -> dict[str, Any]:
+    finance_data = db_store.read_finance_data({})
+    return {
+        "ok": True,
+        "financeData": finance_data,
+        "source": db_store.active_backend() if finance_data else "empty",
+    }
+
+
+@app.post("/api/finance-data")
+async def import_finance_data(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="對帳資料 JSON 格式錯誤。") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="對帳資料 JSON 必須是物件格式。")
+
+    finance_data = payload.get("financeData", payload)
+    if not isinstance(finance_data, dict) or not isinstance(finance_data.get("years"), list):
+        raise HTTPException(status_code=400, detail="對帳資料必須包含 years 陣列。")
+
+    saved_to = db_store.write_finance_data(finance_data)
+    db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
+    return {
+        "ok": True,
+        "currentDb": db_store.active_backend(),
+        "savedTo": saved_to,
+        "years": len(finance_data.get("years", [])),
+        "recordCount": finance_data.get("recordCount", 0),
+    }
+
+
 @app.post("/api/db/import-json")
 async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[str, Any]:
     if backup is not None and backup.filename:
@@ -439,6 +488,23 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
         if isinstance(history, list):
             clean_payload["net-worth-history"] = history
             imported.append("net-worth-history")
+
+        finance_data = payload.get("financeData", payload.get("finance-data"))
+        if isinstance(finance_data, dict):
+            clean_payload["financeData"] = finance_data
+            imported.append("financeData")
+
+        if imported == ["financeData"]:
+            saved_to = db_store.write_finance_data(finance_data)
+            db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
+            return {
+                "ok": True,
+                "imported": imported,
+                "counts": db_store.status()["counts"],
+                "currentDb": db_store.active_backend(),
+                "savedTo": saved_to,
+                "message": "年度/月度對帳資料已匯入，不影響投資與資產資料。",
+            }
 
         db_store.import_backup_payload(clean_payload)
 
@@ -481,6 +547,11 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
     if isinstance(history, list):
         db_store.write_net_worth_history(history)
         imported.append("net-worth-history.json")
+
+    finance_data = read_local_finance_data()
+    if finance_data:
+        db_store.write_finance_data(finance_data)
+        imported.append("finance-data.js")
 
     portfolio = rebuild_portfolio_outputs()
     db_store.set_metadata("lastImport", db_store.now_iso())

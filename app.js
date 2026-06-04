@@ -1339,17 +1339,19 @@ async function loadExternalData() {
   }
 
   try {
-    const [portfolio, pricesPayload, history, dividends] = await Promise.all([
+    const [portfolio, pricesPayload, history, dividends, financeData] = await Promise.all([
       fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
       fetchJson("/api/prices", "./data/example-prices.json", null, "prices"),
       fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
       fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends"),
+      fetchJson("/api/finance-data", "", null, "financeData"),
       refreshDataStatus(),
     ]);
     void pricesPayload;
     if (!portfolio) return;
     applyPortfolioData(portfolio, history);
     applyDividendData(dividends);
+    if (financeData?.years?.length) window.financeData = financeData;
   } catch {
     // Keep the built-in empty dashboard if static JSON cannot be loaded.
   }
@@ -1360,6 +1362,10 @@ setupPriceUpdater();
 setupDataBackupControls();
 
 async function initializeDashboard() {
+  if (window.location.protocol === "file:") {
+    renderPriceUpdateNotice("請用啟動檔開啟新版網站：http://127.0.0.1:8000/");
+    return;
+  }
   await loadExternalData();
   render();
   await runAutomaticPriceUpdate();

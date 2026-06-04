@@ -406,6 +406,8 @@ def read_metadata() -> dict[str, Any]:
     output: dict[str, Any] = {}
     for row in rows:
         key = _row_value(row, "key")
+        if key == "financeData":
+            continue
         output[key] = decode(_row_value(row, "value"), None)
     return output
 
@@ -425,6 +427,28 @@ def set_metadata(key: str, value: Any) -> None:
         ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
         """,
         params,
+    )
+
+
+def read_finance_data(default: dict[str, Any] | None = None) -> dict[str, Any]:
+    rows, _ = _execute_read("SELECT value FROM app_metadata WHERE key = 'financeData'")
+    return decode(_row_value(rows[0], "value"), default or {}) if rows else (default or {})
+
+
+def write_finance_data(finance_data: dict[str, Any]) -> Backend:
+    timestamp = now_iso()
+    return _execute_write(
+        """
+        INSERT INTO app_metadata (key, value, updated_at)
+        VALUES ('financeData', ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        """,
+        """
+        INSERT INTO app_metadata (key, value, updated_at)
+        VALUES ('financeData', %s, %s)
+        ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+        """,
+        (encode(finance_data), timestamp),
     )
 
 
@@ -633,6 +657,7 @@ def export_backup() -> dict[str, Any]:
         "prices": read_prices({"fxRate": 31.451, "prices": {}}),
         "net-worth-history": read_net_worth_history(),
         "portfolio": read_latest_portfolio({}),
+        "financeData": read_finance_data({}),
     }
 
 
@@ -669,6 +694,11 @@ def import_backup_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(portfolio, dict) and portfolio:
         write_portfolio_snapshot(portfolio)
         imported.append("portfolio")
+
+    finance_data = payload.get("financeData", payload.get("finance-data"))
+    if isinstance(finance_data, dict):
+        write_finance_data(finance_data)
+        imported.append("financeData")
 
     return {"imported": imported, "counts": status()["counts"]}
 
