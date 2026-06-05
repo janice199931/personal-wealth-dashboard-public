@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>交易紀錄管理</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top center, rgba(167, 139, 250, 0.24), transparent 42%),
+          linear-gradient(180deg, #080716 0%, #0f0b1f 48%, #080716 100%);
+      }
+
+      main {
+        width: min(920px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0;
+      }
+
+      form,
+      .card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(18px);
+      }
+
+      .card {
+        padding: 24px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(30px, 6vw, 52px);
+      }
+
+      p {
+        color: #a1a1aa;
+        line-height: 1.7;
+      }
+
+      form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        padding: 24px;
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        color: #c4b5fd;
+        font-weight: 800;
+      }
+
+      input,
+      select,
+      button {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        padding: 12px 14px;
+        color: #f8fafc;
+        background: rgba(15, 23, 42, 0.72);
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        font-weight: 900;
+        background: linear-gradient(135deg, #a78bfa, #7c3aed);
+      }
+
+      button.secondary {
+        background: rgba(15, 23, 42, 0.72);
+      }
+
+      button.danger {
+        background: linear-gradient(135deg, #fb7185, #be123c);
+      }
+
+      .full {
+        grid-column: 1 / -1;
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        grid-column: 1 / -1;
+      }
+
+      .status {
+        color: #a1a1aa;
+        font-weight: 700;
+      }
+
+      .filters {
+        display: grid;
+        grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(110px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .filters label {
+        font-size: 13px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: #c4b5fd;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .row-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .row-actions button {
+        padding: 8px 10px;
+        border-radius: 10px;
+      }
+
+      @media (max-width: 720px) {
+        form {
+          grid-template-columns: 1fr;
+        }
+
+        .filters {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>交易紀錄管理</h1>
+        <p><a href="./index.html" style="color:#c4b5fd;font-weight:800;text-decoration:none;">← 回到首頁</a></p>
+        <p>新增、編輯或刪除買進 / 賣出交易，並同步更新正式投資資料。</p>
+      </section>
+
+      <form id="transactionForm">
+        <label>
+          日期
+          <input name="date" type="date" required />
+        </label>
+        <label>
+          市場
+          <select name="market" required>
+            <option value="TW">TW</option>
+            <option value="US">US</option>
+          </select>
+        </label>
+        <label>
+          股票代號
+          <input name="symbol" placeholder="0050" required />
+        </label>
+        <label>
+          股票名稱
+          <input name="name" placeholder="元大台灣50" required />
+        </label>
+        <label>
+          動作
+          <select name="action" required>
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+          </select>
+        </label>
+        <label>
+          股數
+          <input name="shares" type="number" step="0.000001" min="0" required />
+        </label>
+        <label>
+          成交價格
+          <input name="price" type="number" step="0.0001" min="0" required />
+        </label>
+        <label>
+          手續費
+          <input name="fee" type="number" step="0.01" min="0" value="0" />
+        </label>
+        <label class="full">
+          備註
+          <input name="note" placeholder="選填" />
+        </label>
+        <div class="actions">
+          <span class="status" id="statusText">載入交易紀錄中...</span>
+          <div class="row-actions">
+            <button class="secondary" id="cancelEditButton" type="button" hidden>取消編輯</button>
+            <button id="submitButton" type="submit">新增交易</button>
+          </div>
+        </div>
+      </form>
+
+      <section class="card">
+        <div class="filters" id="transactionFilters">
+          <label>
+            搜尋
+            <input id="searchFilter" type="search" placeholder="股票代號 / 名稱 / 備註" />
+          </label>
+          <label>
+            市場
+            <select id="marketFilter">
+              <option value="">全部</option>
+              <option value="TW">TW</option>
+              <option value="US">US</option>
+            </select>
+          </label>
+          <label>
+            動作
+            <select id="actionFilter">
+              <option value="">全部</option>
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+          </label>
+          <label>
+            年份
+            <select id="yearFilter">
+              <option value="">全部</option>
+            </select>
+          </label>
+          <label>
+            月份
+            <select id="monthFilter">
+              <option value="">全部</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>市場</th>
+                <th>股票</th>
+                <th>動作</th>
+                <th>股數</th>
+                <th>成交價格</th>
+                <th>手續費</th>
+                <th>備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="transactionRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="./transaction-manager.js?v=20260605-public-release"></script>
+  </body>
+</html>

@@ -732,7 +732,7 @@ def get_transactions() -> dict:
     transactions, changed = ensure_transaction_ids(transactions)
     if changed:
         write_transactions(transactions)
-    return {"ok": True, "transactions": transactions, "source": db_store.active_backend() if db_store.read_transactions() else "example"}
+    return {"ok": True, "transactions": transactions, "source": db_store.active_backend() if transactions else "example"}
 
 
 @app.post("/api/transactions")
