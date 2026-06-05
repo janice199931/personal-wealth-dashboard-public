@@ -205,6 +205,13 @@ function monthlyFallback() {
 }
 
 function monthlyMetricRows() {
+  if (window.financeData?.years?.length) {
+    const rows = applyDividendIncomeToFinanceYears(window.financeData.years)
+      .flatMap((year) => year.months ?? [])
+      .filter((month) => /^\d{4}-\d{2}$/.test(String(month.month || "")))
+      .sort((a, b) => String(a.month).localeCompare(String(b.month)));
+    if (rows.length) return rows;
+  }
   return data.monthly.length ? data.monthly : [monthlyFallback(), monthlyFallback()];
 }
 
@@ -608,8 +615,10 @@ function getPortfolioMetrics() {
   const latestExpense = Number(latestMonth.expense) || 0;
   const previousIncome = Number(previousMonth.income) || 0;
   const previousExpense = Number(previousMonth.expense) || 0;
-  const monthNet = latestIncome - latestExpense;
-  const previousMonthNet = previousIncome - previousExpense;
+  const latestNet = Number(latestMonth.net);
+  const previousNet = Number(previousMonth.net);
+  const monthNet = Number.isFinite(latestNet) ? latestNet : latestIncome - latestExpense;
+  const previousMonthNet = Number.isFinite(previousNet) ? previousNet : previousIncome - previousExpense;
   const cashDays = Math.round((cash / Math.max(1, latestExpense)) * 30);
   const usMarketValue = us.holdings.reduce(
     (sum, holding) => sum + parseShares(holding.shares) * parseAmount(holding.price),
