@@ -406,13 +406,34 @@ def table_count(table: str) -> int:
     return int(_row_value(rows[0], "count")) if rows else 0
 
 
+def table_counts() -> dict[str, int]:
+    rows, _ = _execute_read(
+        """
+        SELECT
+          (SELECT COUNT(*) FROM accounts) AS accounts,
+          (SELECT COUNT(*) FROM transactions) AS transactions,
+          (SELECT COUNT(*) FROM dividends) AS dividends,
+          (SELECT COUNT(*) FROM portfolio_snapshots) AS portfolio_snapshots,
+          (SELECT COUNT(*) FROM net_worth_history) AS net_worth_history,
+          (SELECT COUNT(*) FROM prices) AS prices
+        """
+    )
+    row = rows[0] if rows else {}
+    return {
+        "accounts": int(_row_value(row, "accounts")) if row else 0,
+        "transactions": int(_row_value(row, "transactions")) if row else 0,
+        "dividends": int(_row_value(row, "dividends")) if row else 0,
+        "portfolioSnapshots": int(_row_value(row, "portfolio_snapshots")) if row else 0,
+        "netWorthHistory": int(_row_value(row, "net_worth_history")) if row else 0,
+        "prices": int(_row_value(row, "prices")) if row else 0,
+    }
+
+
 def read_metadata() -> dict[str, Any]:
-    rows, _ = _execute_read("SELECT key, value FROM app_metadata ORDER BY key")
+    rows, _ = _execute_read("SELECT key, value FROM app_metadata WHERE key <> 'financeData' ORDER BY key")
     output: dict[str, Any] = {}
     for row in rows:
         key = _row_value(row, "key")
-        if key == "financeData":
-            continue
         output[key] = decode(_row_value(row, "value"), None)
     return output
 
@@ -460,14 +481,7 @@ def write_finance_data(finance_data: dict[str, Any]) -> Backend:
 def status() -> dict[str, Any]:
     backend = active_backend()
     path = db_path()
-    counts = {
-        "accounts": table_count("accounts"),
-        "transactions": table_count("transactions"),
-        "dividends": table_count("dividends"),
-        "portfolioSnapshots": table_count("portfolio_snapshots"),
-        "netWorthHistory": table_count("net_worth_history"),
-        "prices": table_count("prices"),
-    }
+    counts = table_counts()
     has_data = any(counts.values())
     return {
         "ok": True,
