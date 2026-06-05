@@ -386,8 +386,8 @@ main {
 .hero-card {
   position: relative;
   overflow: hidden;
-  min-height: 108px;
-  padding: 12px 20px;
+  min-height: 150px;
+  padding: 18px 24px;
   border: 1px solid var(--glass-border);
   border-radius: 28px;
   background:
@@ -441,7 +441,7 @@ main {
   display: grid;
   justify-items: center;
   gap: 4px;
-  margin-top: -12px;
+  margin-top: -2px;
   text-align: center;
 }
 
@@ -452,8 +452,8 @@ main {
 }
 
 .hero-overview > strong {
-  font-size: clamp(34px, 4vw, 50px);
-  line-height: 0.98;
+  font-size: clamp(42px, 5vw, 64px);
+  line-height: 1.08;
   color: #4a3f3a;
   text-shadow: none;
 }
@@ -1582,297 +1582,6 @@ canvas {
 
   .milestone-panel {
     grid-column: 1 / -1;
-  }
-}
-
-@media (min-width: 1280px) and (min-height: 700px) {
-  body {
-    overflow: hidden;
-  }
-
-  .sidebar {
-    padding: 12px 10px;
-  }
-
-  .sidebar-brand {
-    margin-bottom: 10px;
-  }
-
-  .sidebar-nav {
-    gap: 4px;
-  }
-
-  .sidebar-nav a {
-    min-height: 38px;
-    padding: 7px 10px;
-  }
-
-  .sidebar-sync {
-    padding: 8px;
-  }
-
-  .topbar {
-    min-height: 58px;
-    padding-top: 6px;
-  }
-
-  .action-button,
-  .snapshot-button {
-    min-height: 34px;
-    padding: 0 12px;
-  }
-
-  main {
-    height: calc(100vh - 64px);
-    padding-bottom: 8px;
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    grid-template-rows: 86px 58px minmax(170px, 1fr) 145px 128px;
-    gap: 8px;
-    overflow: hidden;
-  }
-
-  .hero-dashboard,
-  .kpi-grid,
-  .dashboard-primary,
-  .investment-grid,
-  .ledger-section {
-    margin: 0;
-    min-height: 0;
-  }
-
-  .hero-dashboard {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .hero-card {
-    height: 100%;
-    min-height: 0;
-    padding: 8px 18px;
-    border-radius: 24px;
-  }
-
-  .hero-card h1 {
-    font-size: 18px;
-  }
-
-  .hero-overview {
-    margin-top: -18px;
-  }
-
-  .hero-overview > strong {
-    font-size: clamp(30px, 3.1vw, 42px);
-  }
-
-  .hero-cat {
-    top: 5px;
-    width: min(14vw, 180px);
-    height: min(8.5vw, 108px);
-    min-width: 124px;
-    min-height: 76px;
-  }
-
-  .hero-milestone {
-    margin-top: 4px;
-  }
-
-  .kpi-grid {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .kpi-card {
-    min-height: 0;
-    padding: 9px 12px;
-    border-radius: 18px;
-  }
-
-  .kpi-card strong {
-    font-size: clamp(18px, 1.45vw, 22px);
-  }
-
-  .dashboard-primary {
-    grid-column: 1 / -1;
-    grid-row: 3;
-    display: grid;
-    grid-template-columns: minmax(270px, 0.95fr) minmax(430px, 1.7fr) minmax(220px, 0.82fr);
-    gap: 8px;
-  }
-
-  .investment-grid {
-    grid-column: 1 / -1;
-    grid-row: 4;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-  }
-
-  .ledger-section {
-    grid-column: 1 / -1;
-    grid-row: 5;
-    display: block;
-  }
-
-  .panel,
-  .investment-card,
-  .ledger-panel,
-  .milestone-panel {
-    height: 100%;
-    min-height: 0;
-    padding: 10px;
-    border-radius: 18px;
-    overflow: hidden;
-  }
-
-  .panel-title {
-    min-height: 24px;
-    margin-bottom: 4px;
-  }
-
-  .panel-title h2 {
-    font-size: 15px;
-  }
-
-  .eyebrow {
-    font-size: 10px;
-  }
-
-  .asset-pie-wrap {
-    gap: 4px;
-  }
-
-  .asset-pie-wrap canvas,
-  #assetPieChart {
-    height: 120px;
-  }
-
-  .asset-pie-row {
-    padding: 2px 0;
-    font-size: 11px;
-  }
-
-  .chart-frame,
-  #netWorthChart {
-    min-height: 0;
-    height: 154px;
-  }
-
-  .milestone-list {
-    gap: 2px;
-  }
-
-  .milestone-row {
-    padding: 4px 0;
-    gap: 3px 8px;
-  }
-
-  .milestone-row strong {
-    font-size: 15px;
-  }
-
-  .milestone-row span,
-  .milestone-row em {
-    font-size: 11px;
-  }
-
-  .investment-hero {
-    margin-bottom: 4px;
-  }
-
-  .investment-hero strong {
-    font-size: 18px;
-  }
-
-  .investment-stats {
-    gap: 5px;
-    margin-bottom: 5px;
-  }
-
-  .investment-stats div {
-    min-height: 38px;
-    padding: 6px;
-    border-radius: 14px;
-  }
-
-  .investment-stats span,
-  .investment-stats small,
-  .note-text {
-    font-size: 10px;
-  }
-
-  .investment-stats strong {
-    font-size: 12px;
-  }
-
-  .holding-row,
-  .stock-table .holding-row,
-  .us-holdings .holding-row {
-    padding: 4px 6px;
-    gap: 4px;
-    font-size: 10px;
-  }
-
-  .holding-head {
-    padding-top: 5px;
-  }
-
-  .holding-row strong small,
-  .holding-row span small,
-  .holding-return small {
-    display: none;
-  }
-
-  .year-accordion {
-    gap: 5px;
-  }
-
-  .year-detail:not([open]) {
-    display: none;
-  }
-
-  .year-detail summary {
-    min-height: 28px;
-    padding: 5px 9px;
-    font-size: 14px;
-  }
-
-  .year-summary {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 5px;
-    padding: 5px 7px;
-  }
-
-  .year-summary div {
-    min-height: 36px;
-    padding: 6px;
-    border-radius: 12px;
-  }
-
-  .year-summary span {
-    font-size: 10px;
-  }
-
-  .year-summary strong {
-    font-size: 12px;
-  }
-
-  .monthly-table-wrap {
-    margin: 0 7px 6px;
-    border-radius: 12px;
-  }
-
-  .monthly-table {
-    min-width: 0;
-    font-size: 10px;
-  }
-
-  .monthly-table th,
-  .monthly-table td {
-    padding: 3px 6px;
-  }
-
-  .dashboard-footer {
-    display: none;
   }
 }
 
