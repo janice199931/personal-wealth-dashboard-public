@@ -785,10 +785,10 @@ function backupReminder(status) {
 }
 
 function renderDataStatusCards() {
-  const target = document.getElementById("dataStatusCards");
-  if (!target) return;
   const status = dataStatus;
   updateMigrateButtonVisibility(status);
+  const target = document.getElementById("dataStatusCards");
+  if (!target || target.hidden) return;
   const metadata = status?.metadata ?? {};
   const health = databaseHealth(status);
   const rows = [
@@ -817,10 +817,6 @@ function renderInitialLoading() {
   renderPriceUpdateNotice("正在載入正式資料...");
   const ledger = document.getElementById("yearAccordion");
   if (ledger) ledger.innerHTML = '<div class="loading-row">正在載入年度/月度對帳...</div>';
-  const statusCards = document.getElementById("dataStatusCards");
-  if (statusCards) {
-    statusCards.innerHTML = '<article class="data-status-card"><span>Status</span><strong>讀取中</strong></article>';
-  }
 }
 
 let chartState = { points: [], rows: [] };
