@@ -63,9 +63,9 @@
         <button class="action-button" id="updatePricesButton" type="button">更新股價</button>
         <a class="action-button" href="./snapshot-manager.html">更新資產快照</a>
         <button class="action-button" id="exportBackupButton" type="button">匯出備份</button>
-        <button class="action-button" id="importBackupButton" type="button">匯入備份</button>
-        <button class="action-button" id="rebuildPortfolioButton" type="button">重建投資組合</button>
-        <button class="action-button" id="migrateSupabaseButton" type="button">遷移 Supabase</button>
+        <button class="action-button" id="importBackupButton" type="button" hidden>匯入備份</button>
+        <button class="action-button" id="rebuildPortfolioButton" type="button" hidden>重建投資組合</button>
+        <button class="action-button" id="migrateSupabaseButton" type="button" hidden>遷移 Supabase</button>
         <input id="backupFileInput" type="file" accept="application/json,.json" hidden />
         <span id="backupStatus" class="backup-status" aria-live="polite"></span>
       </div>
@@ -193,6 +193,6 @@
       <p class="dashboard-footer">用心記錄每一筆財富，讓夢想一點一滴實現 ♡</p>
     </main>
 
-    <script src="./app.js?v=20260605-fast-status"></script>
+    <script src="./app.js?v=20260605-hide-admin-actions"></script>
   </body>
 </html>
