@@ -731,7 +731,6 @@ function renderKpis() {
     { label: "現金", value: money.format(metrics.cash) },
     { label: "負債", value: money.format(metrics.debt) },
     { label: "本月增加", value: money.format(metrics.monthNet) },
-    { label: "今年股息收入", value: money.format(Math.round(currentYearDividendIncome())) },
   ];
 
   document.getElementById("kpiGrid").innerHTML = rows
