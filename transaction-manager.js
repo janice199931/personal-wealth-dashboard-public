@@ -3,6 +3,7 @@ const rows = document.getElementById("transactionRows");
 const statusText = document.getElementById("statusText");
 const submitButton = document.getElementById("submitButton");
 const cancelEditButton = document.getElementById("cancelEditButton");
+const modeBanner = document.getElementById("modeBanner");
 const filters = {
   search: document.getElementById("searchFilter"),
   market: document.getElementById("marketFilter"),
@@ -35,10 +36,23 @@ function setTransactions(nextTransactions) {
   renderTransactions();
 }
 
+function setStatus(message, tone = "") {
+  statusText.textContent = message;
+  statusText.className = `status${tone ? ` ${tone}` : ""}`;
+}
+
 function setFormMode(id = null) {
   editingId = id;
   submitButton.textContent = editingId ? "更新交易" : "新增交易";
   cancelEditButton.hidden = !editingId;
+  if (modeBanner) {
+    const transaction = transactions.find((item) => item.id === editingId);
+    modeBanner.classList.toggle("editing", Boolean(editingId));
+    modeBanner.innerHTML = editingId && transaction
+      ? `<span><strong>編輯模式</strong> 正在修改 ${escapeHtml(transaction.date)} ${escapeHtml(transaction.market)}:${escapeHtml(transaction.symbol)}，完成後請按「更新交易」。</span>`
+      : `<span><strong>新增模式</strong> 填寫下方欄位後儲存一筆新交易。</span>`;
+  }
+  renderTransactions();
 }
 
 function resetForm() {
@@ -106,11 +120,11 @@ function renderTransactions() {
   rows.innerHTML = visibleTransactions
     .map(
       (item) => `
-        <tr>
+        <tr class="${item.id === editingId ? "editing-row" : ""}">
           <td>${escapeHtml(item.date)}</td>
-          <td>${escapeHtml(item.market)}</td>
+          <td><span class="badge">${escapeHtml(item.market)}</span></td>
           <td>${escapeHtml(item.symbol)}<br />${escapeHtml(item.name)}</td>
-          <td>${escapeHtml(item.action)}</td>
+          <td><span class="badge">${escapeHtml(item.action)}</span></td>
           <td>${formatNumber(item.shares)}</td>
           <td>${formatNumber(item.price)}</td>
           <td>${formatNumber(item.fee)}</td>
@@ -156,7 +170,7 @@ function editTransaction(id) {
   form.elements.fee.value = transaction.fee ?? 0;
   form.elements.note.value = transaction.note || "";
   setFormMode(id);
-  statusText.textContent = "正在編輯交易";
+  setStatus("正在編輯交易，確認欄位後按「更新交易」。", "working");
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -165,7 +179,7 @@ async function loadTransactions() {
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.detail || "交易紀錄載入失敗");
   setTransactions(payload.transactions || []);
-  statusText.textContent = `已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`;
+  setStatus(`已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 }
 
 async function saveTransaction() {
@@ -187,30 +201,33 @@ async function deleteTransaction(id) {
   const label = `${transaction.date} ${transaction.market}:${transaction.symbol} ${transaction.action}`;
   if (!window.confirm(`確定刪除這筆交易？\n${label}`)) return;
 
-  statusText.textContent = "刪除中...";
+  setStatus("刪除中...", "working");
   const response = await fetch(`/api/transactions/${encodeURIComponent(id)}`, { method: "DELETE" });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.detail || "交易刪除失敗");
 
   setTransactions(payload.transactions || []);
   if (editingId === id) resetForm();
-  statusText.textContent = `已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`;
+  setStatus(`已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 }
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   submitButton.disabled = true;
-  statusText.textContent = editingId ? "更新中..." : "儲存中...";
+  setStatus(editingId ? "更新中..." : "儲存中...", "working");
 
   try {
     const payload = await saveTransaction();
     setTransactions(payload.transactions || []);
-    statusText.textContent = editingId
-      ? `已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`
-      : `已新增，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`;
+    setStatus(
+      editingId
+        ? `已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`
+        : `已新增，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`,
+      "success",
+    );
     resetForm();
   } catch (error) {
-    statusText.textContent = error.message;
+    setStatus(error.message, "error");
   } finally {
     submitButton.disabled = false;
   }
@@ -218,12 +235,12 @@ form.addEventListener("submit", async (event) => {
 
 cancelEditButton.addEventListener("click", () => {
   resetForm();
-  statusText.textContent = `已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`;
+  setStatus(`已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 });
 
 function applyFilters() {
   renderTransactions();
-  statusText.textContent = `已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`;
+  setStatus(`已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 }
 
 Object.values(filters).forEach((input) => {
@@ -246,7 +263,7 @@ rows.addEventListener("click", async (event) => {
     try {
       await deleteTransaction(id);
     } catch (error) {
-      statusText.textContent = error.message;
+      setStatus(error.message, "error");
     } finally {
       button.disabled = false;
     }
@@ -254,6 +271,6 @@ rows.addEventListener("click", async (event) => {
 });
 
 loadTransactions().catch((error) => {
-  statusText.textContent = error.message;
+  setStatus(error.message, "error");
   renderTransactions();
 });
