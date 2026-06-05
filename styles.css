@@ -1585,7 +1585,7 @@ canvas {
   }
 }
 
-@media (min-width: 1280px) and (min-height: 820px) {
+@media (min-width: 1280px) and (min-height: 700px) {
   body {
     overflow: hidden;
   }
