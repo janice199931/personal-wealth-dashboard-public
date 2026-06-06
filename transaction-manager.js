@@ -24,7 +24,7 @@ const stockNameMap = new Map(Object.entries({
   VOO: "Vanguard S&P 500 ETF",
 }));
 
-form.elements.date.value = formatInputRocDate(new Date());
+form.elements.date.value = "";
 
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 6 }).format(Number(value) || 0);
@@ -67,6 +67,88 @@ function formatDisplayDate(value) {
   const date = new Date(`${value || ""}T00:00:00`);
   if (Number.isNaN(date.getTime())) return String(value || "");
   return formatInputRocDate(date);
+}
+
+function parseRocInputDate(value) {
+  const text = String(value || "").trim();
+  const parts = text.replaceAll(".", "/").replaceAll("-", "/").split("/").map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== 3) return null;
+  let [year, month, day] = parts.map((part) => Number(part));
+  if (!year || !month || !day) return null;
+  if (year < 1911) year += 1911;
+  const date = new Date(year, month - 1, day);
+  const valid = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  return valid ? date : null;
+}
+
+function sameDay(a, b) {
+  return Boolean(a && b) && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function setupDatePicker(input) {
+  const field = input.closest(".date-field");
+  const picker = document.createElement("div");
+  let viewDate = new Date();
+  picker.className = "date-picker";
+  picker.hidden = true;
+  field.appendChild(picker);
+
+  function renderPicker() {
+    const selected = parseRocInputDate(input.value);
+    const today = new Date();
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const blanks = Array.from({ length: firstDay }, () => "<span></span>").join("");
+    const days = Array.from({ length: daysInMonth }, (_, index) => {
+      const day = index + 1;
+      const date = new Date(year, month, day);
+      const classes = [
+        "date-picker-day",
+        sameDay(date, today) ? "is-today" : "",
+        sameDay(date, selected) ? "is-selected" : "",
+      ].filter(Boolean).join(" ");
+      return `<button class="${classes}" type="button" data-day="${day}">${day}</button>`;
+    }).join("");
+    picker.innerHTML = `
+      <div class="date-picker-header">
+        <button type="button" data-nav="-1">‹</button>
+        <strong>${rocYear(year)} 年 ${month + 1} 月</strong>
+        <button type="button" data-nav="1">›</button>
+      </div>
+      <div class="date-picker-grid">
+        ${["日", "一", "二", "三", "四", "五", "六"].map((day) => `<span class="date-picker-weekday">${day}</span>`).join("")}
+        ${blanks}${days}
+      </div>`;
+  }
+
+  function openPicker() {
+    const selected = parseRocInputDate(input.value);
+    viewDate = selected || new Date();
+    renderPicker();
+    picker.hidden = false;
+  }
+
+  input.addEventListener("click", openPicker);
+  input.addEventListener("focus", openPicker);
+  picker.addEventListener("click", (event) => {
+    const nav = event.target.closest("button[data-nav]");
+    if (nav) {
+      viewDate.setMonth(viewDate.getMonth() + Number(nav.dataset.nav));
+      renderPicker();
+      return;
+    }
+    const dayButton = event.target.closest("button[data-day]");
+    if (!dayButton) return;
+    const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), Number(dayButton.dataset.day));
+    input.value = formatInputRocDate(date);
+    picker.hidden = true;
+  });
+  document.addEventListener("click", (event) => {
+    if (field.contains(event.target)) return;
+    picker.hidden = true;
+  });
 }
 
 function normalizeSymbol(value) {
@@ -133,7 +215,7 @@ function setFormMode(id = null) {
 
 function resetForm() {
   form.reset();
-  form.elements.date.value = formatInputRocDate(new Date());
+  form.elements.date.value = "";
   form.elements.fee.value = "0";
   lastAutoFilledName = "";
   setFormMode(null);
@@ -337,6 +419,7 @@ form.elements.market.addEventListener("change", autoFillStockName);
 form.elements.name.addEventListener("input", () => {
   if (form.elements.name.value.trim() !== lastAutoFilledName) lastAutoFilledName = "";
 });
+setupDatePicker(form.elements.date);
 
 rows.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action][data-id]");

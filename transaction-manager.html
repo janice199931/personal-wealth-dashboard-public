@@ -150,6 +150,70 @@
         outline-offset: 2px;
       }
 
+      .date-field {
+        position: relative;
+      }
+
+      .date-picker {
+        position: absolute;
+        z-index: 20;
+        top: calc(100% + 8px);
+        left: 0;
+        width: min(320px, calc(100vw - 48px));
+        padding: 14px;
+        border: 1px solid var(--glass-border);
+        border-radius: 18px;
+        background: rgba(255, 253, 250, 0.98);
+        box-shadow: var(--shadow);
+      }
+
+      .date-picker-header,
+      .date-picker-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .date-picker-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+
+      .date-picker-header strong {
+        color: var(--ink);
+        font-size: 15px;
+      }
+
+      .date-picker-header button,
+      .date-picker-day {
+        min-height: 34px;
+        padding: 0;
+        border-radius: 10px;
+        box-shadow: none;
+      }
+
+      .date-picker-weekday {
+        color: var(--muted);
+        text-align: center;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .date-picker-day {
+        background: rgba(255, 253, 250, 0.86);
+      }
+
+      .date-picker-day.is-today {
+        border-color: rgba(216, 104, 104, 0.38);
+        color: #b86866;
+      }
+
+      .date-picker-day.is-selected {
+        background: linear-gradient(135deg, rgba(246, 183, 183, 0.92), rgba(255, 215, 168, 0.72));
+      }
+
       button {
         cursor: pointer;
         font-weight: 900;
@@ -298,9 +362,9 @@
       </div>
 
       <form id="transactionForm">
-        <label>
+        <label class="date-field">
           日期
-          <input name="date" type="text" inputmode="numeric" placeholder="115/06/06" required />
+          <input name="date" type="text" readonly required />
         </label>
         <label>
           市場
@@ -404,6 +468,6 @@
         </div>
       </section>
     </main>
-    <script src="./transaction-manager.js?v=20260606-stock-name-autofill"></script>
+    <script src="./transaction-manager.js?v=20260606-calendar-picker"></script>
   </body>
 </html>
