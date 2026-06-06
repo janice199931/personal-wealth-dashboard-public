@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>股息追蹤</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top center, rgba(167, 139, 250, 0.24), transparent 42%),
+          linear-gradient(180deg, #080716 0%, #0f0b1f 48%, #080716 100%);
+      }
+
+      main {
+        width: min(980px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0;
+      }
+
+      form,
+      .card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(18px);
+      }
+
+      .card {
+        padding: 24px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(30px, 6vw, 52px);
+      }
+
+      p {
+        color: #a1a1aa;
+        line-height: 1.7;
+      }
+
+      form {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        padding: 24px;
+        margin-bottom: 18px;
+      }
+
+      label {
+        display: grid;
+        gap: 8px;
+        color: #c4b5fd;
+        font-weight: 800;
+      }
+
+      input,
+      select,
+      button {
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 14px;
+        padding: 12px 14px;
+        color: #f8fafc;
+        background: rgba(15, 23, 42, 0.72);
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+        font-weight: 900;
+        background: linear-gradient(135deg, #a78bfa, #7c3aed);
+      }
+
+      button.secondary {
+        background: rgba(15, 23, 42, 0.72);
+      }
+
+      button.danger {
+        background: linear-gradient(135deg, #fb7185, #be123c);
+      }
+
+      .full {
+        grid-column: 1 / -1;
+      }
+
+      .actions,
+      .row-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .actions {
+        justify-content: space-between;
+        grid-column: 1 / -1;
+      }
+
+      .status,
+      small {
+        color: #a1a1aa;
+        font-weight: 700;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .summary-box {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 16px;
+        background: rgba(15, 23, 42, 0.42);
+      }
+
+      .summary-box span {
+        display: block;
+        color: #a1a1aa;
+        font-weight: 800;
+        margin-bottom: 8px;
+      }
+
+      .summary-box strong {
+        font-size: 24px;
+      }
+
+      .filters {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(120px, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+
+      .filters label {
+        font-size: 13px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: #c4b5fd;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .row-actions button {
+        padding: 8px 10px;
+        border-radius: 10px;
+      }
+
+      @media (max-width: 720px) {
+        form,
+        .filters,
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <h1>股息追蹤</h1>
+        <p><a href="./index.html" style="color:#c4b5fd;font-weight:800;text-decoration:none;">← 回到首頁</a></p>
+        <p>記錄台股與美股股息，並用目前匯率統計今年股息收入。</p>
+      </section>
+
+      <section class="card">
+        <div class="summary-grid">
+          <div class="summary-box">
+            <span>今年累積股息</span>
+            <strong id="yearDividendTotal">NT$0</strong>
+          </div>
+          <div class="summary-box">
+            <span>台股股息</span>
+            <strong id="twDividendTotal">NT$0</strong>
+          </div>
+          <div class="summary-box">
+            <span>美股股息</span>
+            <strong id="usDividendTotal">NT$0</strong>
+            <br />
+            <small id="fxRateText">依目前匯率換算</small>
+          </div>
+        </div>
+      </section>
+
+      <form id="dividendForm">
+        <label>
+          日期
+          <input name="date" type="date" required />
+        </label>
+        <label>
+          市場
+          <select name="market" required>
+            <option value="TW">TW</option>
+            <option value="US">US</option>
+          </select>
+        </label>
+        <label>
+          股票代號
+          <input name="symbol" placeholder="0050" required />
+        </label>
+        <label>
+          股票名稱
+          <input name="name" placeholder="元大台灣50" required />
+        </label>
+        <label>
+          股息金額
+          <input name="amount" type="number" step="0.01" min="0" required />
+        </label>
+        <label>
+          幣別
+          <select name="currency" required>
+            <option value="TWD">TWD</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
+        <label>
+          扣稅
+          <input name="tax" type="number" step="0.01" min="0" value="0" />
+        </label>
+        <label class="full">
+          備註
+          <input name="note" placeholder="選填" />
+        </label>
+        <div class="actions">
+          <span class="status" id="statusText">載入股息紀錄中...</span>
+          <div class="row-actions">
+            <button class="secondary" id="cancelEditButton" type="button" hidden>取消編輯</button>
+            <button id="submitButton" type="submit">新增股息</button>
+          </div>
+        </div>
+      </form>
+
+      <section class="card">
+        <div class="filters">
+          <label>
+            年份
+            <select id="yearFilter">
+              <option value="">全部</option>
+            </select>
+          </label>
+          <label>
+            月份
+            <select id="monthFilter">
+              <option value="">全部</option>
+            </select>
+          </label>
+          <label>
+            股票
+            <input id="stockFilter" type="search" placeholder="股票代號 / 名稱" />
+          </label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>市場</th>
+                <th>股票</th>
+                <th>股息</th>
+                <th>扣稅</th>
+                <th>台幣淨額</th>
+                <th>備註</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="dividendRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script>
+      const form = document.getElementById("dividendForm");
+      const rows = document.getElementById("dividendRows");
+      const statusText = document.getElementById("statusText");
+      const submitButton = document.getElementById("submitButton");
+      const cancelEditButton = document.getElementById("cancelEditButton");
+      const filters = {
+        year: document.getElementById("yearFilter"),
+        month: document.getElementById("monthFilter"),
+        stock: document.getElementById("stockFilter"),
+      };
+      const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
+      const decimal = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 });
+      let dividends = [];
+      let editingId = null;
+      let fxRate = 31.451;
+
+      form.elements.date.valueAsDate = new Date();
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function dividendTime(item) {
+        const time = new Date(`${item.date || ""}T00:00:00`).getTime();
+        return Number.isNaN(time) ? 0 : time;
+      }
+
+      function netAmount(item) {
+        return (Number(item.amount) || 0) - (Number(item.tax) || 0);
+      }
+
+      function netTwd(item) {
+        const net = netAmount(item);
+        return item.currency === "USD" ? net * fxRate : net;
+      }
+
+      function currentYear() {
+        return new Date().getFullYear().toString();
+      }
+
+      function setFormMode(id = null) {
+        editingId = id;
+        submitButton.textContent = editingId ? "更新股息" : "新增股息";
+        cancelEditButton.hidden = !editingId;
+      }
+
+      function resetForm() {
+        form.reset();
+        form.elements.date.valueAsDate = new Date();
+        form.elements.tax.value = "0";
+        setFormMode(null);
+      }
+
+      function activeFilters() {
+        return {
+          year: filters.year.value,
+          month: filters.month.value,
+          stock: filters.stock.value.trim().toLowerCase(),
+        };
+      }
+
+      function dividendMatches(item, filter) {
+        const date = String(item.date || "");
+        const stockText = [item.symbol, item.name].join(" ").toLowerCase();
+        return (
+          (!filter.year || date.slice(0, 4) === filter.year) &&
+          (!filter.month || date.slice(5, 7) === filter.month) &&
+          (!filter.stock || stockText.includes(filter.stock))
+        );
+      }
+
+      function visibleDividends() {
+        const filter = activeFilters();
+        return dividends
+          .filter((item) => dividendMatches(item, filter))
+          .sort((a, b) => dividendTime(b) - dividendTime(a));
+      }
+
+      function populateFilters() {
+        const selectedYear = filters.year.value;
+        const selectedMonth = filters.month.value;
+        const years = [...new Set(dividends.map((item) => String(item.date || "").slice(0, 4)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
+        const months = [...new Set(dividends.map((item) => String(item.date || "").slice(5, 7)).filter(Boolean))].sort();
+        filters.year.innerHTML = `<option value="">全部</option>${years.map((year) => `<option value="${escapeHtml(year)}">${escapeHtml(year)}</option>`).join("")}`;
+        filters.month.innerHTML = `<option value="">全部</option>${months.map((month) => `<option value="${escapeHtml(month)}">${escapeHtml(month)}</option>`).join("")}`;
+        filters.year.value = years.includes(selectedYear) ? selectedYear : "";
+        filters.month.value = months.includes(selectedMonth) ? selectedMonth : "";
+      }
+
+      function renderSummary() {
+        const year = currentYear();
+        const thisYear = dividends.filter((item) => String(item.date || "").slice(0, 4) === year);
+        const twTotal = thisYear.filter((item) => item.market === "TW").reduce((sum, item) => sum + netTwd(item), 0);
+        const usTotal = thisYear.filter((item) => item.market === "US").reduce((sum, item) => sum + netTwd(item), 0);
+        document.getElementById("yearDividendTotal").textContent = money.format(Math.round(twTotal + usTotal));
+        document.getElementById("twDividendTotal").textContent = money.format(Math.round(twTotal));
+        document.getElementById("usDividendTotal").textContent = money.format(Math.round(usTotal));
+        document.getElementById("fxRateText").textContent = `1 USD = ${fxRate} TWD`;
+      }
+
+      function renderDividends() {
+        const items = visibleDividends();
+        renderSummary();
+        if (!items.length) {
+          rows.innerHTML = `<tr><td colspan="8">尚無股息紀錄</td></tr>`;
+          return;
+        }
+        rows.innerHTML = items
+          .map((item) => `
+            <tr>
+              <td>${escapeHtml(item.date)}</td>
+              <td>${escapeHtml(item.market)}</td>
+              <td>${escapeHtml(item.symbol)}<br />${escapeHtml(item.name)}</td>
+              <td>${decimal.format(Number(item.amount) || 0)} ${escapeHtml(item.currency)}</td>
+              <td>${decimal.format(Number(item.tax) || 0)} ${escapeHtml(item.currency)}</td>
+              <td>${money.format(Math.round(netTwd(item)))}</td>
+              <td>${escapeHtml(item.note)}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="secondary" type="button" data-action="edit" data-id="${escapeHtml(item.id)}">編輯</button>
+                  <button class="danger" type="button" data-action="delete" data-id="${escapeHtml(item.id)}">刪除</button>
+                </div>
+              </td>
+            </tr>
+          `)
+          .join("");
+      }
+
+      function setDividends(nextDividends) {
+        dividends = nextDividends || [];
+        populateFilters();
+        renderDividends();
+      }
+
+      function currentDividend() {
+        const formData = new FormData(form);
+        return {
+          date: formData.get("date"),
+          market: formData.get("market"),
+          symbol: String(formData.get("symbol")).trim().toUpperCase(),
+          name: String(formData.get("name")).trim(),
+          amount: Number(formData.get("amount")),
+          currency: formData.get("currency"),
+          tax: Number(formData.get("tax") || 0),
+          note: String(formData.get("note") || "").trim(),
+        };
+      }
+
+      function editDividend(id) {
+        const dividend = dividends.find((item) => item.id === id);
+        if (!dividend) return;
+        form.elements.date.value = dividend.date || "";
+        form.elements.market.value = dividend.market || "TW";
+        form.elements.symbol.value = dividend.symbol || "";
+        form.elements.name.value = dividend.name || "";
+        form.elements.amount.value = dividend.amount ?? "";
+        form.elements.currency.value = dividend.currency || "TWD";
+        form.elements.tax.value = dividend.tax ?? 0;
+        form.elements.note.value = dividend.note || "";
+        setFormMode(id);
+        statusText.textContent = "正在編輯股息";
+        form.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      async function loadFxRate() {
+        try {
+          const response = await fetch("/api/portfolio", { cache: "no-store" });
+          if (!response.ok) return;
+          const payload = await response.json();
+          fxRate = Number(payload.portfolio?.fxRate) || fxRate;
+        } catch {
+          // Keep the last known default.
+        }
+      }
+
+      async function loadDividends() {
+        await loadFxRate();
+        const response = await fetch("/api/dividends", { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || "股息紀錄載入失敗");
+        setDividends(payload.dividends || []);
+        statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+      }
+
+      async function saveDividend() {
+        const url = editingId ? `/api/dividends/${encodeURIComponent(editingId)}` : "/api/dividends";
+        const method = editingId ? "PUT" : "POST";
+        const response = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentDividend()),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || "股息儲存失敗");
+        return payload;
+      }
+
+      async function deleteDividend(id) {
+        const dividend = dividends.find((item) => item.id === id);
+        if (!dividend) return;
+        const label = `${dividend.date} ${dividend.market}:${dividend.symbol}`;
+        if (!window.confirm(`確定刪除這筆股息？\n${label}`)) return;
+
+        statusText.textContent = "刪除中...";
+        const response = await fetch(`/api/dividends/${encodeURIComponent(id)}`, { method: "DELETE" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || "股息刪除失敗");
+        setDividends(payload.dividends || []);
+        if (editingId === id) resetForm();
+        statusText.textContent = `已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        submitButton.disabled = true;
+        statusText.textContent = editingId ? "更新中..." : "儲存中...";
+        try {
+          const payload = await saveDividend();
+          setDividends(payload.dividends || []);
+          statusText.textContent = editingId
+            ? `已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`
+            : `已新增，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+          resetForm();
+        } catch (error) {
+          statusText.textContent = error.message;
+        } finally {
+          submitButton.disabled = false;
+        }
+      });
+
+      cancelEditButton.addEventListener("click", () => {
+        resetForm();
+        statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+      });
+
+      Object.values(filters).forEach((input) => {
+        input.addEventListener("input", () => {
+          renderDividends();
+          statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+        });
+        input.addEventListener("change", () => {
+          renderDividends();
+          statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+        });
+      });
+
+      rows.addEventListener("click", async (event) => {
+        const button = event.target.closest("button[data-action][data-id]");
+        if (!button) return;
+        const { action, id } = button.dataset;
+        if (action === "edit") {
+          editDividend(id);
+          return;
+        }
+        if (action === "delete") {
+          button.disabled = true;
+          try {
+            await deleteDividend(id);
+          } catch (error) {
+            statusText.textContent = error.message;
+          } finally {
+            button.disabled = false;
+          }
+        }
+      });
+
+      loadDividends().catch((error) => {
+        statusText.textContent = error.message;
+        renderDividends();
+      });
+    </script>
+  </body>
+</html>
