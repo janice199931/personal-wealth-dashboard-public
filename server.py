@@ -1027,8 +1027,16 @@ def update_prices(request: Request) -> dict:
         fx_rate = fetch_fx_rate(float(current_portfolio.get("fxRate") or 31.451))
         latest_prices, warnings, price_details = fetch_prices(holdings)
         stored_prices = db_store.read_prices({"fxRate": fx_rate, "prices": {}})
+        merged_prices = {**stored_prices.get("prices", {}), **latest_prices}
         stored_prices["fxRate"] = fx_rate
-        stored_prices["prices"] = {**stored_prices.get("prices", {}), **latest_prices}
+        stored_prices["updatedAt"] = datetime.now(TWD).isoformat(timespec="seconds")
+        stored_prices["prices"] = merged_prices
+        stored_prices["warnings"] = warnings
+        stored_prices["updatedSymbols"] = price_details["updatedSymbols"]
+        stored_prices["failedSymbols"] = price_details["failedSymbols"]
+        stored_prices["errorMessages"] = price_details["errorMessages"]
+        stored_prices["twResult"] = price_details["twResult"]
+        stored_prices["usResult"] = price_details["usResult"]
         saved_to = db_store.write_prices(stored_prices)
         portfolio = rebuild_portfolio_outputs()
         current_db = db_store.active_backend()
