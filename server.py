@@ -158,6 +158,19 @@ def ensure_dividend_ids(dividends: list[dict[str, Any]]) -> tuple[list[dict[str,
     return output, changed
 
 
+def is_example_dividend(dividend: dict[str, Any]) -> bool:
+    return (
+        str(dividend.get("id", "")).strip() == "div-example"
+        or "example only" in str(dividend.get("note", "")).lower()
+        or "example" in str(dividend.get("name", "")).lower()
+    )
+
+
+def remove_example_dividends(dividends: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], bool]:
+    cleaned = [dividend for dividend in dividends if not is_example_dividend(dividend)]
+    return cleaned, len(cleaned) != len(dividends)
+
+
 def write_dividends(dividends: list[dict[str, Any]]) -> None:
     db_store.write_dividends(dividends)
 
@@ -796,11 +809,12 @@ def delete_transaction(transaction_id: str) -> dict:
 
 @app.get("/api/dividends")
 def get_dividends() -> dict:
-    dividends = read_dividends(use_examples=True)
+    dividends = read_dividends(use_examples=False)
+    dividends, removed_examples = remove_example_dividends(dividends)
     dividends, changed = ensure_dividend_ids(dividends)
-    if changed:
+    if removed_examples or changed:
         write_dividends(dividends)
-    return {"ok": True, "dividends": dividends, "source": db_store.active_backend() if dividends else "example"}
+    return {"ok": True, "dividends": dividends, "source": db_store.active_backend() if dividends else "empty"}
 
 
 @app.post("/api/dividends")
