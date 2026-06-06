@@ -85,6 +85,13 @@ function sameDay(a, b) {
   return Boolean(a && b) && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+function datePickerYears(selectedYear) {
+  const currentYear = new Date().getFullYear();
+  const start = Math.min(currentYear - 10, selectedYear);
+  const end = Math.max(currentYear + 5, selectedYear);
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
 function setupDatePicker(input) {
   const field = input.closest(".date-field");
   const picker = document.createElement("div");
@@ -98,6 +105,13 @@ function setupDatePicker(input) {
     const today = new Date();
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
+    const yearOptions = datePickerYears(year)
+      .map((optionYear) => `<option value="${optionYear}" ${optionYear === year ? "selected" : ""}>${rocYear(optionYear)} 年</option>`)
+      .join("");
+    const monthOptions = Array.from({ length: 12 }, (_, index) => {
+      const optionMonth = index + 1;
+      return `<option value="${index}" ${index === month ? "selected" : ""}>${optionMonth} 月</option>`;
+    }).join("");
     const firstDay = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const blanks = Array.from({ length: firstDay }, () => "<span></span>").join("");
@@ -114,7 +128,10 @@ function setupDatePicker(input) {
     picker.innerHTML = `
       <div class="date-picker-header">
         <button type="button" data-nav="-1">‹</button>
-        <strong>${rocYear(year)} 年 ${month + 1} 月</strong>
+        <span class="date-picker-selects">
+          <select data-date-year aria-label="選擇年份">${yearOptions}</select>
+          <select data-date-month aria-label="選擇月份">${monthOptions}</select>
+        </span>
         <button type="button" data-nav="1">›</button>
       </div>
       <div class="date-picker-grid">
@@ -144,6 +161,17 @@ function setupDatePicker(input) {
     const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), Number(dayButton.dataset.day));
     input.value = formatInputRocDate(date);
     picker.hidden = true;
+  });
+  picker.addEventListener("change", (event) => {
+    if (event.target.matches("[data-date-year]")) {
+      viewDate.setFullYear(Number(event.target.value));
+      renderPicker();
+      return;
+    }
+    if (event.target.matches("[data-date-month]")) {
+      viewDate.setMonth(Number(event.target.value));
+      renderPicker();
+    }
   });
   document.addEventListener("click", (event) => {
     if (field.contains(event.target)) return;
