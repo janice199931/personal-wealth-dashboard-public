@@ -6,6 +6,7 @@ import os
 import secrets
 import shutil
 import tempfile
+from threading import Lock
 from datetime import datetime
 from uuid import uuid4
 from pathlib import Path
@@ -52,6 +53,7 @@ BACKUP_FILES = {
 }
 
 app = FastAPI(title="Personal Wealth Dashboard Local API")
+PORTFOLIO_REBUILD_LOCK = Lock()
 
 
 def utf8_json(payload: Any) -> Response:
@@ -286,16 +288,17 @@ def validate_positions(transactions: list[dict[str, Any]]) -> None:
 
 
 def rebuild_portfolio_outputs() -> dict[str, Any]:
-    portfolio = build_portfolio_from_data(
-        db_store.read_transactions(),
-        db_store.read_accounts({}),
-        db_store.read_prices({"fxRate": 31.451, "prices": {}}),
-        db_store.read_latest_portfolio({}),
-    )
-    history = update_history_from_data(portfolio, db_store.read_net_worth_history())
-    db_store.write_portfolio_snapshot(portfolio)
-    db_store.write_net_worth_history(history)
-    return portfolio
+    with PORTFOLIO_REBUILD_LOCK:
+        portfolio = build_portfolio_from_data(
+            db_store.read_transactions(),
+            db_store.read_accounts({}),
+            db_store.read_prices({"fxRate": 31.451, "prices": {}}),
+            db_store.read_latest_portfolio({}),
+        )
+        history = update_history_from_data(portfolio, db_store.read_net_worth_history())
+        db_store.write_portfolio_snapshot(portfolio)
+        db_store.write_net_worth_history(history)
+        return portfolio
 
 
 def read_portfolio(use_examples: bool = False) -> dict[str, Any]:
