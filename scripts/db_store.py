@@ -395,6 +395,37 @@ def _execute_many(sqlite_sql: str, postgres_sql: str | None, rows: list[tuple[An
         raise
 
 
+def _replace_rows(table: str, sqlite_insert: str, postgres_insert: str | None, rows: list[tuple[Any, ...]]) -> Backend:
+    if table not in TABLES:
+        raise ValueError(f"Unknown table: {table}")
+    backend = active_backend()
+    insert = postgres_insert if backend == "supabase" and postgres_insert else sqlite_insert
+    try:
+        with connect() as connection:
+            if backend == "sqlite":
+                connection.execute(f"DELETE FROM {table}")
+                if rows:
+                    connection.executemany(insert, rows)
+            else:
+                with connection.cursor() as cursor:
+                    cursor.execute(f"DELETE FROM {table}")
+                    if rows:
+                        cursor.executemany(insert, rows)
+            connection.commit()
+        return backend
+    except Exception as error:
+        if backend == "supabase":
+            _mark_supabase_failed(error)
+            init_sqlite()
+            with _connect_sqlite() as connection:
+                connection.execute(f"DELETE FROM {table}")
+                if rows:
+                    connection.executemany(sqlite_insert, rows)
+                connection.commit()
+            return "sqlite"
+        raise
+
+
 def db_exists() -> bool:
     return db_path().exists()
 
@@ -572,7 +603,6 @@ def read_transactions() -> list[dict[str, Any]]:
 
 def write_transactions(transactions: list[dict[str, Any]]) -> None:
     timestamp = now_iso()
-    clear_table("transactions")
     rows = [
         (
             str(row["id"]),
@@ -584,7 +614,8 @@ def write_transactions(transactions: list[dict[str, Any]]) -> None:
         )
         for row in transactions
     ]
-    _execute_many(
+    _replace_rows(
+        "transactions",
         "INSERT INTO transactions (id, date, market, symbol, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
         "INSERT INTO transactions (id, date, market, symbol, payload, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
         rows,
@@ -598,7 +629,6 @@ def read_dividends() -> list[dict[str, Any]]:
 
 def write_dividends(dividends: list[dict[str, Any]]) -> None:
     timestamp = now_iso()
-    clear_table("dividends")
     rows = [
         (
             str(row["id"]),
@@ -610,7 +640,8 @@ def write_dividends(dividends: list[dict[str, Any]]) -> None:
         )
         for row in dividends
     ]
-    _execute_many(
+    _replace_rows(
+        "dividends",
         "INSERT INTO dividends (id, date, market, symbol, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
         "INSERT INTO dividends (id, date, market, symbol, payload, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
         rows,
@@ -654,8 +685,8 @@ def write_net_worth_history(history: list[dict[str, Any]]) -> None:
         if history_date:
             by_date[history_date] = {**row, "date": history_date}
     rows = [(history_date, encode(row), timestamp) for history_date, row in sorted(by_date.items())]
-    clear_table("net_worth_history")
-    _execute_many(
+    _replace_rows(
+        "net_worth_history",
         "INSERT INTO net_worth_history (date, payload, updated_at) VALUES (?, ?, ?)",
         "INSERT INTO net_worth_history (date, payload, updated_at) VALUES (%s, %s, %s)",
         rows,
