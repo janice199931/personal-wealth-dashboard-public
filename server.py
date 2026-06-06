@@ -296,10 +296,12 @@ def rebuild_portfolio_outputs() -> dict[str, Any]:
             db_store.read_latest_portfolio({}),
         )
         history = update_history_from_data(portfolio, db_store.read_net_worth_history())
+        if len(history) <= 1:
+            expanded_history = build_history_from_finance_data(portfolio, history, db_store.read_finance_data({}))
+            if len(expanded_history) > len(history):
+                history = expanded_history
         db_store.write_portfolio_snapshot(portfolio)
         db_store.write_net_worth_history(history)
-        if len(history) <= 1 and db_store.read_finance_data({}).get("years"):
-            backfill_history_from_finance_data(portfolio)
         return portfolio
 
 
@@ -353,6 +355,19 @@ def validate_full_backup_payload(payload: dict[str, Any]) -> None:
 def backfill_history_from_finance_data(portfolio: dict[str, Any]) -> list[dict[str, Any]]:
     history = db_store.read_net_worth_history()
     finance_data = db_store.read_finance_data({})
+    output = build_history_from_finance_data(portfolio, history, finance_data)
+    if output:
+        db_store.write_net_worth_history(output)
+    return output
+
+
+def build_history_from_finance_data(
+    portfolio: dict[str, Any],
+    history: list[dict[str, Any]],
+    finance_data: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if isinstance(finance_data.get("financeData"), dict):
+        finance_data = finance_data["financeData"]
     months = sorted(
         (
             month
@@ -377,9 +392,7 @@ def backfill_history_from_finance_data(portfolio: dict[str, Any]) -> list[dict[s
         date_key = f"{month_key}-01"
         by_date.setdefault(date_key, {"date": date_key, "netWorth": running})
         running -= round(float(month.get("net", 0) or 0))
-    output = sorted(by_date.values(), key=lambda row: row["date"])
-    db_store.write_net_worth_history(output)
-    return output
+    return sorted(by_date.values(), key=lambda row: row["date"])
 
 
 def transaction_response(transactions: list[dict[str, Any]], transaction: dict[str, Any] | None, portfolio: dict[str, Any]) -> dict:
@@ -479,8 +492,8 @@ def get_prices() -> dict[str, Any]:
 
 @app.get("/api/net-worth-history")
 def get_net_worth_history() -> dict[str, Any]:
-    history = read_net_worth_history(use_examples=True)
-    return {"ok": True, "history": history, "source": db_store.active_backend() if history else "example"}
+    history = read_net_worth_history(use_examples=False)
+    return {"ok": True, "history": history, "source": db_store.active_backend() if history else "empty"}
 
 
 @app.get("/api/finance-data")
