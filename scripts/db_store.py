@@ -648,11 +648,23 @@ def read_net_worth_history() -> list[dict[str, Any]]:
 
 def write_net_worth_history(history: list[dict[str, Any]]) -> None:
     timestamp = now_iso()
-    clear_table("net_worth_history")
-    rows = [(str(row.get("date", "")), encode(row), timestamp) for row in history if row.get("date")]
+    by_date: dict[str, dict[str, Any]] = {}
+    for row in history:
+        history_date = str(row.get("date", "")).strip()
+        if history_date:
+            by_date[history_date] = {**row, "date": history_date}
+    rows = [(history_date, encode(row), timestamp) for history_date, row in sorted(by_date.items())]
     _execute_many(
-        "INSERT INTO net_worth_history (date, payload, updated_at) VALUES (?, ?, ?)",
-        "INSERT INTO net_worth_history (date, payload, updated_at) VALUES (%s, %s, %s)",
+        """
+        INSERT INTO net_worth_history (date, payload, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(date) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at
+        """,
+        """
+        INSERT INTO net_worth_history (date, payload, updated_at)
+        VALUES (%s, %s, %s)
+        ON CONFLICT(date) DO UPDATE SET payload = EXCLUDED.payload, updated_at = EXCLUDED.updated_at
+        """,
         rows,
     )
 
