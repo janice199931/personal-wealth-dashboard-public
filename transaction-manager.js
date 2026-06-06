@@ -141,6 +141,7 @@ function setupDatePicker(input) {
   }
 
   function openPicker() {
+    if (!picker.hidden) return;
     const selected = parseRocInputDate(input.value);
     viewDate = selected || new Date();
     renderPicker();
@@ -150,19 +151,23 @@ function setupDatePicker(input) {
   input.addEventListener("click", openPicker);
   input.addEventListener("focus", openPicker);
   picker.addEventListener("click", (event) => {
+    event.stopPropagation();
     const nav = event.target.closest("button[data-nav]");
     if (nav) {
+      event.preventDefault();
       viewDate.setMonth(viewDate.getMonth() + Number(nav.dataset.nav));
       renderPicker();
       return;
     }
     const dayButton = event.target.closest("button[data-day]");
     if (!dayButton) return;
+    event.preventDefault();
     const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), Number(dayButton.dataset.day));
     input.value = formatInputRocDate(date);
     picker.hidden = true;
   });
   picker.addEventListener("change", (event) => {
+    event.stopPropagation();
     if (event.target.matches("[data-date-year]")) {
       viewDate.setFullYear(Number(event.target.value));
       renderPicker();
