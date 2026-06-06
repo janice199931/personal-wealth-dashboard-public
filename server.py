@@ -211,14 +211,14 @@ def normalize_input_date(value: Any, label: str = "日期") -> str:
         try:
             year, month, day = [int(part) for part in parts]
         except ValueError as error:
-            raise HTTPException(status_code=400, detail=f"{label} 格式錯誤，請輸入 2026-02-11 或 115/2/11。") from error
+            raise HTTPException(status_code=400, detail=f"{label} 格式錯誤，請輸入民國年，例如 115/02/11。") from error
         if year < 1911:
             year += 1911
         try:
             return datetime(year, month, day).date().isoformat()
         except ValueError as error:
             raise HTTPException(status_code=400, detail=f"{label} 不是有效日期。") from error
-    raise HTTPException(status_code=400, detail=f"{label} 格式錯誤，請輸入 2026-02-11 或 115/2/11。")
+    raise HTTPException(status_code=400, detail=f"{label} 格式錯誤，請輸入民國年，例如 115/02/11。")
 
 
 def normalize_transaction(payload: dict[str, Any]) -> dict[str, Any]:

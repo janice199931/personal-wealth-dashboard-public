@@ -15,7 +15,7 @@ const filters = {
 let transactions = [];
 let editingId = null;
 
-form.elements.date.valueAsDate = new Date();
+form.elements.date.value = formatInputRocDate(new Date());
 
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 6 }).format(Number(value) || 0);
@@ -28,6 +28,36 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function rocYear(year) {
+  return Number(year) - 1911;
+}
+
+function formatInputRocDate(date) {
+  const year = rocYear(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}/${month}/${day}`;
+}
+
+function normalizeInputDate(value) {
+  const text = String(value || "").trim();
+  const parts = text.replaceAll(".", "/").replaceAll("-", "/").split("/").map((part) => part.trim()).filter(Boolean);
+  if (parts.length !== 3) throw new Error("日期格式請輸入民國年，例如 115/06/06");
+  let [year, month, day] = parts.map((part) => Number(part));
+  if (!year || !month || !day) throw new Error("日期格式請輸入民國年，例如 115/06/06");
+  if (year < 1911) year += 1911;
+  const date = new Date(year, month - 1, day);
+  const valid = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  if (!valid) throw new Error("日期不是有效日期");
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function formatDisplayDate(value) {
+  const date = new Date(`${value || ""}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return String(value || "");
+  return formatInputRocDate(date);
 }
 
 function setTransactions(nextTransactions) {
@@ -49,7 +79,7 @@ function setFormMode(id = null) {
     const transaction = transactions.find((item) => item.id === editingId);
     modeBanner.classList.toggle("editing", Boolean(editingId));
     modeBanner.innerHTML = editingId && transaction
-      ? `<span><strong>編輯模式</strong> 正在修改 ${escapeHtml(transaction.date)} ${escapeHtml(transaction.market)}:${escapeHtml(transaction.symbol)}，完成後請按「更新交易」。</span>`
+      ? `<span><strong>編輯模式</strong> 正在修改 ${escapeHtml(formatDisplayDate(transaction.date))} ${escapeHtml(transaction.market)}:${escapeHtml(transaction.symbol)}，完成後請按「更新交易」。</span>`
       : `<span><strong>新增模式</strong> 填寫下方欄位後儲存一筆新交易。</span>`;
   }
   renderTransactions();
@@ -57,7 +87,7 @@ function setFormMode(id = null) {
 
 function resetForm() {
   form.reset();
-  form.elements.date.valueAsDate = new Date();
+  form.elements.date.value = formatInputRocDate(new Date());
   form.elements.fee.value = "0";
   setFormMode(null);
 }
@@ -104,7 +134,7 @@ function populateDateFilters() {
   const years = [...new Set(transactions.map((item) => String(item.date || "").slice(0, 4)).filter(Boolean))].sort((a, b) => b.localeCompare(a));
   const months = [...new Set(transactions.map((item) => String(item.date || "").slice(5, 7)).filter(Boolean))].sort();
 
-  filters.year.innerHTML = `<option value="">全部</option>${years.map((year) => `<option value="${escapeHtml(year)}">${escapeHtml(year)}</option>`).join("")}`;
+  filters.year.innerHTML = `<option value="">全部</option>${years.map((year) => `<option value="${escapeHtml(year)}">${escapeHtml(rocYear(year))} 年</option>`).join("")}`;
   filters.month.innerHTML = `<option value="">全部</option>${months.map((month) => `<option value="${escapeHtml(month)}">${escapeHtml(month)}</option>`).join("")}`;
   filters.year.value = years.includes(selectedYear) ? selectedYear : "";
   filters.month.value = months.includes(selectedMonth) ? selectedMonth : "";
@@ -121,7 +151,7 @@ function renderTransactions() {
     .map(
       (item) => `
         <tr class="${item.id === editingId ? "editing-row" : ""}">
-          <td>${escapeHtml(item.date)}</td>
+          <td>${escapeHtml(formatDisplayDate(item.date))}</td>
           <td><span class="badge">${escapeHtml(item.market)}</span></td>
           <td>${escapeHtml(item.symbol)}<br />${escapeHtml(item.name)}</td>
           <td><span class="badge">${escapeHtml(item.action)}</span></td>
@@ -144,7 +174,7 @@ function renderTransactions() {
 function currentTransaction() {
   const formData = new FormData(form);
   return {
-    date: formData.get("date"),
+    date: normalizeInputDate(formData.get("date")),
     market: formData.get("market"),
     symbol: String(formData.get("symbol")).trim().toUpperCase(),
     name: String(formData.get("name")).trim(),
@@ -160,7 +190,7 @@ function editTransaction(id) {
   const transaction = transactions.find((item) => item.id === id);
   if (!transaction) return;
 
-  form.elements.date.value = transaction.date || "";
+  form.elements.date.value = formatDisplayDate(transaction.date);
   form.elements.market.value = transaction.market || "TW";
   form.elements.symbol.value = transaction.symbol || "";
   form.elements.name.value = transaction.name || "";
@@ -198,7 +228,7 @@ async function saveTransaction() {
 async function deleteTransaction(id) {
   const transaction = transactions.find((item) => item.id === id);
   if (!transaction) return;
-  const label = `${transaction.date} ${transaction.market}:${transaction.symbol} ${transaction.action}`;
+  const label = `${formatDisplayDate(transaction.date)} ${transaction.market}:${transaction.symbol} ${transaction.action}`;
   if (!window.confirm(`確定刪除這筆交易？\n${label}`)) return;
 
   setStatus("刪除中...", "working");

@@ -96,10 +96,41 @@ function todayKey() {
   return formatter.format(new Date()).replaceAll("-", "");
 }
 
+function rocYear(year) {
+  return Number(year) - 1911;
+}
+
+function parseDisplayDate(value) {
+  const text = cleanUpdateTime(value ?? "");
+  if (!text) return null;
+  const match = text.match(/^(\d{2,4})[/-](\d{1,2})[/-](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?/);
+  if (!match) return null;
+  let year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1911) year += 1911;
+  const date = new Date(year, month - 1, day, Number(match[4] || 0), Number(match[5] || 0));
+  const valid = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  return valid ? date : null;
+}
+
+function formatRocDate(value, includeTime = false) {
+  const date = value instanceof Date ? value : parseDisplayDate(value);
+  if (!date || Number.isNaN(date.getTime())) return cleanUpdateTime(value ?? "");
+  const year = rocYear(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const dateText = `${year}/${month}/${day}`;
+  if (!includeTime) return dateText;
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${dateText} ${hour}:${minute}`;
+}
+
 function formatTaiwanDate(dateText) {
   const [year, month, day] = dateText.split("/").map((part) => Number(part));
   if (!year || !month || !day) return data.investments.tw.updatedAt;
-  return `${year + 1911}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
+  return `${year}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
 }
 
 function formatTaiwanClock(date = new Date()) {
@@ -122,19 +153,9 @@ function cleanUpdateTime(value) {
 function formatUpdateTime(value) {
   const text = cleanUpdateTime(value ?? "");
   if (!text) return "尚未更新";
-  const normalized = text.includes("T") ? text : text.replaceAll("/", "-");
-  const date = new Date(normalized);
+  const date = text.includes("T") ? new Date(text) : parseDisplayDate(text) || new Date(text);
   if (Number.isNaN(date.getTime())) return text;
-  const parts = new Intl.DateTimeFormat("zh-TW", {
-    timeZone: "Asia/Taipei",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(date).reduce((acc, part) => ({ ...acc, [part.type]: part.value }), {});
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+  return formatRocDate(date, true);
 }
 
 function setSidebarUpdatedAt(value) {
@@ -710,7 +731,7 @@ function ageOnDate(date) {
 
 function formatEtaDate(date) {
   if (!date) return "持續追蹤中";
-  return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
+  return `${rocYear(date.getFullYear())} 年 ${date.getMonth() + 1} 月`;
 }
 
 function renderHero() {
@@ -1298,7 +1319,7 @@ function renderInvestmentCards() {
         </div>`)
         .join("")}
     </div>
-    <p class="note-text">更新時間：${cleanUpdateTime(tw.updatedAt)}</p>`;
+    <p class="note-text">更新時間：${formatUpdateTime(tw.updatedAt)}</p>`;
 
   document.getElementById("usInvestment").innerHTML = `
     <div class="investment-hero">
@@ -1331,7 +1352,7 @@ function renderInvestmentCards() {
         </div>`)
         .join("")}
     </div>
-    <p class="note-text">更新時間：${cleanUpdateTime(us.updatedAt ?? "2026/05/30 05:10")}</p>`;
+    <p class="note-text">更新時間：${formatUpdateTime(us.updatedAt ?? "2026/05/30 05:10")}</p>`;
 }
 
 function renderRankList(targetId, rows, valueKey = "value", labelKey = "label") {
@@ -1350,7 +1371,7 @@ function renderRankList(targetId, rows, valueKey = "value", labelKey = "label") 
 
 function formatMonthLabel(month) {
   const [year, mm] = month.split("-");
-  return `${year} 年 ${Number(mm)} 月`;
+  return `${rocYear(year)} 年 ${Number(mm)} 月`;
 }
 
 function renderYearSummary(year) {
@@ -1387,7 +1408,7 @@ function renderLedger() {
   const years = applyDividendIncomeToFinanceYears(window.financeData.years ?? []);
   document.getElementById("yearAccordion").innerHTML = years
     .map((year, index) => `<details class="year-detail" ${index === 0 ? "open" : ""}>
-      <summary>${year.year}</summary>
+      <summary>${rocYear(year.year)} 年</summary>
       <div class="year-summary">${renderYearSummary(year)}</div>
       <div class="monthly-table-wrap">
         <table class="monthly-table">
