@@ -820,7 +820,7 @@ function renderDataStatusCards() {
 function updateMigrateButtonVisibility(status) {
   const button = document.getElementById("migrateSupabaseButton");
   if (!button) return;
-  button.hidden = status?.currentDb === "supabase" && !status?.fallbackActive;
+  button.hidden = true;
 }
 
 function renderInitialLoading() {
@@ -1182,6 +1182,7 @@ function setupDataBackupControls() {
   const fileInput = document.getElementById("backupFileInput");
   if (!exportButton || !importButton || !rebuildButton || !fileInput || exportButton.dataset.ready) return;
   exportButton.dataset.ready = "true";
+  if (migrateButton) migrateButton.hidden = true;
 
   exportButton.addEventListener("click", async () => {
     exportButton.disabled = true;
@@ -1250,24 +1251,7 @@ function setupDataBackupControls() {
     }
   });
 
-  if (migrateButton) {
-    migrateButton.addEventListener("click", async () => {
-      migrateButton.disabled = true;
-      setBackupStatus("正在遷移到 Supabase...");
-      try {
-        const response = await fetch("/api/db/migrate-to-supabase", { method: "POST" });
-        const payload = await readApiPayload(response);
-        if (!response.ok) throw new Error(payload.detail || `遷移失敗（HTTP ${response.status}）`);
-        setBackupStatus("Supabase 遷移完成，正在重新整理...");
-        setTimeout(() => window.location.reload(), 900);
-      } catch (error) {
-        console.warn("Supabase 遷移失敗", error);
-        setBackupStatus(error.message || "Supabase 遷移失敗。");
-      } finally {
-        migrateButton.disabled = false;
-      }
-    });
-  }
+  if (migrateButton) migrateButton.hidden = true;
 }
 
 function renderInvestmentCards() {
