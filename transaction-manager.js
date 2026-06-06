@@ -14,6 +14,15 @@ const filters = {
 
 let transactions = [];
 let editingId = null;
+let lastAutoFilledName = "";
+const stockNameMap = new Map(Object.entries({
+  "0050": "元大台灣50",
+  GOOG: "Alphabet",
+  MU: "Micron Technology",
+  NVDA: "NVIDIA",
+  TSM: "Taiwan Semiconductor",
+  VOO: "Vanguard S&P 500 ETF",
+}));
 
 form.elements.date.value = formatInputRocDate(new Date());
 
@@ -60,8 +69,45 @@ function formatDisplayDate(value) {
   return formatInputRocDate(date);
 }
 
+function normalizeSymbol(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function rememberStockName(symbol, name) {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  const normalizedName = String(name || "").trim();
+  if (normalizedSymbol && normalizedName) stockNameMap.set(normalizedSymbol, normalizedName);
+}
+
+function learnStockNames(items) {
+  (items || []).forEach((item) => rememberStockName(item.symbol, item.name));
+}
+
+async function loadPortfolioStockNames() {
+  try {
+    const response = await fetch("/api/portfolio", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    learnStockNames(payload.portfolio?.holdings || []);
+  } catch {
+    // Existing transaction names are enough if the portfolio is temporarily unavailable.
+  }
+}
+
+function autoFillStockName() {
+  const symbol = normalizeSymbol(form.elements.symbol.value);
+  form.elements.symbol.value = symbol;
+  const name = stockNameMap.get(symbol);
+  if (!name) return;
+  const currentName = String(form.elements.name.value || "").trim();
+  if (currentName && currentName !== lastAutoFilledName) return;
+  form.elements.name.value = name;
+  lastAutoFilledName = name;
+}
+
 function setTransactions(nextTransactions) {
   transactions = nextTransactions || [];
+  learnStockNames(transactions);
   populateDateFilters();
   renderTransactions();
 }
@@ -89,6 +135,7 @@ function resetForm() {
   form.reset();
   form.elements.date.value = formatInputRocDate(new Date());
   form.elements.fee.value = "0";
+  lastAutoFilledName = "";
   setFormMode(null);
 }
 
@@ -173,11 +220,14 @@ function renderTransactions() {
 
 function currentTransaction() {
   const formData = new FormData(form);
+  const symbol = normalizeSymbol(formData.get("symbol"));
+  const name = String(formData.get("name")).trim();
+  rememberStockName(symbol, name);
   return {
     date: normalizeInputDate(formData.get("date")),
     market: formData.get("market"),
-    symbol: String(formData.get("symbol")).trim().toUpperCase(),
-    name: String(formData.get("name")).trim(),
+    symbol,
+    name,
     action: formData.get("action"),
     shares: Number(formData.get("shares")),
     price: Number(formData.get("price")),
@@ -194,6 +244,7 @@ function editTransaction(id) {
   form.elements.market.value = transaction.market || "TW";
   form.elements.symbol.value = transaction.symbol || "";
   form.elements.name.value = transaction.name || "";
+  lastAutoFilledName = "";
   form.elements.action.value = transaction.action || "BUY";
   form.elements.shares.value = transaction.shares ?? "";
   form.elements.price.value = transaction.price ?? "";
@@ -205,6 +256,7 @@ function editTransaction(id) {
 }
 
 async function loadTransactions() {
+  await loadPortfolioStockNames();
   const response = await fetch("/api/transactions", { cache: "no-store" });
   const payload = await response.json();
   if (!response.ok) throw new Error(payload.detail || "交易紀錄載入失敗");
@@ -276,6 +328,14 @@ function applyFilters() {
 Object.values(filters).forEach((input) => {
   input.addEventListener("input", applyFilters);
   input.addEventListener("change", applyFilters);
+});
+
+form.elements.symbol.addEventListener("input", autoFillStockName);
+form.elements.symbol.addEventListener("change", autoFillStockName);
+form.elements.symbol.addEventListener("blur", autoFillStockName);
+form.elements.market.addEventListener("change", autoFillStockName);
+form.elements.name.addEventListener("input", () => {
+  if (form.elements.name.value.trim() !== lastAutoFilledName) lastAutoFilledName = "";
 });
 
 rows.addEventListener("click", async (event) => {
