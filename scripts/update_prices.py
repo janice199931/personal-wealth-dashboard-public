@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PORTFOLIO_PATH = ROOT / "data" / "portfolio.json"
 TWD = timezone(timedelta(hours=8))
 DEFAULT_FX_RATE = 31.451
+PRICE_FETCH_TIMEOUT = 8
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -31,15 +32,15 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def fetch_json(url: str, allow_insecure_retry: bool = False) -> Any:
+def fetch_json(url: str, allow_insecure_retry: bool = False, timeout: int = PRICE_FETCH_TIMEOUT) -> Any:
     request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     try:
-        with urlopen(request, timeout=20) as response:
+        with urlopen(request, timeout=timeout) as response:
             return json.loads(response.read().decode("utf-8"))
     except URLError as error:
         if allow_insecure_retry and isinstance(error.reason, ssl.SSLCertVerificationError):
             context = ssl._create_unverified_context()
-            with urlopen(request, timeout=20, context=context) as response:
+            with urlopen(request, timeout=timeout, context=context) as response:
                 return json.loads(response.read().decode("utf-8"))
         raise
 

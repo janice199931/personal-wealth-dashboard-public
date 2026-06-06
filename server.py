@@ -990,6 +990,7 @@ def update_prices(request: Request) -> dict:
     if request.headers.get("x-price-check") == "1":
         return {"ok": True, "method": "POST", "message": "股價更新 API 已就緒。"}
 
+    started_at = datetime.now(TWD)
     try:
         has_formal_data = bool(
             db_store.read_transactions()
@@ -1065,6 +1066,7 @@ def update_prices(request: Request) -> dict:
         "portfolioSummary": portfolio.get("summary", {}),
         "updatedHoldings": len(latest_prices),
         "totalHoldings": len(holdings),
+        "durationSeconds": round((datetime.now(TWD) - started_at).total_seconds(), 1),
     }
 
 

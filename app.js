@@ -967,6 +967,7 @@ function priceUpdateMessages(payload) {
   if (payload.savedTo) messages.push(`Saved to: ${payload.savedTo}`);
   if (payload.updatedSymbols?.length) messages.push(`Updated: ${payload.updatedSymbols.join(", ")}`);
   if (payload.failedSymbols?.length) messages.push(`Failed: ${payload.failedSymbols.join(", ")}`);
+  if (payload.durationSeconds) messages.push(`Duration: ${payload.durationSeconds} 秒`);
   if (payload.errorMessages?.length) messages.push(...payload.errorMessages);
   if (payload.twResult?.batchError) messages.push(`TW batch: ${payload.twResult.batchError}`);
   return [...new Set(messages.filter(Boolean))];
@@ -1011,6 +1012,41 @@ function renderPriceUpdateNotice(message) {
   `;
 }
 
+function renderPriceUpdateProgress(stage, detail = "", elapsedSeconds = 0) {
+  const rows = [
+    { label: "股價更新", value: stage },
+    { label: "進度", value: detail },
+    { label: "已等待", value: `${elapsedSeconds} 秒` },
+  ];
+  document.getElementById("dataUpdates").innerHTML = rows
+    .map((row) => `<div class="update-row"><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(row.value)}</strong></div>`)
+    .join("");
+}
+
+function startPriceProgress(button, automatic = false) {
+  const startedAt = Date.now();
+  const stages = [
+    { after: 0, button: automatic ? "自動更新中" : "連線中...", stage: "連線到股價服務", detail: "準備更新台股與美股" },
+    { after: 6, button: "取得台股...", stage: "取得台股價格", detail: "0050" },
+    { after: 14, button: "取得美股...", stage: "取得美股價格", detail: "GOOG, TSM, MU, VOO, NVDA" },
+    { after: 26, button: "寫入資料...", stage: "寫入 Supabase", detail: "保存最新價格與狀態" },
+    { after: 42, button: "快完成了...", stage: "等待資料來源回應", detail: "若來源較慢會保留前次價格" },
+  ];
+
+  const paint = () => {
+    const elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    const current = stages.reduce((selected, stage) => (elapsed >= stage.after ? stage : selected), stages[0]);
+    if (button) button.textContent = current.button;
+    renderPriceUpdateProgress(current.stage, current.detail, elapsed);
+  };
+  paint();
+  const timer = setInterval(paint, 4000);
+  return {
+    startedAt,
+    stop: () => clearInterval(timer),
+  };
+}
+
 function markTodayPriceUpdated() {
   if (!window.localStorage) return;
   window.localStorage.setItem(AUTO_PRICE_UPDATE_KEY, todayKey());
@@ -1027,10 +1063,11 @@ function setupPriceUpdater() {
   button.dataset.ready = "true";
   button.addEventListener("click", async () => {
     const originalText = button.textContent;
+    let progress = null;
     button.disabled = true;
-    button.textContent = "更新中...";
+    progress = startPriceProgress(button);
     try {
-      const response = await fetch("/api/update-prices", { method: "POST" });
+      const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
       const responseText = await response.text();
       let payload = {};
       try {
@@ -1047,6 +1084,7 @@ function setupPriceUpdater() {
       }
       localStorage.removeItem("wealthDashboardUpdateWarning");
       markTodayPriceUpdated();
+      renderPriceUpdateProgress("更新完成", "重新整理首頁資料", Math.floor((Date.now() - progress.startedAt) / 1000));
       await loadExternalData();
       await fetch("/api/prices", { cache: "no-store" });
       render();
@@ -1064,6 +1102,9 @@ function setupPriceUpdater() {
         }
       }
       button.disabled = false;
+      setTimeout(() => {
+        button.textContent = originalText;
+      }, 1800);
     } catch (error) {
       button.textContent = "更新失敗";
       console.warn("股價更新失敗", error);
@@ -1073,19 +1114,22 @@ function setupPriceUpdater() {
         button.textContent = originalText;
         button.disabled = false;
       }, 1600);
+    } finally {
+      if (progress) progress.stop();
     }
   });
 }
 
 async function runAutomaticPriceUpdate() {
   if (hasAutoUpdatedToday()) return;
-  renderPriceUpdateNotice("正在自動更新股價…");
+  const progress = startPriceProgress(null, true);
   try {
-    const response = await fetch("/api/update-prices", { method: "POST" });
+    const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
     const payload = await readApiPayload(response);
     if (!response.ok) throw new Error(payload.detail || `自動更新失敗（HTTP ${response.status}）`);
     markTodayPriceUpdated();
     localStorage.removeItem("wealthDashboardUpdateWarning");
+    renderPriceUpdateProgress("自動更新完成", "重新整理首頁資料", Math.floor((Date.now() - progress.startedAt) / 1000));
     await loadExternalData();
     await fetch("/api/prices", { cache: "no-store" });
     render();
@@ -1098,6 +1142,8 @@ async function runAutomaticPriceUpdate() {
   } catch (error) {
     console.warn("自動更新股價失敗", error);
     renderPriceUpdateNotice("自動更新失敗，可手動按更新股價");
+  } finally {
+    progress.stop();
   }
 }
 
