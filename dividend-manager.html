@@ -5,187 +5,141 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>股息追蹤</title>
     <style>
+      :root {
+        color-scheme: light;
+        --surface: rgba(255, 253, 250, 0.9);
+        --ink: #4d3730;
+        --muted: #8d746c;
+        --line: rgba(204, 154, 143, 0.2);
+        --green: #8faa83;
+        --glass-border: rgba(226, 173, 162, 0.24);
+        --shadow: 0 14px 34px rgba(158, 103, 88, 0.09);
+      }
+
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+
       body {
         margin: 0;
         min-height: 100vh;
-        color: #f8fafc;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--ink);
+        font-family: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
         background:
-          radial-gradient(circle at top center, rgba(167, 139, 250, 0.24), transparent 42%),
-          linear-gradient(180deg, #080716 0%, #0f0b1f 48%, #080716 100%);
+          radial-gradient(circle at 58% 12%, rgba(255, 210, 210, 0.46), transparent 34%),
+          radial-gradient(circle at 88% 4%, rgba(241, 222, 205, 0.6), transparent 24%),
+          radial-gradient(circle at 22% 72%, rgba(232, 218, 235, 0.35), transparent 30%),
+          linear-gradient(180deg, #fff8f3 0%, #fff2ee 46%, #f9eadf 100%);
       }
 
       main {
-        width: min(980px, calc(100% - 32px));
+        width: min(1180px, calc(100% - 32px));
         margin: 0 auto;
-        padding: 40px 0;
+        padding: 28px 0 40px;
       }
 
-      form,
-      .card {
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 20px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      form, .card {
+        background:
+          linear-gradient(135deg, rgba(255, 253, 250, 0.96), rgba(255, 238, 237, 0.62)),
+          var(--surface);
+        border: 1px solid var(--glass-border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
         backdrop-filter: blur(18px);
       }
 
-      .card {
-        padding: 24px;
-        margin-bottom: 18px;
-      }
+      .card { padding: 22px; margin-bottom: 18px; }
+      .hero-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+      h1 { margin: 0 0 8px; color: var(--ink); font-size: clamp(30px, 5vw, 48px); line-height: 1; }
+      p { color: var(--muted); line-height: 1.7; }
+      a { color: #b86866; font-weight: 900; text-decoration: none; }
 
-      h1 {
-        margin: 0 0 8px;
-        font-size: clamp(30px, 6vw, 52px);
+      .mode-banner {
+        margin-bottom: 12px;
+        padding: 12px 16px;
+        border: 1px solid var(--glass-border);
+        border-radius: 20px;
+        background: rgba(255, 253, 250, 0.72);
+        color: var(--muted);
+        font-weight: 850;
       }
-
-      p {
-        color: #a1a1aa;
-        line-height: 1.7;
-      }
+      .mode-banner strong { color: var(--ink); }
+      .mode-banner.editing { border-color: rgba(216, 104, 104, 0.32); background: rgba(255, 231, 231, 0.86); }
 
       form {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 14px;
-        padding: 24px;
+        padding: 22px;
         margin-bottom: 18px;
       }
 
-      label {
-        display: grid;
-        gap: 8px;
-        color: #c4b5fd;
-        font-weight: 800;
-      }
-
-      input,
-      select,
-      button {
-        border: 1px solid rgba(255, 255, 255, 0.1);
+      label { display: grid; gap: 8px; color: #d17f87; font-size: 13px; font-weight: 800; }
+      input, select, button {
+        border: 1px solid var(--glass-border);
         border-radius: 14px;
         padding: 12px 14px;
-        color: #f8fafc;
-        background: rgba(15, 23, 42, 0.72);
+        color: var(--ink);
+        background: rgba(255, 253, 250, 0.82);
         font: inherit;
       }
-
+      input:focus, select:focus { outline: 2px solid rgba(209, 127, 135, 0.38); outline-offset: 2px; }
       button {
         cursor: pointer;
         font-weight: 900;
-        background: linear-gradient(135deg, #a78bfa, #7c3aed);
+        background: linear-gradient(135deg, rgba(246, 183, 183, 0.92), rgba(255, 215, 168, 0.72)), rgba(255, 253, 250, 0.88);
+        box-shadow: var(--shadow);
       }
+      button.secondary { background: rgba(255, 253, 250, 0.82); }
+      button.danger { color: #8c2f3f; background: linear-gradient(135deg, rgba(255, 213, 213, 0.96), rgba(246, 183, 183, 0.7)); }
+      button:disabled { cursor: wait; opacity: 0.58; }
 
-      button.secondary {
-        background: rgba(15, 23, 42, 0.72);
-      }
+      .full { grid-column: 1 / -1; }
+      .actions, .row-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .actions { justify-content: space-between; grid-column: 1 / -1; padding-top: 4px; }
+      .status, small { color: var(--muted); font-weight: 850; }
+      .status.success { color: #557b4c; }
+      .status.error { color: #b84a5f; }
+      .status.working { color: #b86866; }
 
-      button.danger {
-        background: linear-gradient(135deg, #fb7185, #be123c);
-      }
-
-      .full {
-        grid-column: 1 / -1;
-      }
-
-      .actions,
-      .row-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-
-      .actions {
-        justify-content: space-between;
-        grid-column: 1 / -1;
-      }
-
-      .status,
-      small {
-        color: #a1a1aa;
-        font-weight: 700;
-      }
-
-      .summary-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-      }
-
+      .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
       .summary-box {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
+        border: 1px solid var(--glass-border);
+        border-radius: 18px;
         padding: 16px;
-        background: rgba(15, 23, 42, 0.42);
+        background: rgba(255, 253, 250, 0.74);
       }
+      .summary-box span { display: block; color: var(--muted); font-weight: 850; margin-bottom: 8px; }
+      .summary-box strong { font-size: 24px; }
 
-      .summary-box span {
-        display: block;
-        color: #a1a1aa;
-        font-weight: 800;
-        margin-bottom: 8px;
-      }
-
-      .summary-box strong {
-        font-size: 24px;
-      }
-
-      .filters {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(120px, 1fr));
-        gap: 10px;
-        margin-bottom: 16px;
-      }
-
-      .filters label {
-        font-size: 13px;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 14px;
-      }
-
-      th,
-      td {
-        padding: 12px 10px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        text-align: left;
-        vertical-align: top;
-      }
-
-      th {
-        color: #c4b5fd;
-      }
-
-      .table-wrap {
-        overflow-x: auto;
-      }
-
-      .row-actions button {
-        padding: 8px 10px;
-        border-radius: 10px;
-      }
+      .filters { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 10px; margin-bottom: 16px; }
+      .filters label { font-size: 13px; }
+      table { width: 100%; border-collapse: collapse; color: var(--ink); font-size: 14px; }
+      th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { color: #d17f87; font-size: 12px; font-weight: 900; }
+      .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 253, 250, 0.64); }
+      .row-actions button { padding: 8px 10px; border-radius: 10px; }
+      .editing-row { background: rgba(255, 231, 231, 0.72); }
+      .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; padding: 4px 8px; border-radius: 999px; background: rgba(255, 238, 237, 0.78); color: #8c514b; font-size: 12px; font-weight: 900; }
 
       @media (max-width: 720px) {
-        form,
-        .filters,
-        .summary-grid {
-          grid-template-columns: 1fr;
-        }
+        .hero-card { display: grid; }
+        form, .filters, .summary-grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
     <main>
-      <section class="card">
-        <h1>股息追蹤</h1>
-        <p><a href="./index.html" style="color:#c4b5fd;font-weight:800;text-decoration:none;">← 回到首頁</a></p>
-        <p>記錄台股與美股股息，並用目前匯率統計今年股息收入。</p>
+      <section class="card hero-card">
+        <div>
+          <h1>股息追蹤</h1>
+          <p>記錄台股與美股股息，並用目前匯率統計今年股息收入。</p>
+        </div>
+        <a href="./index.html">← 回到首頁</a>
       </section>
+
+      <div class="mode-banner" id="modeBanner">
+        <span><strong>新增模式</strong> 填寫下方欄位後儲存一筆新股息。</span>
+      </div>
 
       <section class="card">
         <div class="summary-grid">
@@ -298,6 +252,7 @@
       const statusText = document.getElementById("statusText");
       const submitButton = document.getElementById("submitButton");
       const cancelEditButton = document.getElementById("cancelEditButton");
+      const modeBanner = document.getElementById("modeBanner");
       const filters = {
         year: document.getElementById("yearFilter"),
         month: document.getElementById("monthFilter"),
@@ -338,10 +293,21 @@
         return new Date().getFullYear().toString();
       }
 
+      function setStatus(message, tone = "") {
+        statusText.textContent = message;
+        statusText.className = `status${tone ? ` ${tone}` : ""}`;
+      }
+
       function setFormMode(id = null) {
         editingId = id;
         submitButton.textContent = editingId ? "更新股息" : "新增股息";
         cancelEditButton.hidden = !editingId;
+        const dividend = dividends.find((item) => item.id === editingId);
+        modeBanner.classList.toggle("editing", Boolean(editingId));
+        modeBanner.innerHTML = editingId && dividend
+          ? `<span><strong>編輯模式</strong> 正在修改 ${escapeHtml(dividend.date)} ${escapeHtml(dividend.market)}:${escapeHtml(dividend.symbol)} 的股息，完成後請按「更新股息」。</span>`
+          : `<span><strong>新增模式</strong> 填寫下方欄位後儲存一筆新股息。</span>`;
+        renderDividends();
       }
 
       function resetForm() {
@@ -407,9 +373,9 @@
         }
         rows.innerHTML = items
           .map((item) => `
-            <tr>
+            <tr class="${item.id === editingId ? "editing-row" : ""}">
               <td>${escapeHtml(item.date)}</td>
-              <td>${escapeHtml(item.market)}</td>
+              <td><span class="badge">${escapeHtml(item.market)}</span></td>
               <td>${escapeHtml(item.symbol)}<br />${escapeHtml(item.name)}</td>
               <td>${decimal.format(Number(item.amount) || 0)} ${escapeHtml(item.currency)}</td>
               <td>${decimal.format(Number(item.tax) || 0)} ${escapeHtml(item.currency)}</td>
@@ -458,7 +424,7 @@
         form.elements.tax.value = dividend.tax ?? 0;
         form.elements.note.value = dividend.note || "";
         setFormMode(id);
-        statusText.textContent = "正在編輯股息";
+        setStatus("正在編輯股息，確認欄位後按「更新股息」。", "working");
         form.scrollIntoView({ behavior: "smooth", block: "start" });
       }
 
@@ -479,7 +445,7 @@
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.detail || "股息紀錄載入失敗");
         setDividends(payload.dividends || []);
-        statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+        setStatus(`已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, "success");
       }
 
       async function saveDividend() {
@@ -501,28 +467,31 @@
         const label = `${dividend.date} ${dividend.market}:${dividend.symbol}`;
         if (!window.confirm(`確定刪除這筆股息？\n${label}`)) return;
 
-        statusText.textContent = "刪除中...";
+        setStatus("刪除中...", "working");
         const response = await fetch(`/api/dividends/${encodeURIComponent(id)}`, { method: "DELETE" });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.detail || "股息刪除失敗");
         setDividends(payload.dividends || []);
         if (editingId === id) resetForm();
-        statusText.textContent = `已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+        setStatus(`已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, "success");
       }
 
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         submitButton.disabled = true;
-        statusText.textContent = editingId ? "更新中..." : "儲存中...";
+        setStatus(editingId ? "更新中..." : "儲存中...", "working");
         try {
           const payload = await saveDividend();
           setDividends(payload.dividends || []);
-          statusText.textContent = editingId
-            ? `已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`
-            : `已新增，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+          setStatus(
+            editingId
+              ? `已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`
+              : `已新增，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`,
+            "success",
+          );
           resetForm();
         } catch (error) {
-          statusText.textContent = error.message;
+          setStatus(error.message, "error");
         } finally {
           submitButton.disabled = false;
         }
@@ -530,17 +499,17 @@
 
       cancelEditButton.addEventListener("click", () => {
         resetForm();
-        statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+        setStatus(`已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, "success");
       });
 
       Object.values(filters).forEach((input) => {
         input.addEventListener("input", () => {
           renderDividends();
-          statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+          setStatus(`已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, "success");
         });
         input.addEventListener("change", () => {
           renderDividends();
-          statusText.textContent = `已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`;
+          setStatus(`已載入 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, "success");
         });
       });
 
@@ -557,7 +526,7 @@
           try {
             await deleteDividend(id);
           } catch (error) {
-            statusText.textContent = error.message;
+            setStatus(error.message, "error");
           } finally {
             button.disabled = false;
           }
@@ -565,7 +534,7 @@
       });
 
       loadDividends().catch((error) => {
-        statusText.textContent = error.message;
+        setStatus(error.message, "error");
         renderDividends();
       });
     </script>
