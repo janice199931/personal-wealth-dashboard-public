@@ -318,8 +318,9 @@ function applyPortfolioData(portfolio, history = []) {
   if (!portfolio?.summary) return;
   const twMarket = portfolio.markets?.TW ?? {};
   const usMarket = portfolio.markets?.US ?? {};
-  const twHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "TW");
-  const usHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "US");
+  const byMarketValueDesc = (a, b) => Number(b.marketValueTWD ?? b.marketValue ?? 0) - Number(a.marketValueTWD ?? a.marketValue ?? 0);
+  const twHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "TW").sort(byMarketValueDesc);
+  const usHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "US").sort(byMarketValueDesc);
 
   usdToTwd = Number(portfolio.fxRate) || usdToTwd;
   data.updatedAt = portfolio.updatedAt || "";
@@ -339,6 +340,7 @@ function applyPortfolioData(portfolio, history = []) {
       shares: formatSharesValue(holding.shares),
       price: Number(holding.price),
       cost: Number(holding.averageCost),
+      marketValue: Number(holding.marketValueTWD),
       gain: Number(holding.unrealizedGainTWD),
       returnRate: `${Number(holding.returnRate).toFixed(2)}%`,
     })),
