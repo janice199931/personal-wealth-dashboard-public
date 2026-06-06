@@ -298,6 +298,8 @@ def rebuild_portfolio_outputs() -> dict[str, Any]:
         history = update_history_from_data(portfolio, db_store.read_net_worth_history())
         db_store.write_portfolio_snapshot(portfolio)
         db_store.write_net_worth_history(history)
+        if len(history) <= 1 and db_store.read_finance_data({}).get("years"):
+            backfill_history_from_finance_data(portfolio)
         return portfolio
 
 
