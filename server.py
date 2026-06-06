@@ -741,11 +741,11 @@ def restore_backup(backup_name: str) -> dict:
 
 @app.get("/api/transactions")
 def get_transactions() -> dict:
-    transactions = read_transactions(use_examples=True)
+    transactions = read_transactions(use_examples=False)
     transactions, changed = ensure_transaction_ids(transactions)
     if changed:
         write_transactions(transactions)
-    return {"ok": True, "transactions": transactions, "source": db_store.active_backend() if transactions else "example"}
+    return {"ok": True, "transactions": transactions, "source": db_store.active_backend() if transactions else "empty"}
 
 
 @app.post("/api/transactions")
@@ -1083,6 +1083,16 @@ def settings_page() -> FileResponse:
 @app.api_route("/settings", methods=["GET", "HEAD"])
 def settings_redirect() -> RedirectResponse:
     return RedirectResponse(url="/settings.html", status_code=307)
+
+
+@app.api_route("/transaction-manager.html", methods=["GET", "HEAD"])
+def transaction_manager_page() -> FileResponse:
+    return FileResponse(ROOT / "transaction-manager.html")
+
+
+@app.api_route("/dividend-manager.html", methods=["GET", "HEAD"])
+def dividend_manager_page() -> FileResponse:
+    return FileResponse(ROOT / "dividend-manager.html")
 
 
 app.mount("/", StaticFiles(directory=ROOT, html=True), name="static")
