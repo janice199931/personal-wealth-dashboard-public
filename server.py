@@ -201,8 +201,28 @@ def parse_dividend_number(payload: dict[str, Any], key: str, label: str, allow_z
     return value
 
 
+def normalize_input_date(value: Any, label: str = "日期") -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail=f"{label} 不可空白。")
+    normalized = text.replace(".", "/").replace("-", "/")
+    parts = [part.strip() for part in normalized.split("/") if part.strip()]
+    if len(parts) == 3:
+        try:
+            year, month, day = [int(part) for part in parts]
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=f"{label} 格式錯誤，請輸入 2026-02-11 或 115/2/11。") from error
+        if year < 1911:
+            year += 1911
+        try:
+            return datetime(year, month, day).date().isoformat()
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=f"{label} 不是有效日期。") from error
+    raise HTTPException(status_code=400, detail=f"{label} 格式錯誤，請輸入 2026-02-11 或 115/2/11。")
+
+
 def normalize_transaction(payload: dict[str, Any]) -> dict[str, Any]:
-    date = str(payload.get("date", "")).strip()
+    date = normalize_input_date(payload.get("date"))
     market = str(payload.get("market", "")).strip().upper()
     symbol = str(payload.get("symbol", "")).strip().upper()
     name = str(payload.get("name", "")).strip()
@@ -242,7 +262,7 @@ def normalize_transaction(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_dividend(payload: dict[str, Any]) -> dict[str, Any]:
-    date = str(payload.get("date", "")).strip()
+    date = normalize_input_date(payload.get("date"))
     symbol = str(payload.get("symbol", "")).strip().upper()
     name = str(payload.get("name", "")).strip()
     market = str(payload.get("market", "")).strip().upper()
