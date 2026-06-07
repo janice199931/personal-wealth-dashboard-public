@@ -1131,4 +1131,9 @@ def dividend_manager_page() -> FileResponse:
     return FileResponse(ROOT / "dividend-manager.html")
 
 
+@app.api_route("/snapshot-manager.html", methods=["GET", "HEAD"])
+def snapshot_manager_page() -> FileResponse:
+    return FileResponse(ROOT / "snapshot-manager.html")
+
+
 app.mount("/", StaticFiles(directory=ROOT, html=True), name="static")

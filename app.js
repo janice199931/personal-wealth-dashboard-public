@@ -1375,7 +1375,6 @@ function formatMonthLabel(month) {
 function renderYearSummary(year) {
   return [
     { label: "全年收入", value: money.format(year.income), tone: "positive" },
-    ...(year.investmentIncome ? [{ label: "投資收入", value: money.format(year.investmentIncome), tone: "positive" }] : []),
     { label: "全年支出", value: money.format(year.expense), tone: "negative" },
     { label: "全年淨增加", value: money.format(year.net), tone: year.net >= 0 ? "positive" : "negative" },
     { label: "全年儲蓄率", value: `${year.savingsRate}%`, tone: year.savingsRate >= 0 ? "positive" : "negative" },
