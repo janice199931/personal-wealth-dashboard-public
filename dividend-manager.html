@@ -244,14 +244,6 @@
             <option value="USD">USD</option>
           </select>
         </label>
-        <label>
-          扣稅
-          <input name="tax" type="number" step="0.01" min="0" value="0" />
-        </label>
-        <label class="full">
-          備註
-          <input name="note" placeholder="選填" />
-        </label>
         <div class="actions">
           <span class="status" id="statusText">載入股息紀錄中...</span>
           <div class="row-actions">
@@ -288,9 +280,6 @@
                 <th>市場</th>
                 <th>股票</th>
                 <th>股息</th>
-                <th>扣稅</th>
-                <th>台幣淨額</th>
-                <th>備註</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -545,13 +534,9 @@
         return formatInputDate(date);
       }
 
-      function netAmount(item) {
-        return (Number(item.amount) || 0) - (Number(item.tax) || 0);
-      }
-
-      function netTwd(item) {
-        const net = netAmount(item);
-        return item.currency === "USD" ? net * fxRate : net;
+      function dividendTwd(item) {
+        const amount = Number(item.amount) || 0;
+        return item.currency === "USD" ? amount * fxRate : amount;
       }
 
       function currentYear() {
@@ -579,7 +564,6 @@
         form.reset();
         form.elements.date.value = "";
         syncCurrencyWithMarket();
-        form.elements.tax.value = "0";
         lastAutoFilledName = "";
         setFormMode(null);
       }
@@ -623,8 +607,8 @@
       function renderSummary() {
         const year = currentYear();
         const thisYear = dividends.filter((item) => String(item.date || "").slice(0, 4) === year);
-        const twTotal = thisYear.filter((item) => item.market === "TW").reduce((sum, item) => sum + netTwd(item), 0);
-        const usTotal = thisYear.filter((item) => item.market === "US").reduce((sum, item) => sum + netTwd(item), 0);
+        const twTotal = thisYear.filter((item) => item.market === "TW").reduce((sum, item) => sum + dividendTwd(item), 0);
+        const usTotal = thisYear.filter((item) => item.market === "US").reduce((sum, item) => sum + dividendTwd(item), 0);
         document.getElementById("yearDividendTotal").textContent = money.format(Math.round(twTotal + usTotal));
         document.getElementById("twDividendTotal").textContent = money.format(Math.round(twTotal));
         document.getElementById("usDividendTotal").textContent = money.format(Math.round(usTotal));
@@ -635,7 +619,7 @@
         const items = visibleDividends();
         renderSummary();
         if (!items.length) {
-          rows.innerHTML = `<tr><td colspan="8">尚無股息紀錄</td></tr>`;
+          rows.innerHTML = `<tr><td colspan="5">尚無股息紀錄</td></tr>`;
           return;
         }
         rows.innerHTML = items
@@ -645,9 +629,6 @@
               <td><span class="badge">${escapeHtml(item.market)}</span></td>
               <td>${escapeHtml(item.symbol)}<br />${escapeHtml(item.name)}</td>
               <td>${decimal.format(Number(item.amount) || 0)} ${escapeHtml(item.currency)}</td>
-              <td>${decimal.format(Number(item.tax) || 0)} ${escapeHtml(item.currency)}</td>
-              <td>${money.format(Math.round(netTwd(item)))}</td>
-              <td>${escapeHtml(item.note)}</td>
               <td>
                 <div class="row-actions">
                   <button class="secondary" type="button" data-action="edit" data-id="${escapeHtml(item.id)}">編輯</button>
@@ -678,8 +659,8 @@
           name,
           amount: Number(formData.get("amount")),
           currency: formData.get("currency"),
-          tax: Number(formData.get("tax") || 0),
-          note: String(formData.get("note") || "").trim(),
+          tax: 0,
+          note: "",
         };
       }
 
@@ -693,8 +674,6 @@
         lastAutoFilledName = "";
         form.elements.amount.value = dividend.amount ?? "";
         form.elements.currency.value = dividend.currency || "TWD";
-        form.elements.tax.value = dividend.tax ?? 0;
-        form.elements.note.value = dividend.note || "";
         setFormMode(id);
         setStatus("正在編輯股息，確認欄位後按「更新股息」。", "working");
         form.scrollIntoView({ behavior: "smooth", block: "start" });

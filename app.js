@@ -294,9 +294,7 @@ function applyDividendData(dividends) {
 
 function dividendNetTwd(dividend) {
   const amount = Number(dividend.amount) || 0;
-  const tax = Number(dividend.tax) || 0;
-  const net = amount - tax;
-  return dividend.currency === "USD" ? net * usdToTwd : net;
+  return dividend.currency === "USD" ? amount * usdToTwd : amount;
 }
 
 function currentYearDividendIncome() {
