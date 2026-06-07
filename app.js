@@ -758,7 +758,7 @@ function renderKpis() {
   const rows = [
     { label: "總資產", value: money.format(metrics.totalAssets) },
     { label: "股票資產", value: money.format(metrics.stockAssets) },
-    { label: "現金", value: money.format(metrics.cash) },
+    { label: "流動資金", value: money.format(metrics.cash) },
     { label: "負債", value: money.format(metrics.debt) },
     { label: "本月增加", value: money.format(metrics.monthNet) },
   ];
