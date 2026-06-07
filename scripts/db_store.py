@@ -648,6 +648,49 @@ def write_dividends(dividends: list[dict[str, Any]]) -> None:
     )
 
 
+def upsert_dividend(dividend: dict[str, Any]) -> Backend:
+    timestamp = now_iso()
+    row = (
+        str(dividend["id"]),
+        str(dividend.get("date", "")),
+        str(dividend.get("market", "")).upper(),
+        str(dividend.get("symbol", "")).upper(),
+        encode(dividend),
+        timestamp,
+    )
+    return _execute_write(
+        """
+        INSERT INTO dividends (id, date, market, symbol, payload, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            date = excluded.date,
+            market = excluded.market,
+            symbol = excluded.symbol,
+            payload = excluded.payload,
+            updated_at = excluded.updated_at
+        """,
+        """
+        INSERT INTO dividends (id, date, market, symbol, payload, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT(id) DO UPDATE SET
+            date = EXCLUDED.date,
+            market = EXCLUDED.market,
+            symbol = EXCLUDED.symbol,
+            payload = EXCLUDED.payload,
+            updated_at = EXCLUDED.updated_at
+        """,
+        row,
+    )
+
+
+def delete_dividend(dividend_id: str) -> Backend:
+    return _execute_write(
+        "DELETE FROM dividends WHERE id = ?",
+        "DELETE FROM dividends WHERE id = %s",
+        (dividend_id,),
+    )
+
+
 def clear_table(table: str) -> None:
     if table not in TABLES:
         raise ValueError(f"Unknown table: {table}")

@@ -869,8 +869,8 @@ async def create_dividend(request: Request) -> dict:
     dividends, changed = ensure_dividend_ids(read_dividends())
     if changed:
         write_dividends(dividends)
-    next_dividends = dividends + [dividend]
-    write_dividends(next_dividends)
+    db_store.upsert_dividend(dividend)
+    next_dividends = read_dividends()
     return {"ok": True, "dividend": dividend, "dividends": next_dividends}
 
 
@@ -889,20 +889,18 @@ async def update_dividend(dividend_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="找不到股息紀錄。")
 
     dividend = normalize_dividend({**payload, "id": dividend_id})
-    next_dividends = dividends[:]
-    next_dividends[index] = dividend
-    write_dividends(next_dividends)
+    db_store.upsert_dividend(dividend)
+    next_dividends = read_dividends()
     return {"ok": True, "dividend": dividend, "dividends": next_dividends}
 
 
 @app.delete("/api/dividends/{dividend_id}")
 def delete_dividend(dividend_id: str) -> dict:
     dividends, changed = ensure_dividend_ids(read_dividends())
-    next_dividends = [row for row in dividends if row.get("id") != dividend_id]
-    if len(next_dividends) == len(dividends):
+    if not any(row.get("id") == dividend_id for row in dividends):
         raise HTTPException(status_code=404, detail="找不到股息紀錄。")
-
-    write_dividends(next_dividends)
+    db_store.delete_dividend(dividend_id)
+    next_dividends = read_dividends()
     return {"ok": True, "dividend": None, "dividends": next_dividends}
 
 
