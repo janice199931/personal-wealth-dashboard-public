@@ -35,6 +35,7 @@ const data = {
   ],
   monthly: [],
   assetTrend: [],
+  transactions: [],
 };
 
 const colors = ["#e9a3ad", "#f0bd76", "#a8c4a0", "#b8acd3", "#9ec7dc", "#d7a7ad"];
@@ -94,6 +95,15 @@ function todayKey() {
     day: "2-digit",
   });
   return formatter.format(new Date()).replaceAll("-", "");
+}
+
+function currentMonthKey() {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+  });
+  return formatter.format(new Date());
 }
 
 function rocYear(year) {
@@ -290,6 +300,10 @@ function formatPlainTwdApproxFromUsd(value, showSign = false) {
 
 function applyDividendData(dividends) {
   data.dividends = Array.isArray(dividends) ? dividends : [];
+}
+
+function applyTransactionData(transactions) {
+  data.transactions = Array.isArray(transactions) ? transactions : [];
 }
 
 function dividendNetTwd(dividend) {
@@ -651,6 +665,18 @@ function getPortfolioMetrics() {
   );
   const usGain = us.holdings.reduce((sum, holding) => sum + parseAmount(holding.gain), 0);
   const twShares = parseShares(tw.shares);
+  const monthlyInvestment = data.transactions
+    .filter((transaction) => {
+      const action = String(transaction.action || "").toUpperCase();
+      return action === "BUY" && String(transaction.date || "").slice(0, 7) === currentMonthKey();
+    })
+    .reduce((sum, transaction) => {
+      const shares = Number(transaction.shares) || 0;
+      const price = Number(transaction.price) || 0;
+      const fee = Number(transaction.fee) || 0;
+      const amount = shares * price + fee;
+      return sum + (transaction.market === "US" ? amount * usdToTwd : amount);
+    }, 0);
 
   return {
     taiwanStocks,
@@ -676,6 +702,7 @@ function getPortfolioMetrics() {
     usCostTwd: us.costTwd ?? Math.round(usCost * usdToTwd),
     usGainTwd: us.gainTwd ?? Math.round(usGain * usdToTwd),
     usReturnRate: percent(usGain, usCost, 2),
+    monthlyInvestment,
   };
 }
 
@@ -755,12 +782,25 @@ function renderHero() {
 
 function renderKpis() {
   const metrics = getPortfolioMetrics();
+  const emergencyFundTarget = 200000;
+  const monthlyInvestmentTarget = 35000;
   const rows = [
     { label: "總資產", value: money.format(metrics.totalAssets) },
     { label: "股票資產", value: money.format(metrics.stockAssets) },
-    { label: "流動資金", value: money.format(metrics.cash) },
+    {
+      label: "緊急預備金",
+      value: money.format(metrics.cash),
+      change: `${money.format(metrics.cash)} / ${money.format(emergencyFundTarget)}`,
+      tone: metrics.cash >= emergencyFundTarget ? "positive" : "",
+    },
     { label: "負債", value: money.format(metrics.debt) },
     { label: "本月增加", value: money.format(metrics.monthNet) },
+    {
+      label: "本月投資",
+      value: money.format(Math.round(metrics.monthlyInvestment)),
+      change: `${money.format(Math.round(metrics.monthlyInvestment))} / ${money.format(monthlyInvestmentTarget)}`,
+      tone: metrics.monthlyInvestment >= monthlyInvestmentTarget ? "positive" : "",
+    },
   ];
 
   document.getElementById("kpiGrid").innerHTML = rows
@@ -1484,6 +1524,7 @@ async function loadExternalData() {
   const portfolio = await fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio");
   const history = await fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history");
   const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
+  const transactions = await fetchJson("/api/transactions", "./data/example-transactions.json", [], "transactions");
   await refreshDataStatus().catch(() => {});
 
   if (portfolio) {
@@ -1491,6 +1532,9 @@ async function loadExternalData() {
   }
   if (dividends) {
     applyDividendData(dividends);
+  }
+  if (transactions) {
+    applyTransactionData(transactions);
   }
   if (financeData?.years?.length) window.financeData = financeData;
 }
