@@ -1,5 +1,6 @@
 const form = document.getElementById("transactionForm");
 const rows = document.getElementById("transactionRows");
+const cards = document.getElementById("transactionCards");
 const statusText = document.getElementById("statusText");
 const submitButton = document.getElementById("submitButton");
 const cancelEditButton = document.getElementById("cancelEditButton");
@@ -319,6 +320,7 @@ function renderTransactions() {
   const visibleTransactions = filteredTransactions();
   if (!visibleTransactions.length) {
     rows.innerHTML = `<tr><td colspan="9">尚無交易紀錄</td></tr>`;
+    if (cards) cards.innerHTML = `<div class="empty-list">尚無交易紀錄</div>`;
     return;
   }
 
@@ -343,6 +345,37 @@ function renderTransactions() {
         </tr>
       `,
     )
+    .join("");
+
+  if (!cards) return;
+  cards.innerHTML = visibleTransactions
+    .map((item) => {
+      const actionTone = item.action === "SELL" ? "sell" : "buy";
+      const total = Number(item.shares) * Number(item.price) + Number(item.fee || 0);
+      return `<article class="transaction-card ${item.id === editingId ? "editing-card" : ""}">
+        <div class="transaction-card-head">
+          <div>
+            <span>${escapeHtml(formatDisplayDate(item.date))}</span>
+            <strong>${escapeHtml(item.symbol)} ${escapeHtml(item.name)}</strong>
+          </div>
+          <div class="transaction-badges">
+            <span class="badge">${escapeHtml(item.market)}</span>
+            <span class="badge ${actionTone}">${escapeHtml(item.action)}</span>
+          </div>
+        </div>
+        <div class="transaction-card-grid">
+          <div><span>股數</span><strong>${formatNumber(item.shares)}</strong></div>
+          <div><span>成交價格</span><strong>${formatNumber(item.price)}</strong></div>
+          <div><span>手續費</span><strong>${formatNumber(item.fee)}</strong></div>
+          <div><span>估算金額</span><strong>${formatNumber(total)}</strong></div>
+        </div>
+        ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
+        <div class="row-actions">
+          <button class="secondary" type="button" data-action="edit" data-id="${escapeHtml(item.id)}">編輯</button>
+          <button class="danger" type="button" data-action="delete" data-id="${escapeHtml(item.id)}">刪除</button>
+        </div>
+      </article>`;
+    })
     .join("");
 }
 
@@ -488,6 +521,30 @@ rows.addEventListener("click", async (event) => {
     }
   }
 });
+
+if (cards) {
+  cards.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-action][data-id]");
+    if (!button) return;
+
+    const { action, id } = button.dataset;
+    if (action === "edit") {
+      editTransaction(id);
+      return;
+    }
+
+    if (action === "delete") {
+      button.disabled = true;
+      try {
+        await deleteTransaction(id);
+      } catch (error) {
+        setStatus(error.message, "error");
+      } finally {
+        button.disabled = false;
+      }
+    }
+  });
+}
 
 loadTransactions().catch((error) => {
   setStatus(error.message, "error");

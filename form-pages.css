@@ -364,6 +364,19 @@ th {
   font-weight: 900;
 }
 
+.transaction-card-list {
+  display: none;
+}
+
+.empty-list {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  color: var(--muted);
+  background: rgba(255, 253, 250, 0.68);
+  font-weight: 850;
+}
+
 @media (max-width: 720px) {
   main {
     width: min(100% - 32px, 460px);
@@ -402,5 +415,104 @@ th {
 
   table {
     min-width: 640px;
+  }
+
+  .transaction-table-wrap {
+    display: none;
+  }
+
+  .transaction-card-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .transaction-card {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: rgba(255, 253, 250, 0.74);
+  }
+
+  .transaction-card.editing-card {
+    border-color: rgba(216, 104, 104, 0.32);
+    background: rgba(255, 231, 231, 0.78);
+  }
+
+  .transaction-card-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .transaction-card-head div:first-child {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .transaction-card-head span,
+  .transaction-card-grid span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .transaction-card-head strong {
+    overflow-wrap: anywhere;
+    font-size: 18px;
+    line-height: 1.35;
+  }
+
+  .transaction-badges {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .badge.buy {
+    color: #557b4c;
+    background: rgba(223, 239, 211, 0.78);
+  }
+
+  .badge.sell {
+    color: #8c2f3f;
+    background: rgba(255, 223, 223, 0.86);
+  }
+
+  .transaction-card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .transaction-card-grid div {
+    min-height: 66px;
+    padding: 10px;
+    display: grid;
+    gap: 6px;
+    align-content: center;
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    background: rgba(255, 246, 245, 0.64);
+  }
+
+  .transaction-card-grid strong {
+    overflow-wrap: anywhere;
+    font-size: 15px;
+  }
+
+  .transaction-card p {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 14px;
+    color: var(--muted);
+    background: rgba(255, 246, 245, 0.64);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.55;
   }
 }
