@@ -799,7 +799,7 @@ function renderKpis() {
       label: "本月投資",
       value: money.format(Math.round(metrics.monthlyInvestment)),
       change: `${money.format(Math.round(metrics.monthlyInvestment))} / ${money.format(monthlyInvestmentTarget)}`,
-      tone: metrics.monthlyInvestment >= monthlyInvestmentTarget ? "positive" : "",
+      tone: "positive",
     },
   ];
 
