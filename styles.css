@@ -1273,6 +1273,18 @@ canvas {
   gap: 10px;
 }
 
+.loading-row,
+.empty-state {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--muted);
+  background: rgba(255, 253, 250, 0.68);
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.6;
+}
+
 .year-detail {
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -1587,28 +1599,47 @@ canvas {
 
 @media (max-width: 720px) {
   .sidebar {
-    position: static;
-    width: calc(100% - 24px);
-    max-width: 420px;
+    position: sticky;
+    top: 0;
+    width: 100%;
+    max-width: none;
     min-height: auto;
-    margin: 12px;
-    padding: 14px;
+    margin: 0;
+    padding: 10px 12px;
     border: 1px solid var(--glass-border);
-    border-radius: 20px;
+    border-width: 0 0 1px;
+    border-radius: 0;
+    background:
+      linear-gradient(180deg, rgba(255, 253, 250, 0.96), rgba(255, 239, 237, 0.9)),
+      rgba(255, 248, 246, 0.92);
   }
 
   .sidebar-brand {
-    margin-bottom: 14px;
+    display: none;
   }
 
   .sidebar-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .sidebar-nav a:nth-child(2),
+  .sidebar-nav a:nth-child(3),
+  .sidebar-nav a:nth-child(6),
+  .sidebar-nav a:nth-child(7) {
+    display: none;
   }
 
   .sidebar-nav a {
     min-height: 42px;
-    padding: 9px 10px;
+    justify-content: center;
+    padding: 9px 8px;
+    border-radius: 16px;
+    font-size: 12px;
+  }
+
+  .sidebar-nav a .nav-icon {
+    display: none;
   }
 
   .sidebar-sync {

@@ -4,96 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>更新資產快照</title>
-    <style>
-      :root {
-        color-scheme: light;
-        --surface: rgba(255, 253, 250, 0.9);
-        --ink: #4d3730;
-        --muted: #8d746c;
-        --line: rgba(204, 154, 143, 0.2);
-        --glass-border: rgba(226, 173, 162, 0.24);
-        --shadow: 0 14px 34px rgba(158, 103, 88, 0.09);
-      }
-
-      * { box-sizing: border-box; }
-
-      body {
-        margin: 0;
-        min-height: 100vh;
-        color: var(--ink);
-        font-family: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
-        background:
-          radial-gradient(circle at 58% 12%, rgba(255, 210, 210, 0.46), transparent 34%),
-          radial-gradient(circle at 88% 4%, rgba(241, 222, 205, 0.6), transparent 24%),
-          linear-gradient(180deg, #fff8f3 0%, #fff2ee 48%, #f9eadf 100%);
-      }
-
-      main {
-        width: min(980px, calc(100% - 32px));
-        margin: 0 auto;
-        padding: 28px 0 40px;
-      }
-
-      .card, form {
-        background:
-          linear-gradient(135deg, rgba(255, 253, 250, 0.96), rgba(255, 238, 237, 0.62)),
-          var(--surface);
-        border: 1px solid var(--glass-border);
-        border-radius: 24px;
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(18px);
-      }
-
-      .card { padding: 22px; margin-bottom: 18px; }
-      .hero-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
-      h1 { margin: 0 0 8px; font-size: clamp(30px, 5vw, 48px); line-height: 1; }
-      p { color: var(--muted); line-height: 1.7; }
-      a { color: #b86866; font-weight: 900; text-decoration: none; }
-
-      form {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-        padding: 22px;
-      }
-
-      label { display: grid; gap: 8px; color: #d17f87; font-size: 13px; font-weight: 800; }
-      input, button {
-        border: 1px solid var(--glass-border);
-        border-radius: 14px;
-        padding: 12px 14px;
-        color: var(--ink);
-        background: rgba(255, 253, 250, 0.82);
-        font: inherit;
-      }
-      input:focus { outline: 2px solid rgba(209, 127, 135, 0.38); outline-offset: 2px; }
-      button {
-        cursor: pointer;
-        font-weight: 900;
-        background: linear-gradient(135deg, rgba(246, 183, 183, 0.92), rgba(255, 215, 168, 0.72));
-        box-shadow: var(--shadow);
-      }
-      button:disabled { cursor: wait; opacity: 0.58; }
-
-      .full { grid-column: 1 / -1; }
-      .actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-      .status { color: var(--muted); font-weight: 850; }
-      .status.success { color: #557b4c; }
-      .status.error { color: #b84a5f; }
-      .result-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-      .result-box {
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 16px;
-        background: rgba(255, 253, 250, 0.72);
-      }
-      .result-box span { display: block; color: var(--muted); font-weight: 850; margin-bottom: 8px; }
-      .result-box strong { font-size: 24px; }
-
-      @media (max-width: 720px) {
-        .hero-card, form, .result-grid { grid-template-columns: 1fr; display: grid; }
-      }
-    </style>
+    <link rel="stylesheet" href="./form-pages.css?v=20260613-mobile-ux" />
   </head>
   <body>
     <main>
@@ -161,6 +72,15 @@
         resultCard.hidden = false;
       }
 
+      async function readApiPayload(response, fallbackMessage) {
+        const text = await response.text();
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          return { detail: fallbackMessage };
+        }
+      }
+
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         submitButton.disabled = true;
@@ -168,12 +88,12 @@
         try {
           const data = new FormData(form);
           const response = await fetch("/api/update-asset-snapshot", { method: "POST", body: data });
-          const payload = await response.json();
-          if (!response.ok) throw new Error(payload.detail || "資產快照更新失敗");
+          const payload = await readApiPayload(response, "資產快照更新失敗，請重新整理或確認登入狀態。");
+          if (!response.ok) throw new Error(payload.detail || "資產快照更新失敗，請重新整理或確認登入狀態。");
           renderResult(payload);
           setStatus("資產快照已更新，回首頁即可看到最新數字。", "success");
         } catch (error) {
-          setStatus(error.message || "資產快照更新失敗", "error");
+          setStatus(error.message || "資產快照更新失敗，請稍後再試。", "error");
         } finally {
           submitButton.disabled = false;
         }

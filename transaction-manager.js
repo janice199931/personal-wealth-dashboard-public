@@ -39,6 +39,19 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+async function readApiPayload(response, fallbackMessage) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { detail: fallbackMessage };
+  }
+}
+
+function friendlyApiError(payload, fallbackMessage) {
+  return payload?.detail || fallbackMessage;
+}
+
 function rocYear(year) {
   return Number(year) - 1911;
 }
@@ -373,8 +386,8 @@ function editTransaction(id) {
 async function loadTransactions() {
   await loadPortfolioStockNames();
   const response = await fetch("/api/transactions", { cache: "no-store" });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.detail || "交易紀錄載入失敗");
+  const payload = await readApiPayload(response, "交易紀錄讀取失敗，請重新整理或確認登入狀態。");
+  if (!response.ok) throw new Error(friendlyApiError(payload, "交易紀錄讀取失敗，請重新整理或確認登入狀態。"));
   setTransactions(payload.transactions || []);
   setStatus(`已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 }
@@ -387,8 +400,8 @@ async function saveTransaction() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(currentTransaction()),
   });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.detail || "交易儲存失敗");
+  const payload = await readApiPayload(response, "交易儲存失敗，請稍後再試。");
+  if (!response.ok) throw new Error(friendlyApiError(payload, "交易儲存失敗，請稍後再試。"));
   return payload;
 }
 
@@ -400,8 +413,8 @@ async function deleteTransaction(id) {
 
   setStatus("刪除中...", "working");
   const response = await fetch(`/api/transactions/${encodeURIComponent(id)}`, { method: "DELETE" });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.detail || "交易刪除失敗");
+  const payload = await readApiPayload(response, "交易刪除失敗，請稍後再試。");
+  if (!response.ok) throw new Error(friendlyApiError(payload, "交易刪除失敗，請稍後再試。"));
 
   setTransactions(payload.transactions || []);
   if (editingId === id) resetForm();

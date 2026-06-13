@@ -1029,7 +1029,7 @@ function renderDetailedPriceUpdate(payload) {
 
 function renderPriceUpdateNotice(message) {
   document.getElementById("dataUpdates").innerHTML = `
-    <div class="update-row"><span>Auto Price</span><strong>${escapeHtml(message)}</strong></div>
+    <div class="update-row"><span>股價狀態</span><strong>${escapeHtml(message)}</strong></div>
   `;
 }
 
@@ -1089,13 +1089,7 @@ function setupPriceUpdater() {
     progress = startPriceProgress(button);
     try {
       const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
-      const responseText = await response.text();
-      let payload = {};
-      try {
-        payload = responseText ? JSON.parse(responseText) : {};
-      } catch (error) {
-        payload = { detail: responseText || "伺服器回傳格式錯誤" };
-      }
+      const payload = await readApiPayload(response, "股價更新失敗，請重新整理或確認登入狀態。");
       if (!response.ok) {
         const missingRouteMessage =
           response.status === 404
@@ -1162,18 +1156,19 @@ async function runAutomaticPriceUpdate() {
     renderDetailedPriceUpdate(payload);
   } catch (error) {
     console.warn("自動更新股價失敗", error);
-    renderPriceUpdateNotice("自動更新失敗，可手動按更新股價");
+    renderDataUpdates();
+    setBackupStatus("股價尚未自動更新；需要時可手動按「更新股價」。");
   } finally {
     progress.stop();
   }
 }
 
-async function readApiPayload(response) {
+async function readApiPayload(response, fallbackMessage = "資料讀取失敗，請重新整理或確認登入狀態。") {
   const text = await response.text();
   try {
     return text ? JSON.parse(text) : {};
   } catch {
-    return { detail: text || "伺服器回傳格式錯誤" };
+    return { detail: fallbackMessage };
   }
 }
 
@@ -1401,9 +1396,18 @@ function renderMonthlyRows(year) {
 }
 
 function renderLedger() {
-  if (!window.financeData) return;
+  const target = document.getElementById("yearAccordion");
+  if (!target) return;
+  if (!window.financeData?.years?.length) {
+    target.innerHTML = '<div class="empty-state">目前沒有可顯示的年度/月度對帳資料。</div>';
+    return;
+  }
   const years = applyDividendIncomeToFinanceYears(window.financeData.years ?? []);
-  document.getElementById("yearAccordion").innerHTML = years
+  if (!years.length) {
+    target.innerHTML = '<div class="empty-state">目前沒有可顯示的年度/月度對帳資料。</div>';
+    return;
+  }
+  target.innerHTML = years
     .map((year, index) => `<details class="year-detail" ${index === 0 ? "open" : ""}>
       <summary>${rocYear(year.year)} 年</summary>
       <div class="year-summary">${renderYearSummary(year)}</div>
