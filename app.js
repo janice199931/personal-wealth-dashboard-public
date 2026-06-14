@@ -54,6 +54,9 @@ const number = new Intl.NumberFormat("zh-TW");
 let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
+const EMERGENCY_FUND_TARGET = 200000;
+const MONTHLY_INVESTMENT_TARGET = 35000;
+const ANNUAL_INVESTMENT_TARGET = MONTHLY_INVESTMENT_TARGET * 12;
 let dataStatus = null;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -102,6 +105,14 @@ function currentMonthKey() {
     timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
+  });
+  return formatter.format(new Date());
+}
+
+function currentYearKey() {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
   });
   return formatter.format(new Date());
 }
@@ -325,6 +336,23 @@ function dividendIncomeByMonth() {
     months[month] = (months[month] || 0) + dividendNetTwd(dividend);
     return months;
   }, {});
+}
+
+function transactionInvestmentAmount(transaction) {
+  const shares = Number(transaction.shares) || 0;
+  const price = Number(transaction.price) || 0;
+  const fee = Number(transaction.fee) || 0;
+  const amount = shares * price + fee;
+  return transaction.market === "US" ? amount * usdToTwd : amount;
+}
+
+function investmentAmountForPeriod(periodKey) {
+  return data.transactions
+    .filter((transaction) => {
+      const action = String(transaction.action || "").toUpperCase();
+      return action === "BUY" && String(transaction.date || "").startsWith(periodKey);
+    })
+    .reduce((sum, transaction) => sum + transactionInvestmentAmount(transaction), 0);
 }
 
 function applyDividendIncomeToFinanceYears(years) {
@@ -665,18 +693,8 @@ function getPortfolioMetrics() {
   );
   const usGain = us.holdings.reduce((sum, holding) => sum + parseAmount(holding.gain), 0);
   const twShares = parseShares(tw.shares);
-  const monthlyInvestment = data.transactions
-    .filter((transaction) => {
-      const action = String(transaction.action || "").toUpperCase();
-      return action === "BUY" && String(transaction.date || "").slice(0, 7) === currentMonthKey();
-    })
-    .reduce((sum, transaction) => {
-      const shares = Number(transaction.shares) || 0;
-      const price = Number(transaction.price) || 0;
-      const fee = Number(transaction.fee) || 0;
-      const amount = shares * price + fee;
-      return sum + (transaction.market === "US" ? amount * usdToTwd : amount);
-    }, 0);
+  const monthlyInvestment = investmentAmountForPeriod(currentMonthKey());
+  const annualInvestment = investmentAmountForPeriod(currentYearKey());
 
   return {
     taiwanStocks,
@@ -703,6 +721,7 @@ function getPortfolioMetrics() {
     usGainTwd: us.gainTwd ?? Math.round(usGain * usdToTwd),
     usReturnRate: percent(usGain, usCost, 2),
     monthlyInvestment,
+    annualInvestment,
   };
 }
 
@@ -782,23 +801,29 @@ function renderHero() {
 
 function renderKpis() {
   const metrics = getPortfolioMetrics();
-  const emergencyFundTarget = 200000;
-  const monthlyInvestmentTarget = 35000;
+  const emergencyProgress = Math.min(100, Math.round((metrics.cash / EMERGENCY_FUND_TARGET) * 100));
+  const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
+  const monthlyInvestmentGap = MONTHLY_INVESTMENT_TARGET - monthlyInvestmentRounded;
+  const monthlyInvestmentNote = monthlyInvestmentGap > 0
+    ? `還差 ${money.format(monthlyInvestmentGap)} 達成本月投資目標`
+    : `已超過目標 ${money.format(Math.abs(monthlyInvestmentGap))}`;
   const rows = [
     { label: "總資產", value: money.format(metrics.totalAssets) },
     { label: "股票資產", value: money.format(metrics.stockAssets) },
     {
       label: "緊急預備金",
       value: money.format(metrics.cash),
-      change: `${money.format(metrics.cash)} / ${money.format(emergencyFundTarget)}`,
-      tone: metrics.cash >= emergencyFundTarget ? "positive" : "",
+      change: `${money.format(metrics.cash)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
+      tone: "positive",
+      progress: emergencyProgress,
     },
     { label: "負債", value: money.format(metrics.debt) },
     { label: "本月增加", value: money.format(metrics.monthNet) },
     {
       label: "本月投資",
-      value: money.format(Math.round(metrics.monthlyInvestment)),
-      change: `${money.format(Math.round(metrics.monthlyInvestment))} / ${money.format(monthlyInvestmentTarget)}`,
+      value: money.format(monthlyInvestmentRounded),
+      change: `${money.format(monthlyInvestmentRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)}`,
+      note: monthlyInvestmentNote,
       tone: "positive",
     },
   ];
@@ -808,8 +833,65 @@ function renderKpis() {
       <span>${row.label}</span>
       <strong>${row.value}</strong>
       ${row.change ? `<small class="${row.tone}">${row.change}</small>` : ""}
+      ${Number.isFinite(row.progress) ? `<span class="mini-progress"><i style="width:${row.progress}%"></i></span>` : ""}
+      ${row.note ? `<em>${row.note}</em>` : ""}
     </article>`)
     .join("");
+}
+
+function metricRow(label, value, tone = "") {
+  return `<div>
+    <span>${label}</span>
+    <strong class="${tone}">${value}</strong>
+  </div>`;
+}
+
+function renderGoalSummaries() {
+  const monthlyTarget = document.getElementById("monthlyCloseSummary");
+  const annualTarget = document.getElementById("annualGoalSummary");
+  if (!monthlyTarget || !annualTarget) return;
+
+  const metrics = getPortfolioMetrics();
+  const months = monthlyMetricRows();
+  const currentMonth = currentMonthKey();
+  const closeMonth = months.find((month) => month.month === currentMonth) ?? months.at(-1) ?? monthlyFallback();
+  const closeMonthKey = /^\d{4}-\d{2}$/.test(String(closeMonth.month || "")) ? closeMonth.month : currentMonth;
+  const closeInvestment = investmentAmountForPeriod(closeMonthKey);
+  const monthlyDividends = dividendIncomeByMonth();
+  const closeDividend = Math.round(monthlyDividends[closeMonthKey] || 0);
+  const closeNet = Number.isFinite(Number(closeMonth.net))
+    ? Number(closeMonth.net)
+    : (Number(closeMonth.income) || 0) - (Number(closeMonth.expense) || 0);
+  const closeSavingsRate = Number.isFinite(Number(closeMonth.savingsRate)) ? Number(closeMonth.savingsRate) : 0;
+  const annualRemaining = Math.max(0, ANNUAL_INVESTMENT_TARGET - Math.round(metrics.annualInvestment));
+  const annualProgress = Math.min(100, Math.round((metrics.annualInvestment / ANNUAL_INVESTMENT_TARGET) * 100));
+
+  monthlyTarget.innerHTML = `
+    <div class="goal-heading">
+      <span>${formatMonthLabel(closeMonthKey)}</span>
+      <strong>${money.format(Math.round(closeNet))}</strong>
+    </div>
+    <div class="goal-metrics">
+      ${metricRow("本月投資", money.format(Math.round(closeInvestment)), "positive")}
+      ${metricRow("資產增加", money.format(Math.round(closeNet)), closeNet >= 0 ? "positive" : "negative")}
+      ${metricRow("股息收入", money.format(closeDividend), "positive")}
+      ${metricRow("儲蓄率", `${closeSavingsRate}%`, closeSavingsRate >= 0 ? "positive" : "negative")}
+      ${metricRow("離年度目標還差", money.format(annualRemaining), "positive")}
+    </div>`;
+
+  annualTarget.innerHTML = `
+    <div class="goal-heading">
+      <span>${rocYear(currentYearKey())} 年投入目標</span>
+      <strong>${money.format(ANNUAL_INVESTMENT_TARGET)}</strong>
+    </div>
+    <div class="annual-progress">
+      <div>
+        <span>目前已投入</span>
+        <strong class="positive">${money.format(Math.round(metrics.annualInvestment))}</strong>
+      </div>
+      <em>${annualProgress}%</em>
+      <span class="bar-track"><i style="width:${annualProgress}%"></i></span>
+    </div>`;
 }
 
 function formatStatusDate(value) {
@@ -1472,6 +1554,7 @@ function renderLedger() {
 function render() {
   renderHero();
   renderKpis();
+  renderGoalSummaries();
   renderAssetPie();
   drawNetWorthChart();
   setupChartHover();

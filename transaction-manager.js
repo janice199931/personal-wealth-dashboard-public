@@ -5,6 +5,7 @@ const statusText = document.getElementById("statusText");
 const submitButton = document.getElementById("submitButton");
 const cancelEditButton = document.getElementById("cancelEditButton");
 const modeBanner = document.getElementById("modeBanner");
+const quickFilters = document.getElementById("quickFilters");
 const filters = {
   search: document.getElementById("searchFilter"),
   market: document.getElementById("marketFilter"),
@@ -55,6 +56,14 @@ function friendlyApiError(payload, fallbackMessage) {
 
 function rocYear(year) {
   return Number(year) - 1911;
+}
+
+function currentMonthKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date());
 }
 
 function formatInputRocDate(date) {
@@ -316,7 +325,44 @@ function populateDateFilters() {
   filters.month.value = months.includes(selectedMonth) ? selectedMonth : "";
 }
 
+function quickFilterKey() {
+  const monthKey = currentMonthKey();
+  if (
+    !filters.search.value
+    && !filters.market.value
+    && !filters.action.value
+    && !filters.year.value
+    && !filters.month.value
+  ) return "all";
+  if (!filters.search.value && filters.market.value === "TW" && !filters.action.value && !filters.year.value && !filters.month.value) return "tw";
+  if (!filters.search.value && filters.market.value === "US" && !filters.action.value && !filters.year.value && !filters.month.value) return "us";
+  if (!filters.search.value && !filters.market.value && filters.action.value === "BUY" && !filters.year.value && !filters.month.value) return "buy";
+  if (!filters.search.value && !filters.market.value && filters.action.value === "SELL" && !filters.year.value && !filters.month.value) return "sell";
+  if (
+    !filters.search.value
+    && !filters.market.value
+    && !filters.action.value
+    && filters.year.value === monthKey.slice(0, 4)
+    && filters.month.value === monthKey.slice(5, 7)
+  ) return "month";
+  return "";
+}
+
+function renderQuickFilters() {
+  if (!quickFilters) return;
+  const activeKey = quickFilterKey();
+  quickFilters.querySelectorAll("button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.filter === activeKey);
+  });
+}
+
+function ensureSelectOption(select, value, label) {
+  if (!value || [...select.options].some((option) => option.value === value)) return;
+  select.insertAdjacentHTML("beforeend", `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`);
+}
+
 function renderTransactions() {
+  renderQuickFilters();
   const visibleTransactions = filteredTransactions();
   if (!visibleTransactions.length) {
     rows.innerHTML = `<tr><td colspan="9">尚無交易紀錄</td></tr>`;
@@ -486,10 +532,40 @@ function applyFilters() {
   setStatus(`已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 }
 
+function applyQuickFilter(key) {
+  filters.search.value = "";
+  filters.market.value = "";
+  filters.action.value = "";
+  filters.year.value = "";
+  filters.month.value = "";
+  const monthKey = currentMonthKey();
+  if (key === "tw") filters.market.value = "TW";
+  if (key === "us") filters.market.value = "US";
+  if (key === "buy") filters.action.value = "BUY";
+  if (key === "sell") filters.action.value = "SELL";
+  if (key === "month") {
+    const year = monthKey.slice(0, 4);
+    const month = monthKey.slice(5, 7);
+    ensureSelectOption(filters.year, year, `${rocYear(year)} 年`);
+    ensureSelectOption(filters.month, month, month);
+    filters.year.value = year;
+    filters.month.value = month;
+  }
+  applyFilters();
+}
+
 Object.values(filters).forEach((input) => {
   input.addEventListener("input", applyFilters);
   input.addEventListener("change", applyFilters);
 });
+
+if (quickFilters) {
+  quickFilters.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-filter]");
+    if (!button) return;
+    applyQuickFilter(button.dataset.filter);
+  });
+}
 
 form.elements.symbol.addEventListener("input", autoFillStockName);
 form.elements.symbol.addEventListener("change", autoFillStockName);

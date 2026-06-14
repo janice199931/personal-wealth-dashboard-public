@@ -299,11 +299,38 @@ small {
   font-size: 24px;
 }
 
+.summary-box small {
+  display: inline-block;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
 .filters {
   display: grid;
   grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(110px, 1fr));
   gap: 10px;
   margin-bottom: 16px;
+}
+
+.quick-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.quick-filters button {
+  min-height: 38px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: rgba(255, 253, 250, 0.82);
+  box-shadow: none;
+  color: var(--muted);
+}
+
+.quick-filters button.active {
+  color: #8c514b;
+  background: linear-gradient(135deg, rgba(246, 183, 183, 0.88), rgba(255, 215, 168, 0.64));
 }
 
 .dividend-filters {
@@ -386,6 +413,7 @@ th {
   .hero-card,
   form,
   .filters,
+  .quick-filters,
   .summary-grid,
   .result-grid {
     display: grid;

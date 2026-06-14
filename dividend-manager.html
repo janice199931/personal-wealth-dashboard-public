@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>股息追蹤</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260613-mobile-ux" />
+    <link rel="stylesheet" href="./form-pages.css?v=20260614-dividend-stats" />
   </head>
   <body>
     <main>
@@ -23,16 +23,16 @@
       <section class="card">
         <div class="summary-grid">
           <div class="summary-box">
-            <span>今年累積股息</span>
+            <span>今年已領股息</span>
             <strong id="yearDividendTotal">NT$0</strong>
           </div>
           <div class="summary-box">
-            <span>台股股息</span>
-            <strong id="twDividendTotal">NT$0</strong>
+            <span>平均每月股息</span>
+            <strong id="averageMonthlyDividend">NT$0</strong>
           </div>
           <div class="summary-box">
-            <span>美股股息</span>
-            <strong id="usDividendTotal">NT$0</strong>
+            <span>預估年化股息</span>
+            <strong id="projectedAnnualDividend">NT$0</strong>
             <br />
             <small id="fxRateText">依目前匯率換算</small>
           </div>
@@ -382,6 +382,13 @@
         return new Date().getFullYear().toString();
       }
 
+      function currentMonthNumber() {
+        return Number(new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Taipei",
+          month: "numeric",
+        }).format(new Date()));
+      }
+
       function setStatus(message, tone = "") {
         statusText.textContent = message;
         statusText.className = `status${tone ? ` ${tone}` : ""}`;
@@ -448,10 +455,12 @@
         const thisYear = dividends.filter((item) => String(item.date || "").slice(0, 4) === year);
         const twTotal = thisYear.filter((item) => item.market === "TW").reduce((sum, item) => sum + dividendTwd(item), 0);
         const usTotal = thisYear.filter((item) => item.market === "US").reduce((sum, item) => sum + dividendTwd(item), 0);
-        document.getElementById("yearDividendTotal").textContent = money.format(Math.round(twTotal + usTotal));
-        document.getElementById("twDividendTotal").textContent = money.format(Math.round(twTotal));
-        document.getElementById("usDividendTotal").textContent = money.format(Math.round(usTotal));
-        document.getElementById("fxRateText").textContent = `1 USD = ${fxRate} TWD`;
+        const total = twTotal + usTotal;
+        const averageMonthly = total / Math.max(1, currentMonthNumber());
+        document.getElementById("yearDividendTotal").textContent = money.format(Math.round(total));
+        document.getElementById("averageMonthlyDividend").textContent = money.format(Math.round(averageMonthly));
+        document.getElementById("projectedAnnualDividend").textContent = money.format(Math.round(averageMonthly * 12));
+        document.getElementById("fxRateText").textContent = `台股 ${money.format(Math.round(twTotal))} / 美股 ${money.format(Math.round(usTotal))}，1 USD = ${fxRate} TWD`;
       }
 
       function renderDividends() {

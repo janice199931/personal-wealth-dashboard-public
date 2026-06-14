@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Janice的小天地</title>
-    <link rel="stylesheet" href="./styles.css?v=20260613-kpi-targets" />
+    <link rel="stylesheet" href="./styles.css?v=20260614-goals" />
   </head>
   <body>
     <aside class="sidebar" aria-label="主選單">
@@ -115,6 +115,28 @@
 
       <section class="kpi-grid" id="kpiGrid" aria-label="核心資產指標"></section>
 
+      <section class="goal-grid" aria-label="本月結算與年度目標">
+        <article class="panel goal-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Monthly Close</p>
+              <h2>每月結算</h2>
+            </div>
+          </div>
+          <div id="monthlyCloseSummary" class="goal-summary"></div>
+        </article>
+
+        <article class="panel goal-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Annual Goal</p>
+              <h2>年度目標追蹤</h2>
+            </div>
+          </div>
+          <div id="annualGoalSummary" class="goal-summary"></div>
+        </article>
+      </section>
+
       <section class="data-status-grid" id="dataStatusCards" aria-label="資料狀態" hidden></section>
 
       <section class="dashboard dashboard-primary" aria-label="資產配置與成長">
@@ -193,6 +215,6 @@
       <p class="dashboard-footer">用心記錄每一筆財富，讓夢想一點一滴實現 ♡</p>
     </main>
 
-    <script src="./app.js?v=20260613-kpi-targets"></script>
+    <script src="./app.js?v=20260614-goals"></script>
   </body>
 </html>

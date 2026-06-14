@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>交易紀錄管理</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260613-mobile-ux" />
+    <link rel="stylesheet" href="./form-pages.css?v=20260614-filters" />
   </head>
   <body>
     <main>
@@ -75,6 +75,14 @@
       </form>
 
       <section class="card">
+        <div class="quick-filters" id="quickFilters" aria-label="快速篩選交易">
+          <button class="active" type="button" data-filter="all">全部</button>
+          <button type="button" data-filter="tw">台股</button>
+          <button type="button" data-filter="us">美股</button>
+          <button type="button" data-filter="buy">買進</button>
+          <button type="button" data-filter="sell">賣出</button>
+          <button type="button" data-filter="month">本月</button>
+        </div>
         <div class="filters" id="transactionFilters">
           <label>
             搜尋
@@ -130,6 +138,6 @@
         <div class="transaction-card-list" id="transactionCards"></div>
       </section>
     </main>
-    <script src="./transaction-manager.js?v=20260613-transaction-cards"></script>
+    <script src="./transaction-manager.js?v=20260614-filters"></script>
   </body>
 </html>
