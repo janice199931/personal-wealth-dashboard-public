@@ -56,7 +56,6 @@ const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 200000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
-const ANNUAL_INVESTMENT_TARGET = MONTHLY_INVESTMENT_TARGET * 12;
 let dataStatus = null;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -105,14 +104,6 @@ function currentMonthKey() {
     timeZone: "Asia/Taipei",
     year: "numeric",
     month: "2-digit",
-  });
-  return formatter.format(new Date());
-}
-
-function currentYearKey() {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Taipei",
-    year: "numeric",
   });
   return formatter.format(new Date());
 }
@@ -694,7 +685,6 @@ function getPortfolioMetrics() {
   const usGain = us.holdings.reduce((sum, holding) => sum + parseAmount(holding.gain), 0);
   const twShares = parseShares(tw.shares);
   const monthlyInvestment = investmentAmountForPeriod(currentMonthKey());
-  const annualInvestment = investmentAmountForPeriod(currentYearKey());
 
   return {
     taiwanStocks,
@@ -721,7 +711,6 @@ function getPortfolioMetrics() {
     usGainTwd: us.gainTwd ?? Math.round(usGain * usdToTwd),
     usReturnRate: percent(usGain, usCost, 2),
     monthlyInvestment,
-    annualInvestment,
   };
 }
 
@@ -837,61 +826,6 @@ function renderKpis() {
       ${row.note ? `<em>${row.note}</em>` : ""}
     </article>`)
     .join("");
-}
-
-function metricRow(label, value, tone = "") {
-  return `<div>
-    <span>${label}</span>
-    <strong class="${tone}">${value}</strong>
-  </div>`;
-}
-
-function renderGoalSummaries() {
-  const monthlyTarget = document.getElementById("monthlyCloseSummary");
-  const annualTarget = document.getElementById("annualGoalSummary");
-  if (!monthlyTarget || !annualTarget) return;
-
-  const metrics = getPortfolioMetrics();
-  const months = monthlyMetricRows();
-  const currentMonth = currentMonthKey();
-  const closeMonth = months.find((month) => month.month === currentMonth) ?? months.at(-1) ?? monthlyFallback();
-  const closeMonthKey = /^\d{4}-\d{2}$/.test(String(closeMonth.month || "")) ? closeMonth.month : currentMonth;
-  const closeInvestment = investmentAmountForPeriod(closeMonthKey);
-  const monthlyDividends = dividendIncomeByMonth();
-  const closeDividend = Math.round(monthlyDividends[closeMonthKey] || 0);
-  const closeNet = Number.isFinite(Number(closeMonth.net))
-    ? Number(closeMonth.net)
-    : (Number(closeMonth.income) || 0) - (Number(closeMonth.expense) || 0);
-  const closeSavingsRate = Number.isFinite(Number(closeMonth.savingsRate)) ? Number(closeMonth.savingsRate) : 0;
-  const annualRemaining = Math.max(0, ANNUAL_INVESTMENT_TARGET - Math.round(metrics.annualInvestment));
-  const annualProgress = Math.min(100, Math.round((metrics.annualInvestment / ANNUAL_INVESTMENT_TARGET) * 100));
-
-  monthlyTarget.innerHTML = `
-    <div class="goal-heading">
-      <span>${formatMonthLabel(closeMonthKey)}</span>
-      <strong>${money.format(Math.round(closeNet))}</strong>
-    </div>
-    <div class="goal-metrics">
-      ${metricRow("本月投資", money.format(Math.round(closeInvestment)), "positive")}
-      ${metricRow("資產增加", money.format(Math.round(closeNet)), closeNet >= 0 ? "positive" : "negative")}
-      ${metricRow("股息收入", money.format(closeDividend), "positive")}
-      ${metricRow("儲蓄率", `${closeSavingsRate}%`, closeSavingsRate >= 0 ? "positive" : "negative")}
-      ${metricRow("離年度目標還差", money.format(annualRemaining), "positive")}
-    </div>`;
-
-  annualTarget.innerHTML = `
-    <div class="goal-heading">
-      <span>${rocYear(currentYearKey())} 年投入目標</span>
-      <strong>${money.format(ANNUAL_INVESTMENT_TARGET)}</strong>
-    </div>
-    <div class="annual-progress">
-      <div>
-        <span>目前已投入</span>
-        <strong class="positive">${money.format(Math.round(metrics.annualInvestment))}</strong>
-      </div>
-      <em>${annualProgress}%</em>
-      <span class="bar-track"><i style="width:${annualProgress}%"></i></span>
-    </div>`;
 }
 
 function formatStatusDate(value) {
@@ -1554,7 +1488,6 @@ function renderLedger() {
 function render() {
   renderHero();
   renderKpis();
-  renderGoalSummaries();
   renderAssetPie();
   drawNetWorthChart();
   setupChartHover();
