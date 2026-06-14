@@ -456,6 +456,82 @@ def parse_manual_amount(value: Optional[str], label: str) -> Optional[int]:
         raise HTTPException(status_code=400, detail=f"{label} 必須是數字。") from error
 
 
+def parse_month_key(value: Optional[str]) -> Optional[str]:
+    if value is None or value.strip() == "":
+        return None
+    text = value.strip().replace("/", "-")
+    parts = text.split("-")
+    if len(parts) != 2:
+        raise HTTPException(status_code=400, detail="月份格式不正確。")
+    year = int(parts[0]) if parts[0].isdigit() else 0
+    month = int(parts[1]) if parts[1].isdigit() else 0
+    if year < 1911:
+        year += 1911
+    if year < 2000 or month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="月份格式不正確。")
+    return f"{year}-{month:02d}"
+
+
+def save_manual_monthly_finance(month_key: str, income: int, expense: int) -> dict[str, Any]:
+    finance_data = db_store.read_finance_data({})
+    if not isinstance(finance_data, dict) or not isinstance(finance_data.get("years"), list):
+        finance_data = {"source": "manual", "years": [], "transactions": []}
+
+    net = income - expense
+    month_payload = {
+        "month": month_key,
+        "income": income,
+        "expense": expense,
+        "net": net,
+        "savingsRate": round((net / income * 100), 1) if income else 0,
+        "transactions": 0,
+        "source": "manual",
+        "updatedAt": datetime.now().isoformat(timespec="seconds"),
+    }
+    year_key = month_key[:4]
+    years = finance_data.setdefault("years", [])
+    year_payload = next((year for year in years if str(year.get("year")) == year_key), None)
+    if year_payload is None:
+        year_payload = {"year": year_key, "months": []}
+        years.append(year_payload)
+
+    months = [month for month in year_payload.get("months", []) if month.get("month") != month_key]
+    months.append(month_payload)
+    months.sort(key=lambda month: str(month.get("month", "")), reverse=True)
+    year_payload["months"] = months
+
+    for year in years:
+        year_months = [month for month in year.get("months", []) if isinstance(month, dict)]
+        year_income = sum(int(month.get("income") or 0) for month in year_months)
+        year_expense = sum(int(month.get("expense") or 0) for month in year_months)
+        year_net = sum(int(month.get("net") or 0) for month in year_months)
+        year["income"] = year_income
+        year["expense"] = year_expense
+        year["net"] = year_net
+        year["savingsRate"] = round((year_net / year_income * 100), 1) if year_income else 0
+        year["transactions"] = sum(int(month.get("transactions") or 0) for month in year_months)
+        year["months"] = sorted(year_months, key=lambda month: str(month.get("month", "")), reverse=True)
+
+    years.sort(key=lambda year: str(year.get("year", "")), reverse=True)
+    finance_data["source"] = "manual"
+    finance_data["generatedAt"] = datetime.now().isoformat(timespec="seconds")
+    finance_data["recordCount"] = sum(int(year.get("transactions") or 0) for year in years)
+    imported_months = finance_data.get("importedMonths")
+    if not isinstance(imported_months, list):
+        imported_months = []
+    finance_data["importedMonths"] = sorted({*map(str, imported_months), month_key}, reverse=True)
+
+    saved_to = db_store.write_finance_data(finance_data)
+    db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
+    portfolio = read_portfolio(use_examples=False)
+    history = backfill_history_from_finance_data(portfolio) if portfolio else db_store.read_net_worth_history()
+    return {
+        **month_payload,
+        "savedTo": saved_to,
+        "historyCount": len(history),
+    }
+
+
 async def save_upload(upload: UploadFile, folder: Path) -> Path:
     safe_name = Path(upload.filename or "upload").name
     suffix = Path(safe_name).suffix
@@ -912,6 +988,9 @@ async def update_asset_snapshot(
     cash: Optional[str] = Form(None),
     bank: Optional[str] = Form(None),
     creditCardDebt: Optional[str] = Form(None),
+    month: Optional[str] = Form(None),
+    monthlyIncome: Optional[str] = Form(None),
+    monthlyExpense: Optional[str] = Form(None),
 ) -> dict:
     form = await request.form()
 
@@ -928,10 +1007,16 @@ async def update_asset_snapshot(
     cash = cash or form_text("cash")
     bank = bank or form_text("bank")
     creditCardDebt = creditCardDebt or form_text("creditCardDebt", "debt", "credit_card_debt")
+    month = month or form_text("month", "financeMonth")
+    monthlyIncome = monthlyIncome or form_text("monthlyIncome", "income")
+    monthlyExpense = monthlyExpense or form_text("monthlyExpense", "expense")
 
     manual_cash = parse_manual_amount(cash, "現金")
     manual_bank = parse_manual_amount(bank, "銀行")
     manual_debt = parse_manual_amount(creditCardDebt, "信用卡負債")
+    manual_income = parse_manual_amount(monthlyIncome, "月份收入")
+    manual_expense = parse_manual_amount(monthlyExpense, "月份支出")
+    manual_month = parse_month_key(month)
     manual_values = {
         "現金": manual_cash,
         "銀行": manual_bank,
@@ -943,6 +1028,13 @@ async def update_asset_snapshot(
     if has_any_manual and not has_all_manual:
         missing = [label for label, value in manual_values.items() if value is None]
         raise HTTPException(status_code=400, detail=f"手動輸入時缺少：{', '.join(missing)}。")
+
+    has_any_monthly = any(value is not None for value in [manual_month, manual_income, manual_expense])
+    has_all_monthly = all(value is not None for value in [manual_month, manual_income, manual_expense])
+    if has_any_monthly and not has_all_monthly:
+        raise HTTPException(status_code=400, detail="月份收入與支出請同時填寫。")
+
+    monthly_finance = None
 
     with tempfile.TemporaryDirectory(prefix="wealth-snapshot-") as tmp:
         tmp_path = Path(tmp)
@@ -993,13 +1085,26 @@ async def update_asset_snapshot(
                 "source": "existing_accounts",
             }
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="請至少上傳 MOZE CSV、帳戶總覽截圖，或填寫現金、銀行、信用卡負債。",
-            )
+            if not has_all_monthly:
+                raise HTTPException(
+                    status_code=400,
+                    detail="請至少上傳 MOZE CSV、帳戶總覽截圖，填寫現金、銀行、信用卡負債，或填寫月份收入與支出。",
+                )
+            amounts = {
+                "cash": 0,
+                "bank": 0,
+                "debt": 0,
+                "source": "monthly_finance_only",
+            }
 
-    if amounts["source"] == "existing_accounts":
+    if amounts["source"] == "monthly_finance_only":
+        monthly_finance = save_manual_monthly_finance(manual_month or "", manual_income or 0, manual_expense or 0)
         accounts = db_store.read_accounts({})
+        portfolio = read_portfolio(use_examples=False) or {}
+    elif amounts["source"] == "existing_accounts":
+        accounts = db_store.read_accounts({})
+        if has_all_monthly:
+            monthly_finance = save_manual_monthly_finance(manual_month or "", manual_income or 0, manual_expense or 0)
     else:
         accounts = db_store.read_accounts({})
         accounts["cashTWD"] = amounts["cash"] + amounts["bank"]
@@ -1008,6 +1113,8 @@ async def update_asset_snapshot(
         accounts.setdefault("otherDebt", 0)
         db_store.write_accounts(accounts)
     portfolio = rebuild_portfolio_outputs()
+    if has_all_monthly and monthly_finance is None:
+        monthly_finance = save_manual_monthly_finance(manual_month or "", manual_income or 0, manual_expense or 0)
 
     return {
         "ok": True,
@@ -1015,9 +1122,10 @@ async def update_asset_snapshot(
         "cash": amounts["cash"],
         "bank": amounts["bank"],
         "creditCardDebt": amounts["debt"],
-        "cashTWD": accounts["cashTWD"],
-        "totalAssets": portfolio["summary"]["totalAssets"],
-        "netWorth": portfolio["summary"]["netWorth"],
+        "cashTWD": accounts.get("cashTWD", 0),
+        "totalAssets": portfolio.get("summary", {}).get("totalAssets", 0),
+        "netWorth": portfolio.get("summary", {}).get("netWorth", 0),
+        "monthlyFinance": monthly_finance,
     }
 
 
