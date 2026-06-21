@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入首頁台股投資與流動資金，檢查目前比例是否接近 70% / 30%。</p>
+          <p>自動帶入首頁 00685L 與流動資金，檢查目前比例是否接近 70% / 30%。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -20,7 +20,7 @@
 
       <form id="rebalanceForm">
         <label>
-          正2 / 台股目前金額
+          00685L 正2目前金額
           <input name="leveraged" type="number" step="1" min="0" placeholder="例如 700000" required />
         </label>
         <label>
@@ -90,7 +90,7 @@
 
       function renderEmpty() {
         resultGrid.innerHTML = [
-          resultBox("目前正2 / 台股比例", "0%"),
+          resultBox("目前 00685L 比例", "0%"),
           resultBox("目前現金比例", "0%"),
           resultBox("建議調整金額", money.format(0)),
         ].join("");
@@ -111,12 +111,18 @@
       function applyPortfolio(portfolio) {
         const allocation = portfolio?.allocation || {};
         const summary = portfolio?.summary || {};
-        const taiwanStocks = Math.round(Number(allocation.taiwanStocks ?? portfolio?.markets?.TW?.marketValue ?? 0) || 0);
+        const leveragedHolding = (portfolio?.holdings || []).find((holding) => String(holding.symbol || "").toUpperCase() === "00685L");
+        const leveragedValue = leveragedHolding ? Number(leveragedHolding.marketValueTWD ?? leveragedHolding.marketValue ?? 0) : 0;
         const cash = Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0);
-        form.elements.leveraged.value = taiwanStocks;
+        form.elements.leveraged.value = Math.round(leveragedValue || 0);
         form.elements.cash.value = cash;
         calculate();
-        setStatus("已帶入首頁台股投資與流動資金，可直接檢查或手動微調。", "success");
+        setStatus(
+          leveragedHolding
+            ? "已帶入首頁 00685L 現值與流動資金，可直接檢查或手動微調。"
+            : "首頁目前找不到 00685L，已帶入流動資金；正2金額可先手動輸入。",
+          leveragedHolding ? "success" : "working",
+        );
       }
 
       async function loadPortfolioData() {
@@ -164,16 +170,16 @@
         const diff = Math.round(targetLeveragedAmount - leveraged);
         const drift = leveragedRatio - leveragedTarget;
         const needsRebalance = Math.abs(drift) > band;
-        const action = diff > 0 ? "可用現金加碼正2 / 台股部位" : "可賣出部分正2 / 台股部位轉回現金";
+        const action = diff > 0 ? "可用現金加碼 00685L" : "可賣出部分 00685L 轉回現金";
         const advice = needsRebalance
-          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近正2 / 台股 ${leveragedTarget}% / 現金 ${cashTarget}%。`
+          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近 00685L ${leveragedTarget}% / 現金 ${cashTarget}%。`
           : `目前偏移約 ${pct.format(Math.abs(drift))}%，仍在 ${band}% 容許範圍內，可先維持。`;
 
         resultGrid.innerHTML = [
-          resultBox("目前正2 / 台股比例", `${pct.format(leveragedRatio)}%`),
+          resultBox("目前 00685L 比例", `${pct.format(leveragedRatio)}%`),
           resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
           resultBox("建議調整金額", needsRebalance ? money.format(Math.abs(diff)) : money.format(0)),
-          resultBox("正2 / 台股目標金額", money.format(Math.round(targetLeveragedAmount))),
+          resultBox("00685L 目標金額", money.format(Math.round(targetLeveragedAmount))),
           resultBox("現金目標金額", money.format(Math.round(total - targetLeveragedAmount))),
           resultBox("總檢查金額", money.format(total)),
         ].join("");
