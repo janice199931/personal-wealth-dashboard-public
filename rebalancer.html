@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>再平衡檢查</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260621-rebalance" />
+    <link rel="stylesheet" href="./form-pages.css?v=20260621-rebalance-data" />
   </head>
   <body>
     <main>
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>手動輸入正2與現金金額，檢查目前比例是否接近 70% / 30%。</p>
+          <p>自動帶入首頁台股投資與流動資金，檢查目前比例是否接近 70% / 30%。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -20,7 +20,7 @@
 
       <form id="rebalanceForm">
         <label>
-          正2目前金額
+          正2 / 台股目前金額
           <input name="leveraged" type="number" step="1" min="0" placeholder="例如 700000" required />
         </label>
         <label>
@@ -44,8 +44,11 @@
           </select>
         </label>
         <div class="actions full">
-          <span class="status" id="statusText">輸入金額後會自動計算。</span>
-          <button id="saveButton" type="button">記住這次金額</button>
+          <span class="status" id="statusText">正在讀取首頁資料...</span>
+          <div class="row-actions">
+            <button class="secondary" id="reloadButton" type="button">重新帶入首頁資料</button>
+            <button id="saveButton" type="button">記住這次金額</button>
+          </div>
         </div>
       </form>
 
@@ -64,6 +67,7 @@
       const resultGrid = document.getElementById("resultGrid");
       const statusText = document.getElementById("statusText");
       const saveButton = document.getElementById("saveButton");
+      const reloadButton = document.getElementById("reloadButton");
       const adviceBox = document.getElementById("adviceBox");
       const leveragedBar = document.getElementById("leveragedBar");
       const cashBar = document.getElementById("cashBar");
@@ -86,13 +90,51 @@
 
       function renderEmpty() {
         resultGrid.innerHTML = [
-          resultBox("目前正2比例", "0%"),
+          resultBox("目前正2 / 台股比例", "0%"),
           resultBox("目前現金比例", "0%"),
           resultBox("建議調整金額", money.format(0)),
         ].join("");
         leveragedBar.style.width = "70%";
         cashBar.style.width = "30%";
-        adviceBox.innerHTML = "<span><strong>等待輸入</strong> 輸入正2與現金金額後，這裡會顯示再平衡建議。</span>";
+        adviceBox.innerHTML = "<span><strong>等待資料</strong> 帶入首頁資料後，這裡會顯示再平衡建議。</span>";
+      }
+
+      async function readApiPayload(response, fallbackMessage) {
+        const text = await response.text();
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          return { detail: fallbackMessage };
+        }
+      }
+
+      function applyPortfolio(portfolio) {
+        const allocation = portfolio?.allocation || {};
+        const summary = portfolio?.summary || {};
+        const taiwanStocks = Math.round(Number(allocation.taiwanStocks ?? portfolio?.markets?.TW?.marketValue ?? 0) || 0);
+        const cash = Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0);
+        form.elements.leveraged.value = taiwanStocks;
+        form.elements.cash.value = cash;
+        calculate();
+        setStatus("已帶入首頁台股投資與流動資金，可直接檢查或手動微調。", "success");
+      }
+
+      async function loadPortfolioData() {
+        reloadButton.disabled = true;
+        setStatus("正在讀取首頁資料...", "working");
+        try {
+          const response = await fetch("/api/portfolio", { cache: "no-store" });
+          const payload = await readApiPayload(response, "首頁資料讀取失敗，請重新整理或確認登入狀態。");
+          if (!response.ok) throw new Error(payload.detail || "首頁資料讀取失敗，請重新整理或確認登入狀態。");
+          if (!payload.portfolio) throw new Error("目前沒有可帶入的首頁資料。");
+          applyPortfolio(payload.portfolio);
+        } catch (error) {
+          setStatus(error.message || "首頁資料讀取失敗，可先手動輸入。", "error");
+          loadDraft();
+          calculate();
+        } finally {
+          reloadButton.disabled = false;
+        }
       }
 
       function calculate() {
@@ -122,16 +164,16 @@
         const diff = Math.round(targetLeveragedAmount - leveraged);
         const drift = leveragedRatio - leveragedTarget;
         const needsRebalance = Math.abs(drift) > band;
-        const action = diff > 0 ? "可用現金加碼正2" : "可賣出部分正2轉回現金";
+        const action = diff > 0 ? "可用現金加碼正2 / 台股部位" : "可賣出部分正2 / 台股部位轉回現金";
         const advice = needsRebalance
-          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近正2 ${leveragedTarget}% / 現金 ${cashTarget}%。`
+          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近正2 / 台股 ${leveragedTarget}% / 現金 ${cashTarget}%。`
           : `目前偏移約 ${pct.format(Math.abs(drift))}%，仍在 ${band}% 容許範圍內，可先維持。`;
 
         resultGrid.innerHTML = [
-          resultBox("目前正2比例", `${pct.format(leveragedRatio)}%`),
+          resultBox("目前正2 / 台股比例", `${pct.format(leveragedRatio)}%`),
           resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
           resultBox("建議調整金額", needsRebalance ? money.format(Math.abs(diff)) : money.format(0)),
-          resultBox("正2目標金額", money.format(Math.round(targetLeveragedAmount))),
+          resultBox("正2 / 台股目標金額", money.format(Math.round(targetLeveragedAmount))),
           resultBox("現金目標金額", money.format(Math.round(total - targetLeveragedAmount))),
           resultBox("總檢查金額", money.format(total)),
         ].join("");
@@ -168,8 +210,9 @@
       form.addEventListener("input", calculate);
       form.addEventListener("change", calculate);
       saveButton.addEventListener("click", saveDraft);
-      loadDraft();
+      reloadButton.addEventListener("click", loadPortfolioData);
       calculate();
+      loadPortfolioData();
     </script>
   </body>
 </html>
