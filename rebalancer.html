@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>再平衡檢查</title>
+    <link rel="stylesheet" href="./form-pages.css?v=20260621-rebalance" />
+  </head>
+  <body>
+    <main>
+      <section class="card hero-card">
+        <div>
+          <h1>再平衡檢查</h1>
+          <p>手動輸入正2與現金金額，檢查目前比例是否接近 70% / 30%。</p>
+        </div>
+        <div class="page-actions">
+          <a href="./index.html">← 回到首頁</a>
+        </div>
+      </section>
+
+      <form id="rebalanceForm">
+        <label>
+          正2目前金額
+          <input name="leveraged" type="number" step="1" min="0" placeholder="例如 700000" required />
+        </label>
+        <label>
+          現金目前金額
+          <input name="cash" type="number" step="1" min="0" placeholder="例如 300000" required />
+        </label>
+        <label>
+          正2目標比例
+          <input name="leveragedTarget" type="number" step="1" min="0" max="100" value="70" required />
+        </label>
+        <label>
+          現金目標比例
+          <input name="cashTarget" type="number" step="1" min="0" max="100" value="30" required />
+        </label>
+        <label class="full">
+          容許偏移
+          <select name="band">
+            <option value="3">超過 3% 才提醒再平衡</option>
+            <option value="5" selected>超過 5% 才提醒再平衡</option>
+            <option value="10">超過 10% 才提醒再平衡</option>
+          </select>
+        </label>
+        <div class="actions full">
+          <span class="status" id="statusText">輸入金額後會自動計算。</span>
+          <button id="saveButton" type="button">記住這次金額</button>
+        </div>
+      </form>
+
+      <section class="card" id="resultCard">
+        <div class="result-grid rebalance-result-grid" id="resultGrid"></div>
+        <div class="rebalance-visual" aria-label="目前配置比例">
+          <span id="leveragedBar"></span>
+          <span id="cashBar"></span>
+        </div>
+        <div class="mode-banner rebalance-advice" id="adviceBox"></div>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("rebalanceForm");
+      const resultGrid = document.getElementById("resultGrid");
+      const statusText = document.getElementById("statusText");
+      const saveButton = document.getElementById("saveButton");
+      const adviceBox = document.getElementById("adviceBox");
+      const leveragedBar = document.getElementById("leveragedBar");
+      const cashBar = document.getElementById("cashBar");
+      const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
+      const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
+      const STORAGE_KEY = "wealthDashboardRebalanceDraft";
+
+      function numberValue(name) {
+        return Number(form.elements[name].value) || 0;
+      }
+
+      function setStatus(message, tone = "") {
+        statusText.textContent = message;
+        statusText.className = `status${tone ? ` ${tone}` : ""}`;
+      }
+
+      function resultBox(label, value) {
+        return `<article class="result-box"><span>${label}</span><strong>${value}</strong></article>`;
+      }
+
+      function renderEmpty() {
+        resultGrid.innerHTML = [
+          resultBox("目前正2比例", "0%"),
+          resultBox("目前現金比例", "0%"),
+          resultBox("建議調整金額", money.format(0)),
+        ].join("");
+        leveragedBar.style.width = "70%";
+        cashBar.style.width = "30%";
+        adviceBox.innerHTML = "<span><strong>等待輸入</strong> 輸入正2與現金金額後，這裡會顯示再平衡建議。</span>";
+      }
+
+      function calculate() {
+        const leveraged = numberValue("leveraged");
+        const cash = numberValue("cash");
+        const leveragedTarget = numberValue("leveragedTarget");
+        const cashTarget = numberValue("cashTarget");
+        const band = numberValue("band");
+        const targetTotal = leveragedTarget + cashTarget;
+
+        if (targetTotal !== 100) {
+          setStatus("目標比例合計需等於 100%。", "error");
+          renderEmpty();
+          return;
+        }
+
+        const total = leveraged + cash;
+        if (!total) {
+          setStatus("輸入金額後會自動計算。");
+          renderEmpty();
+          return;
+        }
+
+        const leveragedRatio = (leveraged / total) * 100;
+        const cashRatio = (cash / total) * 100;
+        const targetLeveragedAmount = total * (leveragedTarget / 100);
+        const diff = Math.round(targetLeveragedAmount - leveraged);
+        const drift = leveragedRatio - leveragedTarget;
+        const needsRebalance = Math.abs(drift) > band;
+        const action = diff > 0 ? "可用現金加碼正2" : "可賣出部分正2轉回現金";
+        const advice = needsRebalance
+          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近正2 ${leveragedTarget}% / 現金 ${cashTarget}%。`
+          : `目前偏移約 ${pct.format(Math.abs(drift))}%，仍在 ${band}% 容許範圍內，可先維持。`;
+
+        resultGrid.innerHTML = [
+          resultBox("目前正2比例", `${pct.format(leveragedRatio)}%`),
+          resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
+          resultBox("建議調整金額", needsRebalance ? money.format(Math.abs(diff)) : money.format(0)),
+          resultBox("正2目標金額", money.format(Math.round(targetLeveragedAmount))),
+          resultBox("現金目標金額", money.format(Math.round(total - targetLeveragedAmount))),
+          resultBox("總檢查金額", money.format(total)),
+        ].join("");
+        leveragedBar.style.width = `${Math.min(100, Math.max(0, leveragedRatio))}%`;
+        cashBar.style.width = `${Math.min(100, Math.max(0, cashRatio))}%`;
+        adviceBox.classList.toggle("editing", needsRebalance);
+        adviceBox.innerHTML = `<span><strong>${needsRebalance ? "建議再平衡" : "目前可維持"}</strong> ${advice}</span>`;
+        setStatus("這是檢查與決策建議，不會自動交易。", "success");
+      }
+
+      function saveDraft() {
+        const payload = {
+          leveraged: form.elements.leveraged.value,
+          cash: form.elements.cash.value,
+          leveragedTarget: form.elements.leveragedTarget.value,
+          cashTarget: form.elements.cashTarget.value,
+          band: form.elements.band.value,
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+        setStatus("已記住這次金額，下次打開會自動帶入。", "success");
+      }
+
+      function loadDraft() {
+        try {
+          const payload = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+          Object.entries(payload).forEach(([key, value]) => {
+            if (form.elements[key]) form.elements[key].value = value;
+          });
+        } catch {
+          localStorage.removeItem(STORAGE_KEY);
+        }
+      }
+
+      form.addEventListener("input", calculate);
+      form.addEventListener("change", calculate);
+      saveButton.addEventListener("click", saveDraft);
+      loadDraft();
+      calculate();
+    </script>
+  </body>
+</html>

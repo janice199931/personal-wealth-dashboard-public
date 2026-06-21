@@ -1244,4 +1244,9 @@ def snapshot_manager_page() -> FileResponse:
     return FileResponse(ROOT / "snapshot-manager.html")
 
 
+@app.api_route("/rebalancer.html", methods=["GET", "HEAD"])
+def rebalancer_page() -> FileResponse:
+    return FileResponse(ROOT / "rebalancer.html")
+
+
 app.mount("/", StaticFiles(directory=ROOT, html=True), name="static")

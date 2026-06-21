@@ -305,6 +305,36 @@ small {
   line-height: 1.45;
 }
 
+.rebalance-result-grid {
+  margin-bottom: 14px;
+}
+
+.rebalance-visual {
+  height: 18px;
+  overflow: hidden;
+  display: flex;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: rgba(255, 253, 250, 0.76);
+}
+
+.rebalance-visual span {
+  min-width: 0;
+  transition: width 0.18s ease;
+}
+
+.rebalance-visual span:first-child {
+  background: linear-gradient(90deg, rgba(155, 143, 208, 0.92), rgba(246, 183, 183, 0.88));
+}
+
+.rebalance-visual span:last-child {
+  background: linear-gradient(90deg, rgba(168, 196, 160, 0.92), rgba(255, 215, 168, 0.76));
+}
+
+.rebalance-advice {
+  margin: 14px 0 0;
+}
+
 .filters {
   display: grid;
   grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(110px, 1fr));
