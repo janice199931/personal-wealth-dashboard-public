@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Janice的小天地</title>
-    <link rel="stylesheet" href="./styles.css?v=20260621-rebalance" />
+    <link rel="stylesheet" href="./styles.css?v=20260622-health" />
   </head>
   <body>
     <aside class="sidebar" aria-label="主選單">
@@ -116,6 +116,28 @@
 
       <section class="kpi-grid" id="kpiGrid" aria-label="核心資產指標"></section>
 
+      <section class="dashboard health-dashboard" aria-label="財務健康檢查">
+        <article class="panel health-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Health</p>
+              <h2>財務健康燈號</h2>
+            </div>
+          </div>
+          <div id="healthSignals" class="health-signal-list"></div>
+        </article>
+
+        <article class="panel checklist-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Monthly Check</p>
+              <h2>月度檢查清單</h2>
+            </div>
+          </div>
+          <div id="monthlyChecklist" class="monthly-checklist"></div>
+        </article>
+      </section>
+
       <section class="data-status-grid" id="dataStatusCards" aria-label="資料狀態" hidden></section>
 
       <section class="dashboard dashboard-primary" aria-label="資產配置與成長">
@@ -194,6 +216,6 @@
       <p class="dashboard-footer">用心記錄每一筆財富，讓夢想一點一滴實現 ♡</p>
     </main>
 
-    <script src="./app.js?v=20260621-rebalance"></script>
+    <script src="./app.js?v=20260622-health"></script>
   </body>
 </html>

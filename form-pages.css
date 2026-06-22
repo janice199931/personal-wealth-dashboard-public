@@ -335,6 +335,28 @@ small {
   margin: 14px 0 0;
 }
 
+.next-contribution-box {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(155, 143, 208, 0.24);
+  border-radius: 18px;
+  background: rgba(255, 253, 250, 0.74);
+}
+
+.next-contribution-box span {
+  color: #9B8FD0;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.next-contribution-box strong {
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
 .filters {
   display: grid;
   grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(110px, 1fr));

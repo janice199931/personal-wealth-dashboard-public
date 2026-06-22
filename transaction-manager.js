@@ -25,6 +25,12 @@ const stockNameMap = new Map(Object.entries({
   TSM: "Taiwan Semiconductor",
   VOO: "Vanguard S&P 500 ETF",
 }));
+const purposeLabels = {
+  monthly: "每月固定投入",
+  dividend: "股息再投入",
+  extra: "額外加碼",
+  rebalance: "再平衡調整",
+};
 
 form.elements.date.value = "";
 
@@ -221,6 +227,10 @@ function learnStockNames(items) {
   (items || []).forEach((item) => rememberStockName(item.symbol, item.name));
 }
 
+function purposeLabel(value) {
+  return purposeLabels[String(value || "")] || "未分類";
+}
+
 async function loadPortfolioStockNames() {
   try {
     const response = await fetch("/api/portfolio", { cache: "no-store" });
@@ -298,7 +308,7 @@ function activeFilters() {
 
 function transactionMatches(item, filter) {
   const date = String(item.date || "");
-  const searchText = [item.symbol, item.name, item.note].join(" ").toLowerCase();
+  const searchText = [item.symbol, item.name, item.note, purposeLabel(item.purpose)].join(" ").toLowerCase();
   return (
     (!filter.search || searchText.includes(filter.search)) &&
     (!filter.market || item.market === filter.market) &&
@@ -365,7 +375,7 @@ function renderTransactions() {
   renderQuickFilters();
   const visibleTransactions = filteredTransactions();
   if (!visibleTransactions.length) {
-    rows.innerHTML = `<tr><td colspan="9">尚無交易紀錄</td></tr>`;
+    rows.innerHTML = `<tr><td colspan="10">尚無交易紀錄</td></tr>`;
     if (cards) cards.innerHTML = `<div class="empty-list">尚無交易紀錄</div>`;
     return;
   }
@@ -381,6 +391,7 @@ function renderTransactions() {
           <td>${formatNumber(item.shares)}</td>
           <td>${formatNumber(item.price)}</td>
           <td>${formatNumber(item.fee)}</td>
+          <td>${escapeHtml(purposeLabel(item.purpose))}</td>
           <td>${escapeHtml(item.note)}</td>
           <td>
             <div class="row-actions">
@@ -414,6 +425,7 @@ function renderTransactions() {
           <div><span>成交價格</span><strong>${formatNumber(item.price)}</strong></div>
           <div><span>手續費</span><strong>${formatNumber(item.fee)}</strong></div>
           <div><span>估算金額</span><strong>${formatNumber(total)}</strong></div>
+          <div><span>投入來源</span><strong>${escapeHtml(purposeLabel(item.purpose))}</strong></div>
         </div>
         ${item.note ? `<p>${escapeHtml(item.note)}</p>` : ""}
         <div class="row-actions">
@@ -439,6 +451,7 @@ function currentTransaction() {
     shares: Number(formData.get("shares")),
     price: Number(formData.get("price")),
     fee: Number(formData.get("fee") || 0),
+    purpose: String(formData.get("purpose") || "").trim(),
     note: String(formData.get("note") || "").trim(),
   };
 }
@@ -456,6 +469,7 @@ function editTransaction(id) {
   form.elements.shares.value = transaction.shares ?? "";
   form.elements.price.value = transaction.price ?? "";
   form.elements.fee.value = transaction.fee ?? 0;
+  form.elements.purpose.value = transaction.purpose || "";
   form.elements.note.value = transaction.note || "";
   setFormMode(id);
   setStatus("正在編輯交易，確認欄位後按「更新交易」。", "working");

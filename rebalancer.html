@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>再平衡檢查</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260621-rebalance-data" />
+    <link rel="stylesheet" href="./form-pages.css?v=20260622-rebalance-next" />
   </head>
   <body>
     <main>
@@ -59,6 +59,7 @@
           <span id="cashBar"></span>
         </div>
         <div class="mode-banner rebalance-advice" id="adviceBox"></div>
+        <div class="next-contribution-box" id="nextContributionBox"></div>
       </section>
     </main>
 
@@ -69,6 +70,7 @@
       const saveButton = document.getElementById("saveButton");
       const reloadButton = document.getElementById("reloadButton");
       const adviceBox = document.getElementById("adviceBox");
+      const nextContributionBox = document.getElementById("nextContributionBox");
       const leveragedBar = document.getElementById("leveragedBar");
       const cashBar = document.getElementById("cashBar");
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
@@ -97,6 +99,7 @@
         leveragedBar.style.width = "70%";
         cashBar.style.width = "30%";
         adviceBox.innerHTML = "<span><strong>等待資料</strong> 帶入首頁資料後，這裡會顯示再平衡建議。</span>";
+        nextContributionBox.innerHTML = "";
       }
 
       async function readApiPayload(response, fallbackMessage) {
@@ -167,10 +170,18 @@
         const leveragedRatio = (leveraged / total) * 100;
         const cashRatio = (cash / total) * 100;
         const targetLeveragedAmount = total * (leveragedTarget / 100);
+        const targetCashAmount = total - targetLeveragedAmount;
         const diff = Math.round(targetLeveragedAmount - leveraged);
         const drift = leveragedRatio - leveragedTarget;
         const needsRebalance = Math.abs(drift) > band;
         const action = diff > 0 ? "可用現金加碼 00685L" : "可賣出部分 00685L 轉回現金";
+        const nextBuy = Math.round(35000 * (leveragedTarget / 100));
+        const nextCash = 35000 - nextBuy;
+        const nextContribution = drift > band
+          ? "目前 00685L 比例偏高，下一筆投入建議先放現金，等比例回到目標附近再加碼 00685L。"
+          : drift < -band
+            ? "目前 00685L 比例偏低，下一筆投入可以優先買 00685L。"
+            : `目前比例接近目標，下一筆可參考 00685L ${money.format(nextBuy)} / 現金 ${money.format(nextCash)}。`;
         const advice = needsRebalance
           ? `${action} ${money.format(Math.abs(diff))}，調整後會接近 00685L ${leveragedTarget}% / 現金 ${cashTarget}%。`
           : `目前偏移約 ${pct.format(Math.abs(drift))}%，仍在 ${band}% 容許範圍內，可先維持。`;
@@ -180,13 +191,17 @@
           resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
           resultBox("建議調整金額", needsRebalance ? money.format(Math.abs(diff)) : money.format(0)),
           resultBox("00685L 目標金額", money.format(Math.round(targetLeveragedAmount))),
-          resultBox("現金目標金額", money.format(Math.round(total - targetLeveragedAmount))),
+          resultBox("現金目標金額", money.format(Math.round(targetCashAmount))),
           resultBox("總檢查金額", money.format(total)),
         ].join("");
         leveragedBar.style.width = `${Math.min(100, Math.max(0, leveragedRatio))}%`;
         cashBar.style.width = `${Math.min(100, Math.max(0, cashRatio))}%`;
         adviceBox.classList.toggle("editing", needsRebalance);
         adviceBox.innerHTML = `<span><strong>${needsRebalance ? "建議再平衡" : "目前可維持"}</strong> ${advice}</span>`;
+        nextContributionBox.innerHTML = `
+          <span>下一筆投入建議</span>
+          <strong>${nextContribution}</strong>
+        `;
         setStatus("這是檢查與決策建議，不會自動交易。", "success");
       }
 

@@ -36,6 +36,10 @@ const data = {
   monthly: [],
   assetTrend: [],
   transactions: [],
+  rebalancer: {
+    leveragedValue: 0,
+    hasLeveragedHolding: false,
+  },
 };
 
 const colors = ["#e9a3ad", "#f0bd76", "#a8c4a0", "#b8acd3", "#9ec7dc", "#d7a7ad"];
@@ -56,6 +60,9 @@ const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 200000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
+const LEVERAGED_TARGET_RATIO = 70;
+const CASH_TARGET_RATIO = 30;
+const REBALANCE_BAND = 5;
 let dataStatus = null;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -373,6 +380,7 @@ function applyPortfolioData(portfolio, history = []) {
   const byMarketValueDesc = (a, b) => Number(b.marketValueTWD ?? b.marketValue ?? 0) - Number(a.marketValueTWD ?? a.marketValue ?? 0);
   const twHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "TW").sort(byMarketValueDesc);
   const usHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "US").sort(byMarketValueDesc);
+  const leveragedHolding = (portfolio.holdings ?? []).find((holding) => String(holding.symbol || "").toUpperCase() === "00685L");
 
   usdToTwd = Number(portfolio.fxRate) || usdToTwd;
   data.updatedAt = portfolio.updatedAt || "";
@@ -388,6 +396,7 @@ function applyPortfolioData(portfolio, history = []) {
     cost: twMarket.cost ?? 0,
     updatedAt: twMarket.updatedAt || data.investments.tw.updatedAt,
     holdings: twHoldings.map((holding) => ({
+      symbol: holding.symbol,
       title: `${holding.name} ${holding.symbol}`,
       shares: formatSharesValue(holding.shares),
       price: Number(holding.price),
@@ -429,6 +438,10 @@ function applyPortfolioData(portfolio, history = []) {
     { label: "現金", value: portfolio.allocation?.cash ?? 0, color: "#a8c4a0" },
     { label: "負債", value: portfolio.allocation?.debt ?? 0, color: "#b8acd3" },
   ];
+  data.rebalancer = {
+    leveragedValue: Number(leveragedHolding?.marketValueTWD ?? leveragedHolding?.marketValue ?? 0) || 0,
+    hasLeveragedHolding: Boolean(leveragedHolding),
+  };
 
   if (history.length) {
     data.assetTrend = history.map((row) => ({
@@ -685,6 +698,11 @@ function getPortfolioMetrics() {
   const usGain = us.holdings.reduce((sum, holding) => sum + parseAmount(holding.gain), 0);
   const twShares = parseShares(tw.shares);
   const monthlyInvestment = investmentAmountForPeriod(currentMonthKey());
+  const monthlyInvestmentRemaining = Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlyInvestment));
+  const leveragedValue = data.rebalancer.leveragedValue || 0;
+  const rebalanceTotal = leveragedValue + cash;
+  const leveragedRatio = rebalanceTotal ? (leveragedValue / rebalanceTotal) * 100 : 0;
+  const leveragedDrift = leveragedRatio - LEVERAGED_TARGET_RATIO;
 
   return {
     taiwanStocks,
@@ -711,6 +729,12 @@ function getPortfolioMetrics() {
     usGainTwd: us.gainTwd ?? Math.round(usGain * usdToTwd),
     usReturnRate: percent(usGain, usCost, 2),
     monthlyInvestment,
+    monthlyInvestmentRemaining,
+    leveragedValue,
+    rebalanceTotal,
+    leveragedRatio,
+    leveragedDrift,
+    hasLeveragedHolding: data.rebalancer.hasLeveragedHolding,
   };
 }
 
@@ -794,7 +818,7 @@ function renderKpis() {
   const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
   const monthlyInvestmentGap = MONTHLY_INVESTMENT_TARGET - monthlyInvestmentRounded;
   const monthlyInvestmentNote = monthlyInvestmentGap > 0
-    ? `還差 ${money.format(monthlyInvestmentGap)} 達成本月投資目標`
+    ? `本月還可投入 ${money.format(monthlyInvestmentGap)}`
     : `已超過目標 ${money.format(Math.abs(monthlyInvestmentGap))}`;
   const rows = [
     { label: "總資產", value: money.format(metrics.totalAssets) },
@@ -825,6 +849,117 @@ function renderKpis() {
       ${Number.isFinite(row.progress) ? `<span class="mini-progress"><i style="width:${row.progress}%"></i></span>` : ""}
       ${row.note ? `<em>${row.note}</em>` : ""}
     </article>`)
+    .join("");
+}
+
+function healthTone(status) {
+  if (status === "good") return "健康";
+  if (status === "watch") return "留意";
+  return "優先";
+}
+
+function rebalanceMessage(metrics) {
+  if (!metrics.hasLeveragedHolding) {
+    return {
+      status: "watch",
+      title: "00685L 資料",
+      text: "首頁目前找不到 00685L，請先確認持股或更新股價。",
+    };
+  }
+  if (!metrics.rebalanceTotal) {
+    return {
+      status: "watch",
+      title: "再平衡比例",
+      text: "目前可檢查金額為 0，更新資料後再判斷。",
+    };
+  }
+  const drift = Math.abs(metrics.leveragedDrift);
+  if (drift <= REBALANCE_BAND) {
+    return {
+      status: "good",
+      title: "再平衡比例",
+      text: `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，仍在 ${REBALANCE_BAND}% 容許範圍內。`,
+    };
+  }
+  return {
+    status: "warn",
+    title: "再平衡比例",
+    text: metrics.leveragedDrift > 0
+      ? `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏高，下次投入先偏向現金。`
+      : `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏低，下次投入可偏向 00685L。`,
+  };
+}
+
+function nextContributionMessage(metrics) {
+  if (metrics.monthlyInvestmentRemaining <= 0) return "本月投資目標已達成，下一筆投入可依 70/30 檢查比例微調。";
+  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) {
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，資料完整後再判斷正2/現金比例。`;
+  }
+  if (metrics.leveragedRatio > LEVERAGED_TARGET_RATIO + REBALANCE_BAND) {
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，建議先留在現金，讓比例靠近 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO}。`;
+  }
+  if (metrics.leveragedRatio < LEVERAGED_TARGET_RATIO - REBALANCE_BAND) {
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，下次可優先投入 00685L。`;
+  }
+  const leveragedAmount = Math.round(metrics.monthlyInvestmentRemaining * (LEVERAGED_TARGET_RATIO / 100));
+  const cashAmount = metrics.monthlyInvestmentRemaining - leveragedAmount;
+  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考 00685L ${money.format(leveragedAmount)} / 現金 ${money.format(cashAmount)}。`;
+}
+
+function currentFinanceMonth() {
+  const monthKey = currentMonthKey();
+  return financeMonths().find((month) => month.month === monthKey) || null;
+}
+
+function renderHealthDashboard() {
+  const metrics = getPortfolioMetrics();
+  const currentMonth = currentFinanceMonth();
+  const rebalance = rebalanceMessage(metrics);
+  const emergencyReady = metrics.cash >= EMERGENCY_FUND_TARGET;
+  const monthlyInvestmentReady = Math.round(metrics.monthlyInvestment) >= MONTHLY_INVESTMENT_TARGET;
+  const hasIncome = Number(currentMonth?.income || 0) > 0;
+  const hasExpense = Number(currentMonth?.expense || 0) > 0;
+  const rebalanceReady = rebalance.status === "good";
+  const signals = [
+    {
+      status: emergencyReady ? "good" : "warn",
+      title: "緊急預備金",
+      text: emergencyReady
+        ? `已達 ${money.format(EMERGENCY_FUND_TARGET)} 目標。`
+        : `還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.cash)}，建議先把現金補穩。`,
+    },
+    {
+      status: monthlyInvestmentReady ? "good" : "watch",
+      title: "本月可投入",
+      text: monthlyInvestmentReady
+        ? `本月已投入 ${money.format(Math.round(metrics.monthlyInvestment))}，已達標。`
+        : nextContributionMessage(metrics),
+    },
+    rebalance,
+  ];
+  const checklist = [
+    { done: hasIncome, label: "本月收入已填" },
+    { done: hasExpense, label: "本月支出已填" },
+    { done: monthlyInvestmentReady, label: "本月投資達標" },
+    { done: emergencyReady, label: "緊急預備金達標" },
+    { done: rebalanceReady, label: "00685L / 現金比例正常" },
+  ];
+
+  document.getElementById("healthSignals").innerHTML = signals
+    .map((item) => `<div class="health-signal ${item.status}">
+      <span>${healthTone(item.status)}</span>
+      <div>
+        <strong>${item.title}</strong>
+        <p>${item.text}</p>
+      </div>
+    </div>`)
+    .join("");
+
+  document.getElementById("monthlyChecklist").innerHTML = checklist
+    .map((item) => `<div class="check-row ${item.done ? "done" : ""}">
+      <span>${item.done ? "✓" : ""}</span>
+      <strong>${item.label}</strong>
+    </div>`)
     .join("");
 }
 
@@ -1488,6 +1623,7 @@ function renderLedger() {
 function render() {
   renderHero();
   renderKpis();
+  renderHealthDashboard();
   renderAssetPie();
   drawNetWorthChart();
   setupChartHover();

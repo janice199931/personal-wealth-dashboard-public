@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>交易紀錄管理</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260614-filters" />
+    <link rel="stylesheet" href="./form-pages.css?v=20260622-purpose" />
   </head>
   <body>
     <main>
@@ -60,6 +60,16 @@
         <label>
           手續費
           <input name="fee" type="number" step="0.01" min="0" value="0" />
+        </label>
+        <label>
+          投入來源
+          <select name="purpose">
+            <option value="">未分類</option>
+            <option value="monthly">每月固定投入</option>
+            <option value="dividend">股息再投入</option>
+            <option value="extra">額外加碼</option>
+            <option value="rebalance">再平衡調整</option>
+          </select>
         </label>
         <label class="full">
           備註
@@ -128,6 +138,7 @@
                 <th>股數</th>
                 <th>成交價格</th>
                 <th>手續費</th>
+                <th>投入來源</th>
                 <th>備註</th>
                 <th>操作</th>
               </tr>
@@ -138,6 +149,6 @@
         <div class="transaction-card-list" id="transactionCards"></div>
       </section>
     </main>
-    <script src="./transaction-manager.js?v=20260614-filters"></script>
+    <script src="./transaction-manager.js?v=20260622-purpose"></script>
   </body>
 </html>

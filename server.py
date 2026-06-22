@@ -227,6 +227,7 @@ def normalize_transaction(payload: dict[str, Any]) -> dict[str, Any]:
     symbol = str(payload.get("symbol", "")).strip().upper()
     name = str(payload.get("name", "")).strip()
     action = str(payload.get("action", "")).strip().upper()
+    purpose = str(payload.get("purpose", "")).strip()
     note = str(payload.get("note", payload.get("memo", ""))).strip()
 
     missing = [
@@ -246,6 +247,8 @@ def normalize_transaction(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="市場必須是 TW 或 US。")
     if action not in {"BUY", "SELL"}:
         raise HTTPException(status_code=400, detail="動作必須是 BUY 或 SELL。")
+    if purpose and purpose not in {"monthly", "dividend", "extra", "rebalance"}:
+        raise HTTPException(status_code=400, detail="投入來源分類不正確。")
 
     return {
         **({"id": str(payload.get("id")).strip()} if payload.get("id") else {}),
@@ -257,6 +260,7 @@ def normalize_transaction(payload: dict[str, Any]) -> dict[str, Any]:
         "shares": parse_transaction_number(payload, "shares", "股數"),
         "price": parse_transaction_number(payload, "price", "成交價格"),
         "fee": parse_transaction_number(payload, "fee", "手續費", allow_zero=True),
+        "purpose": purpose,
         "note": note,
     }
 
