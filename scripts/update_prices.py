@@ -63,6 +63,28 @@ def now_iso() -> str:
     return datetime.now(TWD).isoformat(timespec="seconds")
 
 
+def twse_compact_date(value: Any) -> str:
+    text = str(value or "").strip()
+    if len(text) != 7 or not text.isdigit():
+        return ""
+    year = int(text[:3]) + 1911
+    month = text[3:5]
+    day = text[5:7]
+    return f"{year}/{month}/{day}"
+
+
+def twse_slash_date(value: Any) -> str:
+    parts = str(value or "").strip().split("/")
+    if len(parts) != 3:
+        return ""
+    roc_year, month, day = parts
+    try:
+        year = int(roc_year) + 1911
+    except ValueError:
+        return ""
+    return f"{year}/{month.zfill(2)}/{day.zfill(2)}"
+
+
 def yahoo_chart(symbol: str) -> dict[str, Any] | None:
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{quote(symbol)}?range=5d&interval=1d"
     payload = fetch_json(url)
@@ -94,6 +116,7 @@ def price_result(ok: bool, symbol: str, market: str, row: dict[str, Any] | None 
         "symbol": f"{market}:{symbol}",
         "source": source,
         "price": (row or {}).get("price"),
+        "priceDate": (row or {}).get("priceDate", ""),
         "updatedAt": (row or {}).get("updatedAt", ""),
         "error": error,
     }
@@ -119,11 +142,13 @@ def fetch_tw_prices(symbols: set[str]) -> dict[str, dict[str, Any]]:
 
         change = parse_number(row.get("Change"))
         previous = price - change
+        price_date = twse_compact_date(row.get("Date"))
         prices[symbol] = {
             "price": price,
             "change": round(change, 4),
             "changePercent": round((change / previous * 100) if previous else 0, 2),
-            "updatedAt": now_text(),
+            "updatedAt": f"{price_date} {datetime.now(TWD).strftime('%H:%M')}" if price_date else now_text(),
+            "priceDate": price_date,
         }
 
     return prices
@@ -146,8 +171,8 @@ def fetch_tw_price_fallback(symbol: str) -> dict[str, Any] | None:
         return yahoo_chart(f"{symbol}.TW")
 
     change = parse_number(latest[7])
-    roc_year, month, day = str(latest[0]).split("/")
-    updated_at = f"{int(roc_year) + 1911}/{month.zfill(2)}/{day.zfill(2)} {datetime.now(TWD).strftime('%H:%M')}"
+    price_date = twse_slash_date(latest[0])
+    updated_at = f"{price_date} {datetime.now(TWD).strftime('%H:%M')}" if price_date else now_text()
     previous = price - change
 
     return {
@@ -155,6 +180,7 @@ def fetch_tw_price_fallback(symbol: str) -> dict[str, Any] | None:
         "change": round(change, 4),
         "changePercent": round((change / previous * 100) if previous else 0, 2),
         "updatedAt": updated_at,
+        "priceDate": price_date,
     }
 
 
@@ -180,42 +206,41 @@ def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, An
         if str(holding.get("market", "")).upper() == "TW" and holding.get("symbol")
     }
 
-    try:
-        for symbol, row in fetch_tw_prices(tw_symbols).items():
-            key = f"TW:{symbol}"
-            prices[key] = row
-            tw_result["updatedSymbols"].append(key)
-            tw_result["symbols"][key] = price_result(True, symbol, "TW", row, source="twse-batch")
-    except Exception as error:
-        message = f"台股批次更新失敗，改用逐檔更新：{type(error).__name__}: {error}"
-        warnings.append(message)
-        error_messages.append(message)
-        tw_result["batchOk"] = False
-        tw_result["batchError"] = str(error)
-
     for symbol in sorted(tw_symbols):
         key = f"TW:{symbol}"
-        if key in prices:
-            continue
         try:
             row = fetch_tw_price_fallback(symbol)
             if row:
                 prices[key] = row
                 tw_result["updatedSymbols"].append(key)
-                tw_result["symbols"][key] = price_result(True, symbol, "TW", row, source="twse-symbol-or-yahoo")
+                tw_result["symbols"][key] = price_result(True, symbol, "TW", row, source="twse-symbol")
             else:
                 message = f"{key} 更新失敗，資料來源沒有回傳可用價格"
                 warnings.append(message)
                 error_messages.append(message)
                 tw_result["failedSymbols"].append(key)
-                tw_result["symbols"][key] = price_result(False, symbol, "TW", error=message, source="twse-symbol-or-yahoo")
+                tw_result["symbols"][key] = price_result(False, symbol, "TW", error=message, source="twse-symbol")
             time.sleep(0.2)
         except (URLError, TimeoutError, ValueError, KeyError, TypeError) as error:
+            try:
+                batch_row = fetch_tw_prices({symbol}).get(symbol)
+            except Exception as batch_error:
+                batch_row = None
+                tw_result["batchOk"] = False
+                tw_result["batchError"] = str(batch_error)
+            if batch_row:
+                prices[key] = batch_row
+                tw_result["updatedSymbols"].append(key)
+                tw_result["symbols"][key] = price_result(True, symbol, "TW", batch_row, source="twse-batch-fallback")
+                message = f"{key} 逐檔收盤價更新失敗，已改用證交所批次資料：{type(error).__name__}: {error}"
+                warnings.append(message)
+                error_messages.append(message)
+                continue
             message = f"{key} 更新失敗，保留原價格：{type(error).__name__}: {error}"
             warnings.append(message)
             error_messages.append(message)
             tw_result["failedSymbols"].append(key)
-            tw_result["symbols"][key] = price_result(False, symbol, "TW", error=message, source="twse-symbol-or-yahoo")
+            tw_result["symbols"][key] = price_result(False, symbol, "TW", error=message, source="twse-symbol")
 
     us_symbols = sorted({
         str(holding.get("symbol", "")).upper()
