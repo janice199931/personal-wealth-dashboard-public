@@ -6,6 +6,7 @@ const submitButton = document.getElementById("submitButton");
 const cancelEditButton = document.getElementById("cancelEditButton");
 const modeBanner = document.getElementById("modeBanner");
 const quickFilters = document.getElementById("quickFilters");
+const symbolOptions = document.getElementById("symbolOptions");
 const filters = {
   search: document.getElementById("searchFilter"),
   market: document.getElementById("marketFilter"),
@@ -217,6 +218,14 @@ function normalizeSymbol(value) {
   return String(value || "").trim().toUpperCase();
 }
 
+function renderStockOptions() {
+  if (!symbolOptions) return;
+  const options = [...stockNameMap.entries()]
+    .sort(([left], [right]) => left.localeCompare(right, "en"))
+    .map(([symbol, name]) => `<option value="${escapeHtml(symbol)}" label="${escapeHtml(name)}"></option>`);
+  symbolOptions.innerHTML = options.join("");
+}
+
 function rememberStockName(symbol, name) {
   const normalizedSymbol = normalizeSymbol(symbol);
   const normalizedName = String(name || "").trim();
@@ -225,6 +234,7 @@ function rememberStockName(symbol, name) {
 
 function learnStockNames(items) {
   (items || []).forEach((item) => rememberStockName(item.symbol, item.name));
+  renderStockOptions();
 }
 
 function purposeLabel(value) {
@@ -442,6 +452,7 @@ function currentTransaction() {
   const symbol = normalizeSymbol(formData.get("symbol"));
   const name = String(formData.get("name")).trim();
   rememberStockName(symbol, name);
+  renderStockOptions();
   return {
     date: normalizeInputDate(formData.get("date")),
     market: formData.get("market"),
@@ -589,6 +600,7 @@ form.elements.name.addEventListener("input", () => {
   if (form.elements.name.value.trim() !== lastAutoFilledName) lastAutoFilledName = "";
 });
 setupDatePicker(form.elements.date);
+renderStockOptions();
 
 rows.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action][data-id]");

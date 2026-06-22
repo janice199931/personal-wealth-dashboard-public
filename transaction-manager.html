@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>交易紀錄管理</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260622-purpose" />
+    <link rel="stylesheet" href="./form-pages.css?v=20260622-symbol-list" />
   </head>
   <body>
     <main>
@@ -36,7 +36,8 @@
         </label>
         <label>
           股票代號
-          <input name="symbol" placeholder="0050" required />
+          <input name="symbol" list="symbolOptions" placeholder="0050" required />
+          <datalist id="symbolOptions"></datalist>
         </label>
         <label>
           股票名稱
