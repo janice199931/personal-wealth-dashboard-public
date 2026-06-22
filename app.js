@@ -850,7 +850,7 @@ function renderKpis() {
       label: "投資總損益",
       value: money.format(metrics.investmentGainTwd),
       valueTone: investmentGainTone,
-      changeHtml: `<span class="${gainTone(metrics.twGainTwd)}">台股 ${money.format(metrics.twGainTwd)}</span> / <span class="${gainTone(metrics.usGainTwd)}">美股 ${money.format(metrics.usGainTwd)}</span>`,
+      changeHtml: `<span class="kpi-split-line ${gainTone(metrics.twGainTwd)}">台股 ${money.format(metrics.twGainTwd)}</span><span class="kpi-split-line ${gainTone(metrics.usGainTwd)}">美股 ${money.format(metrics.usGainTwd)}</span>`,
     },
   ];
 
@@ -1582,8 +1582,8 @@ function formatMonthLabel(month) {
 
 function renderYearSummary(year) {
   return [
-    { label: "全年收入", value: money.format(year.income), tone: "positive" },
-    { label: "全年支出", value: money.format(year.expense), tone: "negative" },
+    { label: "全年收入", value: money.format(year.income), tone: "income-positive" },
+    { label: "全年支出", value: money.format(year.expense), tone: "expense-negative" },
     { label: "全年淨增加", value: money.format(year.net), tone: year.net >= 0 ? "positive" : "negative" },
     { label: "全年儲蓄率", value: `${year.savingsRate}%`, tone: year.savingsRate >= 0 ? "positive" : "negative" },
   ]
@@ -1600,8 +1600,8 @@ function renderMonthlyRows(year) {
     .sort((a, b) => a.month.localeCompare(b.month))
     .map((month) => `<tr>
       <td>${formatMonthLabel(month.month)}</td>
-      <td class="positive">${money.format(month.income)}</td>
-      <td class="negative">${money.format(month.expense)}</td>
+      <td class="income-positive">${money.format(month.income)}</td>
+      <td class="expense-negative">${money.format(month.expense)}</td>
       <td class="${month.net >= 0 ? "positive" : "negative"}">${money.format(month.net)}</td>
       <td class="${month.savingsRate >= 0 ? "positive" : "negative"}">${month.savingsRate}%</td>
     </tr>`)

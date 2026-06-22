@@ -805,6 +805,11 @@ main {
   font-weight: 850;
 }
 
+.kpi-split-line {
+  display: block;
+  line-height: 1.35;
+}
+
 .kpi-card em {
   color: var(--muted);
   font-size: 11px;
@@ -1691,6 +1696,14 @@ canvas {
 }
 
 .gain-negative {
+  color: #5F9467;
+}
+
+.income-positive {
+  color: #D86868;
+}
+
+.expense-negative {
   color: #5F9467;
 }
 
