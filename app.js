@@ -721,6 +721,7 @@ function getPortfolioMetrics() {
     debtRatio: percent(debt, totalAssets),
     twPrice: twShares ? tw.marketValue / twShares : 0,
     twUnitCost: twShares ? tw.cost / twShares : 0,
+    twGainTwd: Number(tw.gain) || 0,
     usMarketValue,
     usCost,
     usGain,
@@ -730,6 +731,7 @@ function getPortfolioMetrics() {
     usReturnRate: percent(usGain, usCost, 2),
     monthlyInvestment,
     monthlyInvestmentRemaining,
+    investmentGainTwd: (Number(tw.gain) || 0) + Number((us.gainTwd ?? Math.round(usGain * usdToTwd)) || 0),
     leveragedValue,
     rebalanceTotal,
     leveragedRatio,
@@ -820,6 +822,7 @@ function renderKpis() {
   const monthlyInvestmentNote = monthlyInvestmentGap > 0
     ? `本月還可投入 ${money.format(monthlyInvestmentGap)}`
     : `已超過目標 ${money.format(Math.abs(monthlyInvestmentGap))}`;
+  const investmentGainTone = metrics.investmentGainTwd >= 0 ? "positive" : "negative";
   const rows = [
     { label: "總資產", value: money.format(metrics.totalAssets) },
     { label: "股票資產", value: money.format(metrics.stockAssets) },
@@ -839,12 +842,19 @@ function renderKpis() {
       note: monthlyInvestmentNote,
       tone: "positive",
     },
+    {
+      label: "投資總損益",
+      value: money.format(metrics.investmentGainTwd),
+      valueTone: investmentGainTone,
+      change: `台股 ${money.format(metrics.twGainTwd)} / 美股 ${money.format(metrics.usGainTwd)}`,
+      tone: investmentGainTone,
+    },
   ];
 
   document.getElementById("kpiGrid").innerHTML = rows
     .map((row) => `<article class="kpi-card">
       <span>${row.label}</span>
-      <strong>${row.value}</strong>
+      <strong class="${row.valueTone || ""}">${row.value}</strong>
       ${row.change ? `<small class="${row.tone}">${row.change}</small>` : ""}
       ${Number.isFinite(row.progress) ? `<span class="mini-progress"><i style="width:${row.progress}%"></i></span>` : ""}
       ${row.note ? `<em>${row.note}</em>` : ""}
