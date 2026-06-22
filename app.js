@@ -268,6 +268,10 @@ function signedPercent(value) {
   return `${value >= 0 ? "+" : ""}${Number(value).toFixed(1)}%`;
 }
 
+function gainTone(value) {
+  return Number(value) >= 0 ? "gain-positive" : "gain-negative";
+}
+
 function formatDaysAsMonths(days) {
   const totalDays = Math.max(0, Math.round(Number(days) || 0));
   const months = Math.floor(totalDays / 30);
@@ -822,7 +826,7 @@ function renderKpis() {
   const monthlyInvestmentNote = monthlyInvestmentGap > 0
     ? `本月還可投入 ${money.format(monthlyInvestmentGap)}`
     : `已超過目標 ${money.format(Math.abs(monthlyInvestmentGap))}`;
-  const investmentGainTone = metrics.investmentGainTwd >= 0 ? "positive" : "negative";
+  const investmentGainTone = gainTone(metrics.investmentGainTwd);
   const rows = [
     { label: "總資產", value: money.format(metrics.totalAssets) },
     { label: "股票資產", value: money.format(metrics.stockAssets) },
@@ -846,8 +850,7 @@ function renderKpis() {
       label: "投資總損益",
       value: money.format(metrics.investmentGainTwd),
       valueTone: investmentGainTone,
-      change: `台股 ${money.format(metrics.twGainTwd)} / 美股 ${money.format(metrics.usGainTwd)}`,
-      tone: investmentGainTone,
+      changeHtml: `<span class="${gainTone(metrics.twGainTwd)}">台股 ${money.format(metrics.twGainTwd)}</span> / <span class="${gainTone(metrics.usGainTwd)}">美股 ${money.format(metrics.usGainTwd)}</span>`,
     },
   ];
 
@@ -855,6 +858,7 @@ function renderKpis() {
     .map((row) => `<article class="kpi-card">
       <span>${row.label}</span>
       <strong class="${row.valueTone || ""}">${row.value}</strong>
+      ${row.changeHtml ? `<small>${row.changeHtml}</small>` : ""}
       ${row.change ? `<small class="${row.tone}">${row.change}</small>` : ""}
       ${Number.isFinite(row.progress) ? `<span class="mini-progress"><i style="width:${row.progress}%"></i></span>` : ""}
       ${row.note ? `<em>${row.note}</em>` : ""}
@@ -1472,6 +1476,8 @@ function setupDataBackupControls() {
 function renderInvestmentCards() {
   const { tw, us } = data.investments;
   const metrics = getPortfolioMetrics();
+  const twGainTone = gainTone(tw.gain);
+  const usGainTone = gainTone(metrics.usGainTwd);
   const twHoldings = tw.holdings?.length
     ? tw.holdings
     : [{
@@ -1490,8 +1496,8 @@ function renderInvestmentCards() {
     <div class="investment-stats">
       <div><span>市值</span><strong>${money.format(tw.marketValue)}</strong></div>
       <div><span>成本</span><strong>${money.format(tw.cost)}</strong></div>
-      <div><span>損益</span><strong class="positive">${money.format(tw.gain)}</strong></div>
-      <div><span>報酬率</span><strong class="positive">${tw.returnRate}</strong></div>
+      <div><span>損益</span><strong class="${twGainTone}">${money.format(tw.gain)}</strong></div>
+      <div><span>報酬率</span><strong class="${twGainTone}">${tw.returnRate}</strong></div>
     </div>
     <div class="holding-list stock-table">
       <div class="holding-row holding-head">
@@ -1503,14 +1509,17 @@ function renderInvestmentCards() {
         <span>報酬率</span>
       </div>
       ${twHoldings
-        .map((holding) => `<div class="holding-row">
+        .map((holding) => {
+          const tone = gainTone(holding.gain);
+          return `<div class="holding-row">
           <strong>${holding.title}</strong>
           <span>${holding.shares}</span>
           <span>${Number(holding.price).toFixed(2)}</span>
           <span>${Number(holding.cost).toFixed(2)}</span>
-          <span class="positive">${money.format(holding.gain)}</span>
-          <span class="positive">${holding.returnRate}</span>
-        </div>`)
+          <span class="${tone}">${money.format(holding.gain)}</span>
+          <span class="${tone}">${holding.returnRate}</span>
+        </div>`;
+        })
         .join("")}
     </div>
     <p class="note-text">更新時間：${formatUpdateTime(tw.updatedAt)}</p>`;
@@ -1523,8 +1532,8 @@ function renderInvestmentCards() {
     <div class="investment-stats">
       <div><span>市值</span><strong>${formatUsdSummary(metrics.usMarketValue)}</strong><small>${formatTwdApprox(metrics.usMarketValueTwd)}</small></div>
       <div><span>成本</span><strong>${formatUsdSummary(metrics.usCost)}</strong><small>${formatTwdApprox(metrics.usCostTwd)}</small></div>
-      <div><span>損益</span><strong class="positive">${formatUsdSummary(metrics.usGain)}</strong><small>${formatTwdApprox(metrics.usGainTwd)}</small></div>
-      <div><span>報酬率</span><strong class="positive">${metrics.usReturnRate}</strong></div>
+      <div><span>損益</span><strong class="${usGainTone}">${formatUsdSummary(metrics.usGain)}</strong><small class="${usGainTone}">${formatTwdApprox(metrics.usGainTwd)}</small></div>
+      <div><span>報酬率</span><strong class="${usGainTone}">${metrics.usReturnRate}</strong></div>
     </div>
     <div class="holding-list stock-table us-holdings">
       <div class="holding-row holding-head">
@@ -1536,14 +1545,17 @@ function renderInvestmentCards() {
         <span>報酬率</span>
       </div>
       ${us.holdings
-        .map((holding) => `<div class="holding-row">
+        .map((holding) => {
+          const tone = gainTone(holding.gainTwd);
+          return `<div class="holding-row">
           <strong>${holding.symbol}</strong>
           <span>${holding.shares}</span>
           <span>${holding.price}<small>${formatPlainTwdApproxFromUsd(holding.priceValue)}</small></span>
           <span>${holding.cost}<small>${formatPlainTwdApproxFromUsd(holding.costValue)}</small></span>
-          <span class="positive">${holding.gain}<small>${formatPlainTwdApproxFromUsd(holding.gainValue, true)}</small></span>
-          <span class="positive">${holding.returnRate}</span>
-        </div>`)
+          <span class="${tone}">${holding.gain}<small>${formatPlainTwdApproxFromUsd(holding.gainValue, true)}</small></span>
+          <span class="${tone}">${holding.returnRate}</span>
+        </div>`;
+        })
         .join("")}
     </div>
     <p class="note-text">更新時間：${formatUpdateTime(us.updatedAt ?? "2026/05/30 05:10")}</p>`;

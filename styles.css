@@ -1686,6 +1686,14 @@ canvas {
   color: #D98787;
 }
 
+.gain-positive {
+  color: #D86868;
+}
+
+.gain-negative {
+  color: #5F9467;
+}
+
 .dashboard-footer {
   margin-top: 12px;
   padding: 13px 16px;
