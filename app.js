@@ -832,12 +832,7 @@ function renderHero() {
 
 function renderKpis() {
   const metrics = getPortfolioMetrics();
-  const emergencyProgress = Math.min(100, Math.round((metrics.cash / EMERGENCY_FUND_TARGET) * 100));
   const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
-  const monthlyInvestmentGap = MONTHLY_INVESTMENT_TARGET - monthlyInvestmentRounded;
-  const monthlyInvestmentNote = monthlyInvestmentGap > 0
-    ? `本月還可投入 ${money.format(monthlyInvestmentGap)}`
-    : `已超過目標 ${money.format(Math.abs(monthlyInvestmentGap))}`;
   const investmentGainTone = gainTone(metrics.investmentGainTwd);
   const rows = [
     { label: "總資產", value: money.format(metrics.totalAssets) },
@@ -847,7 +842,6 @@ function renderKpis() {
       value: money.format(metrics.cash),
       change: `${money.format(metrics.cash)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
       tone: "positive",
-      progress: emergencyProgress,
     },
     { label: "負債", value: money.format(metrics.debt) },
     { label: "本月增加", value: money.format(metrics.monthNet) },
@@ -855,7 +849,6 @@ function renderKpis() {
       label: "本月投資",
       value: money.format(monthlyInvestmentRounded),
       change: `${money.format(monthlyInvestmentRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)}`,
-      note: monthlyInvestmentNote,
       tone: "positive",
     },
     {
@@ -863,7 +856,7 @@ function renderKpis() {
       value: money.format(metrics.investmentGainTwd),
       valueTone: investmentGainTone,
       changeHtml: `<span class="kpi-split-line ${gainTone(metrics.twGainTwd)}">台股 ${money.format(metrics.twGainTwd)}</span><span class="kpi-split-line ${gainTone(metrics.usGainTwd)}">美股 ${money.format(metrics.usGainTwd)}</span>`,
-      note: `總成本 ${money.format(metrics.investmentCostTwd)} / 報酬率 ${metrics.investmentReturnRate}`,
+      noteHtml: `<span class="kpi-split-line">總成本 ${money.format(metrics.investmentCostTwd)}</span><span class="kpi-split-line">報酬率 ${metrics.investmentReturnRate}</span>`,
     },
   ];
 
@@ -874,6 +867,7 @@ function renderKpis() {
       ${row.changeHtml ? `<small>${row.changeHtml}</small>` : ""}
       ${row.change ? `<small class="${row.tone}">${row.change}</small>` : ""}
       ${Number.isFinite(row.progress) ? `<span class="mini-progress"><i style="width:${row.progress}%"></i></span>` : ""}
+      ${row.noteHtml ? `<em>${row.noteHtml}</em>` : ""}
       ${row.note ? `<em>${row.note}</em>` : ""}
     </article>`)
     .join("");
