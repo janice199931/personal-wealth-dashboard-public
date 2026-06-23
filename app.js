@@ -760,7 +760,7 @@ function getNextMilestone() {
   const { netWorth } = getPortfolioMetrics();
   const annualRunRate = estimateAnnualRunRate();
   const target = [5000000, 10000000, 15000000, 20000000].find((item) => item > netWorth) ?? 20000000;
-  const progress = Math.min(100, Math.round((netWorth / target) * 100));
+  const progress = Math.min(100, Number(((netWorth / target) * 100).toFixed(1)));
   const remaining = Math.max(0, target - netWorth);
   const etaDate = estimateMilestoneDate(remaining, annualRunRate);
   const age = etaDate ? ageOnDate(etaDate) : null;
@@ -819,13 +819,23 @@ function renderHero() {
     <small class="positive">▲ ${money.format(metrics.monthNet)}（+${monthGrowth}）本月增長</small>`;
 
   document.getElementById("heroMilestone").innerHTML = `
-    <div class="hero-milestone-line">
-      <span>距離 ${number.format(next.target / 10000)} 萬</span>
-      <div class="hero-progress">
-        <span style="width:${next.progress}%"></span>
+    <div class="wealth-journey">
+      <span class="wealth-journey-label">距離${number.format(next.target / 10000)}萬</span>
+      <div class="wealth-journey-track" aria-label="財富旅程進度 ${next.progress}%">
+        <span class="wealth-journey-fill" style="width:${next.progress}%"></span>
+        <span class="wealth-journey-cat" style="left:${next.progress}%">
+          <svg viewBox="0 0 32 32" role="img" aria-label="目前財富位置">
+            <path class="journey-cat-face" d="M8 15c0-6 4-10 8-10s8 4 8 10c0 7-4 11-8 11s-8-4-8-11Z"></path>
+            <path class="journey-cat-ear" d="M9 11 8 5l5 4"></path>
+            <path class="journey-cat-ear" d="M23 11l1-6-5 4"></path>
+            <path class="journey-cat-eye" d="M12 15c1 1 3 1 4 0"></path>
+            <path class="journey-cat-eye" d="M17 15c1 1 3 1 4 0"></path>
+            <path class="journey-cat-mouth" d="M14 20c1 1 3 1 4 0"></path>
+          </svg>
+        </span>
       </div>
+      <span class="wealth-journey-goal" aria-hidden="true">🏆</span>
       <strong>${next.progress}%</strong>
-      <em>${next.age === null ? "預估持續追蹤中" : `預估 ${next.age} 歲達成`}</em>
     </div>
     <p>還差 ${money.format(next.remaining)} 到下一個財富里程碑</p>`;
 }

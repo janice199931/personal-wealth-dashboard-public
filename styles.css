@@ -386,10 +386,10 @@ main {
 .hero-card {
   position: relative;
   overflow: hidden;
-  min-height: 150px;
-  padding: 18px 24px;
+  min-height: 132px;
+  padding: 14px 24px 16px;
   border: 1px solid var(--glass-border);
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at 86% 35%, rgba(239, 143, 155, 0.22), transparent 24%),
     radial-gradient(circle at 48% 118%, rgba(240, 189, 118, 0.24), transparent 34%),
@@ -400,7 +400,7 @@ main {
 }
 
 .hero-card::before {
-  content: "";
+  content: none;
   position: absolute;
   left: 15%;
   right: 15%;
@@ -417,10 +417,8 @@ main {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 24% 30%, rgba(239, 143, 155, 0.18) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 78% 22%, rgba(184, 172, 211, 0.28) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 92% 48%, rgba(240, 189, 118, 0.2) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 50% 72%, rgba(255, 210, 210, 0.3), transparent 38%);
+    radial-gradient(circle at 24% 30%, rgba(239, 143, 155, 0.12) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 78% 22%, rgba(184, 172, 211, 0.18) 0 1px, transparent 1.5px);
   background-size: 260px 160px, 360px 220px, 300px 180px, auto;
   pointer-events: none;
 }
@@ -431,7 +429,7 @@ main {
 }
 
 .hero-card h1 {
-  margin-top: 3px;
+  margin: 1px 0 0;
   font-size: clamp(15px, 1.4vw, 20px);
   letter-spacing: 0;
   color: #6f554a;
@@ -440,8 +438,8 @@ main {
 .hero-overview {
   display: grid;
   justify-items: center;
-  gap: 4px;
-  margin-top: -2px;
+  gap: 3px;
+  margin-top: -6px;
   text-align: center;
 }
 
@@ -452,8 +450,8 @@ main {
 }
 
 .hero-overview > strong {
-  font-size: clamp(42px, 5vw, 64px);
-  line-height: 1.08;
+  font-size: clamp(40px, 4.6vw, 58px);
+  line-height: 1;
   color: #4a3f3a;
   text-shadow: none;
 }
@@ -487,10 +485,10 @@ main {
 }
 
 .hero-milestone {
-  width: min(720px, 92%);
-  margin: 5px auto 0;
+  width: min(760px, 94%);
+  margin: 10px auto 0;
   display: grid;
-  gap: 5px;
+  gap: 4px;
 }
 
 .hero-milestone-head {
@@ -509,157 +507,82 @@ main {
   font-size: 42px;
 }
 
-.hero-progress {
-  height: 6px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(147, 122, 108, 0.14);
+.wealth-journey {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  color: #7c6259;
+  font-size: 12px;
+  font-weight: 850;
 }
 
-.hero-progress span {
+.wealth-journey-label {
+  white-space: nowrap;
+}
+
+.wealth-journey-track {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: #F3F4F6;
+  box-shadow: inset 0 1px 1px rgba(74, 63, 58, 0.06);
+}
+
+.wealth-journey-fill {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #F6B7B7, #FFD7A8, #D9CCF7);
-  box-shadow: none;
+  background: linear-gradient(90deg, #F7B6B2, #F9D7C5);
 }
 
-.hero-milestone-line {
-  display: grid;
-  grid-template-columns: auto minmax(120px, 1fr) auto auto;
-  gap: 10px;
-  align-items: center;
-  color: #8c514b;
-  font-size: 11px;
-  font-weight: 780;
+.wealth-journey-cat {
+  position: absolute;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -64%);
+  filter: drop-shadow(0 3px 5px rgba(124, 92, 82, 0.14));
 }
 
-.hero-milestone-line em {
-  color: var(--muted);
-  font-style: normal;
+.wealth-journey-cat svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.journey-cat-face,
+.journey-cat-ear {
+  fill: #FFF7EA;
+  stroke: #9D7469;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.journey-cat-eye,
+.journey-cat-mouth {
+  fill: none;
+  stroke: #7C5C52;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wealth-journey-goal {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.wealth-journey strong {
+  min-width: 44px;
+  text-align: right;
+  color: #7c6259;
+  font-size: 12px;
 }
 
 .hero-milestone > p {
   display: none;
-}
-
-.hero-cat {
-  position: absolute;
-  right: clamp(18px, 4vw, 58px);
-  top: 12px;
-  width: min(15vw, 180px);
-  max-width: 180px;
-  height: min(9.5vw, 112px);
-  max-height: 112px;
-  min-width: 112px;
-  min-height: 72px;
-  z-index: 1;
-  opacity: 0.96;
-}
-
-.hero-cat::before {
-  content: "";
-  position: absolute;
-  inset: auto 18px -6px 18px;
-  height: 14px;
-  border-radius: 999px;
-  background: rgba(183, 134, 112, 0.14);
-  filter: blur(5px);
-}
-
-.hero-cat::after {
-  content: "";
-  position: absolute;
-  right: 10px;
-  top: 8px;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--icon-pink);
-  box-shadow:
-    -78px 4px 0 -4px rgba(246, 183, 183, 0.82),
-    -90px 18px 0 -6px rgba(246, 183, 183, 0.6);
-}
-
-.hero-cat-illustration {
-  position: relative;
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  max-width: 180px;
-  max-height: 112px;
-  display: block;
-  overflow: visible;
-  filter: drop-shadow(0 12px 16px rgba(158, 103, 88, 0.12));
-}
-
-.cat-shadow {
-  fill: rgba(183, 134, 112, 0.13);
-}
-
-.cat-body,
-.cat-head {
-  fill: var(--cat-cream);
-  stroke: #CBA07C;
-  stroke-width: 2.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.cat-tail-shape {
-  fill: none;
-  stroke: #D8B18D;
-  stroke-width: 15;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.cat-ear {
-  fill: var(--cat-cream);
-  stroke: #CBA07C;
-  stroke-width: 2.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.cat-ear-inner,
-.cat-blush {
-  fill: var(--cat-blush);
-  opacity: 0.62;
-}
-
-.cat-stripe {
-  fill: none;
-  stroke: #C49A78;
-  stroke-width: 4.4;
-  stroke-linecap: round;
-  opacity: 0.72;
-}
-
-.body-stripe {
-  stroke-width: 5;
-  opacity: 0.42;
-}
-
-.cat-eye {
-  fill: none;
-  stroke: #8B6A59;
-  stroke-width: 2.6;
-  stroke-linecap: round;
-}
-
-.cat-nose {
-  fill: var(--cat-blush);
-}
-
-.cat-mouth,
-.cat-whisker,
-.cat-paw {
-  fill: none;
-  stroke: #8B6A59;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
 }
 
 .wealth-summary {
@@ -1941,15 +1864,6 @@ canvas {
     font-size: 11px;
   }
 
-  .hero-cat {
-    display: block;
-    top: -18px;
-    right: 14px;
-    opacity: 0.46;
-    transform: scale(0.54);
-    transform-origin: right top;
-  }
-
   .hero-overview {
     gap: 2px;
     margin-top: -4px;
@@ -1971,22 +1885,25 @@ canvas {
 
   .hero-milestone {
     width: 100%;
-    margin-top: 6px;
-    gap: 3px;
+    margin-top: 10px;
   }
 
-  .hero-milestone-line {
-    grid-template-columns: auto minmax(90px, 1fr) auto;
-    gap: 5px 8px;
-    font-size: 10px;
+  .wealth-journey {
+    grid-template-columns: auto minmax(110px, 1fr) auto;
+    gap: 8px;
+    font-size: 11px;
   }
 
-  .hero-milestone-line .hero-progress {
-    grid-column: auto;
-  }
-
-  .hero-milestone-line em {
+  .wealth-journey strong {
     grid-column: 1 / -1;
+    min-width: 0;
+    text-align: center;
+    font-size: 12px;
+  }
+
+  .wealth-journey-cat {
+    width: 24px;
+    height: 24px;
   }
 
   .kpi-grid {
