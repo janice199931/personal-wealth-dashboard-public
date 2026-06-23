@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Janice的小天地</title>
-    <link rel="stylesheet" href="./styles.css?v=20260622-health" />
+    <link rel="stylesheet" href="./styles.css?v=20260623-goals" />
   </head>
   <body>
     <aside class="sidebar" aria-label="主選單">
@@ -138,6 +138,18 @@
         </article>
       </section>
 
+      <section class="dashboard action-dashboard" aria-label="今日財務重點">
+        <article class="panel full action-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Today</p>
+              <h2>今日該看什麼</h2>
+            </div>
+          </div>
+          <div id="todayActions" class="today-actions"></div>
+        </article>
+      </section>
+
       <section class="data-status-grid" id="dataStatusCards" aria-label="資料狀態" hidden></section>
 
       <section class="dashboard dashboard-primary" aria-label="資產配置與成長">
@@ -201,6 +213,28 @@
         </article>
       </section>
 
+      <section class="dashboard insight-dashboard" aria-label="投資與股息統計">
+        <article class="panel insight-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Dividends</p>
+              <h2>股息來源排行</h2>
+            </div>
+          </div>
+          <div id="dividendRanking" class="insight-list"></div>
+        </article>
+
+        <article class="panel insight-panel">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">Contributions</p>
+              <h2>投入來源統計</h2>
+            </div>
+          </div>
+          <div id="purposeStats" class="insight-list"></div>
+        </article>
+      </section>
+
       <section class="dashboard ledger-section">
         <article class="panel full ledger-panel">
           <div class="panel-title">
@@ -216,6 +250,6 @@
       <p class="dashboard-footer">用心記錄每一筆財富，讓夢想一點一滴實現 ♡</p>
     </main>
 
-    <script src="./app.js?v=20260622-health"></script>
+    <script src="./app.js?v=20260623-goals"></script>
   </body>
 </html>

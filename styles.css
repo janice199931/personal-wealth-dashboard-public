@@ -1163,6 +1163,12 @@ main {
   margin-bottom: 10px;
 }
 
+.action-dashboard,
+.insight-dashboard {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 10px;
+}
+
 .allocation-panel,
 .growth-panel {
   grid-column: span 1;
@@ -1190,12 +1196,15 @@ main {
 }
 
 .health-signal-list,
-.monthly-checklist {
+.monthly-checklist,
+.today-actions,
+.insight-list {
   display: grid;
   gap: 10px;
 }
 
-.health-signal {
+.health-signal,
+.today-action {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 12px;
@@ -1207,7 +1216,8 @@ main {
   background: rgba(255, 253, 250, 0.66);
 }
 
-.health-signal > span {
+.health-signal > span,
+.today-action > span {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1219,30 +1229,85 @@ main {
   background: #9B8FD0;
 }
 
-.health-signal.good > span {
+.health-signal.good > span,
+.today-action.good > span {
   background: #8faa83;
 }
 
-.health-signal.watch > span {
+.health-signal.watch > span,
+.today-action.watch > span {
   background: #d8a45f;
 }
 
-.health-signal.warn > span {
+.health-signal.warn > span,
+.today-action.warn > span {
   background: #d98787;
 }
 
 .health-signal strong,
+.today-action strong,
 .check-row strong {
   display: block;
   font-size: 15px;
 }
 
-.health-signal p {
+.health-signal p,
+.today-action p {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.5;
+}
+
+.insight-row {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 253, 250, 0.66);
+}
+
+.insight-row div,
+.insight-row em {
+  position: relative;
+  z-index: 1;
+}
+
+.insight-row strong,
+.insight-row span {
+  display: block;
+}
+
+.insight-row strong {
+  font-size: 15px;
+}
+
+.insight-row span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.insight-row em {
+  color: var(--ink);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.insight-row i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  border-radius: 0 999px 999px 0;
 }
 
 .check-row {
@@ -1416,6 +1481,10 @@ canvas {
   line-height: 1.6;
 }
 
+.empty-state.compact {
+  padding: 14px;
+}
+
 .year-detail {
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -1475,6 +1544,38 @@ canvas {
 
 .year-summary strong {
   font-size: 22px;
+}
+
+.savings-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  justify-content: center;
+  min-height: 24px;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  vertical-align: middle;
+}
+
+.monthly-table .savings-badge {
+  margin: 0 0 0 6px;
+}
+
+.savings-badge.good {
+  background: #8faa83;
+}
+
+.savings-badge.watch {
+  background: #d8a45f;
+}
+
+.savings-badge.warn {
+  background: #d98787;
 }
 
 .monthly-table-wrap {

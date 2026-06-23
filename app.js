@@ -63,6 +63,13 @@ const MONTHLY_INVESTMENT_TARGET = 35000;
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
+const PURPOSE_LABELS = {
+  monthly: "每月固定投入",
+  dividend: "股息再投入",
+  extra: "額外加碼",
+  rebalance: "再平衡調整",
+  uncategorized: "未分類",
+};
 let dataStatus = null;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -355,6 +362,10 @@ function investmentAmountForPeriod(periodKey) {
       return action === "BUY" && String(transaction.date || "").startsWith(periodKey);
     })
     .reduce((sum, transaction) => sum + transactionInvestmentAmount(transaction), 0);
+}
+
+function currentYearKey() {
+  return String(new Date().getFullYear());
 }
 
 function applyDividendIncomeToFinanceYears(years) {
@@ -707,6 +718,11 @@ function getPortfolioMetrics() {
   const rebalanceTotal = leveragedValue + cash;
   const leveragedRatio = rebalanceTotal ? (leveragedValue / rebalanceTotal) * 100 : 0;
   const leveragedDrift = leveragedRatio - LEVERAGED_TARGET_RATIO;
+  const twCostTwd = Number(tw.cost) || 0;
+  const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
+  const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
+  const investmentCostTwd = twCostTwd + Number(usCostTwd || 0);
+  const investmentGainTwd = (Number(tw.gain) || 0) + Number(usGainTwd || 0);
 
   return {
     taiwanStocks,
@@ -725,17 +741,20 @@ function getPortfolioMetrics() {
     debtRatio: percent(debt, totalAssets),
     twPrice: twShares ? tw.marketValue / twShares : 0,
     twUnitCost: twShares ? tw.cost / twShares : 0,
+    twCostTwd,
     twGainTwd: Number(tw.gain) || 0,
     usMarketValue,
     usCost,
     usGain,
     usMarketValueTwd: us.accountValueTwd ?? Math.round(usMarketValue * usdToTwd),
-    usCostTwd: us.costTwd ?? Math.round(usCost * usdToTwd),
-    usGainTwd: us.gainTwd ?? Math.round(usGain * usdToTwd),
+    usCostTwd,
+    usGainTwd,
     usReturnRate: percent(usGain, usCost, 2),
     monthlyInvestment,
     monthlyInvestmentRemaining,
-    investmentGainTwd: (Number(tw.gain) || 0) + Number((us.gainTwd ?? Math.round(usGain * usdToTwd)) || 0),
+    investmentCostTwd,
+    investmentGainTwd,
+    investmentReturnRate: percent(investmentGainTwd, investmentCostTwd, 2),
     leveragedValue,
     rebalanceTotal,
     leveragedRatio,
@@ -851,6 +870,7 @@ function renderKpis() {
       value: money.format(metrics.investmentGainTwd),
       valueTone: investmentGainTone,
       changeHtml: `<span class="kpi-split-line ${gainTone(metrics.twGainTwd)}">台股 ${money.format(metrics.twGainTwd)}</span><span class="kpi-split-line ${gainTone(metrics.usGainTwd)}">美股 ${money.format(metrics.usGainTwd)}</span>`,
+      note: `總成本 ${money.format(metrics.investmentCostTwd)} / 報酬率 ${metrics.investmentReturnRate}`,
     },
   ];
 
@@ -920,9 +940,47 @@ function nextContributionMessage(metrics) {
   return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考 00685L ${money.format(leveragedAmount)} / 現金 ${money.format(cashAmount)}。`;
 }
 
+function savingsRateStatus(rate) {
+  if (rate >= 50) return { className: "good", label: "很好" };
+  if (rate >= 30) return { className: "watch", label: "穩定" };
+  return { className: "warn", label: "留意" };
+}
+
 function currentFinanceMonth() {
   const monthKey = currentMonthKey();
   return financeMonths().find((month) => month.month === monthKey) || null;
+}
+
+function renderTodayActions() {
+  const target = document.getElementById("todayActions");
+  if (!target) return;
+  const metrics = getPortfolioMetrics();
+  const currentMonth = currentFinanceMonth();
+  const savingsRate = Number(currentMonth?.savingsRate ?? metrics.latestMonth?.savingsRate ?? 0) || 0;
+  const savings = savingsRateStatus(savingsRate);
+  const emergencyText = metrics.cash >= EMERGENCY_FUND_TARGET
+    ? "緊急預備金已達標，可把焦點放回投資紀律。"
+    : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.cash)}。`;
+  const rows = [
+    { status: "watch", title: "下一筆投入", text: nextContributionMessage(metrics) },
+    { status: savings.className, title: "本月儲蓄率", text: `${savings.label}，目前約 ${savingsRate.toFixed(1)}%。` },
+    {
+      status: metrics.investmentGainTwd >= 0 ? "good" : "warn",
+      title: "投資狀態",
+      text: `${metrics.investmentGainTwd >= 0 ? "目前投資總損益為正" : "目前投資總損益為負"}，總報酬率 ${metrics.investmentReturnRate}。`,
+    },
+    { status: metrics.cash >= EMERGENCY_FUND_TARGET ? "good" : "warn", title: "現金安全墊", text: emergencyText },
+  ];
+
+  target.innerHTML = rows
+    .map((item) => `<div class="today-action ${item.status}">
+      <span>${healthTone(item.status)}</span>
+      <div>
+        <strong>${item.title}</strong>
+        <p>${item.text}</p>
+      </div>
+    </div>`)
+    .join("");
 }
 
 function renderHealthDashboard() {
@@ -1575,21 +1633,88 @@ function renderRankList(targetId, rows, valueKey = "value", labelKey = "label") 
     .join("");
 }
 
+function renderInsightRows(rows, emptyText) {
+  if (!rows.length) return `<div class="empty-state compact">${emptyText}</div>`;
+  const max = Math.max(...rows.map((row) => row.value), 1);
+  return rows
+    .map((row, index) => {
+      const pct = Math.max(4, (row.value / max) * 100);
+      return `<div class="insight-row">
+        <div>
+          <strong>${escapeHtml(row.label)}</strong>
+          <span>${escapeHtml(row.note || "")}</span>
+        </div>
+        <em>${money.format(Math.round(row.value))}</em>
+        <i style="width:${pct}%; background:${colors[index % colors.length]}"></i>
+      </div>`;
+    })
+    .join("");
+}
+
+function renderDividendRanking() {
+  const target = document.getElementById("dividendRanking");
+  if (!target) return;
+  const rowsBySymbol = new Map();
+  data.dividends
+    .filter((dividend) => String(dividend.date || "").slice(0, 4) === currentYearKey())
+    .forEach((dividend) => {
+      const symbol = String(dividend.symbol || "未分類").toUpperCase();
+      const current = rowsBySymbol.get(symbol) || { label: symbol, note: dividend.name || "", value: 0 };
+      current.value += dividendNetTwd(dividend);
+      if (!current.note && dividend.name) current.note = dividend.name;
+      rowsBySymbol.set(symbol, current);
+    });
+  const rows = [...rowsBySymbol.values()].sort((a, b) => b.value - a.value).slice(0, 6);
+  target.innerHTML = renderInsightRows(rows, "今年還沒有股息紀錄。");
+}
+
+function renderPurposeStats() {
+  const target = document.getElementById("purposeStats");
+  if (!target) return;
+  const rowsByPurpose = new Map();
+  data.transactions
+    .filter((transaction) => {
+      const action = String(transaction.action || "").toUpperCase();
+      return action === "BUY" && String(transaction.date || "").slice(0, 4) === currentYearKey();
+    })
+    .forEach((transaction) => {
+      const key = String(transaction.purpose || "uncategorized") || "uncategorized";
+      const label = PURPOSE_LABELS[key] || PURPOSE_LABELS.uncategorized;
+      const current = rowsByPurpose.get(key) || { label, note: "今年買進投入", value: 0 };
+      current.value += transactionInvestmentAmount(transaction);
+      rowsByPurpose.set(key, current);
+    });
+  const rows = [...rowsByPurpose.values()].sort((a, b) => b.value - a.value);
+  target.innerHTML = renderInsightRows(rows, "今年還沒有買進交易。");
+}
+
+function renderInsightStats() {
+  renderDividendRanking();
+  renderPurposeStats();
+}
+
 function formatMonthLabel(month) {
   const [year, mm] = month.split("-");
   return `${rocYear(year)} 年 ${Number(mm)} 月`;
 }
 
 function renderYearSummary(year) {
+  const yearlySavings = savingsRateStatus(Number(year.savingsRate) || 0);
   return [
     { label: "全年收入", value: money.format(year.income), tone: "income-positive" },
     { label: "全年支出", value: money.format(year.expense), tone: "expense-negative" },
     { label: "全年淨增加", value: money.format(year.net), tone: year.net >= 0 ? "positive" : "negative" },
-    { label: "全年儲蓄率", value: `${year.savingsRate}%`, tone: year.savingsRate >= 0 ? "positive" : "negative" },
+    {
+      label: "全年儲蓄率",
+      value: `${year.savingsRate}%`,
+      tone: year.savingsRate >= 0 ? "positive" : "negative",
+      badge: yearlySavings,
+    },
   ]
     .map((item) => `<div>
       <span>${item.label}</span>
       <strong class="${item.tone}">${item.value}</strong>
+      ${item.badge ? `<em class="savings-badge ${item.badge.className}">${item.badge.label}</em>` : ""}
     </div>`)
     .join("");
 }
@@ -1598,13 +1723,16 @@ function renderMonthlyRows(year) {
   return (year?.months ?? [])
     .slice()
     .sort((a, b) => a.month.localeCompare(b.month))
-    .map((month) => `<tr>
+    .map((month) => {
+      const savings = savingsRateStatus(Number(month.savingsRate) || 0);
+      return `<tr>
       <td>${formatMonthLabel(month.month)}</td>
       <td class="income-positive">${money.format(month.income)}</td>
       <td class="expense-negative">${money.format(month.expense)}</td>
       <td class="${month.net >= 0 ? "positive" : "negative"}">${money.format(month.net)}</td>
-      <td class="${month.savingsRate >= 0 ? "positive" : "negative"}">${month.savingsRate}%</td>
-    </tr>`)
+      <td class="${month.savingsRate >= 0 ? "positive" : "negative"}">${month.savingsRate}% <em class="savings-badge ${savings.className}">${savings.label}</em></td>
+    </tr>`;
+    })
     .join("");
 }
 
@@ -1646,6 +1774,7 @@ function render() {
   renderHero();
   renderKpis();
   renderHealthDashboard();
+  renderTodayActions();
   renderAssetPie();
   drawNetWorthChart();
   setupChartHover();
@@ -1653,6 +1782,7 @@ function render() {
   renderDataUpdates();
   renderDataStatusCards();
   renderInvestmentCards();
+  renderInsightStats();
   renderLedger();
 }
 
