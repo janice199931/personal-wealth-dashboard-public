@@ -851,8 +851,6 @@ function renderKpis() {
       label: "投資總損益",
       value: money.format(metrics.investmentGainTwd),
       valueTone: investmentGainTone,
-      changeHtml: `<span class="kpi-split-line ${gainTone(metrics.twGainTwd)}">台股 ${money.format(metrics.twGainTwd)}</span><span class="kpi-split-line ${gainTone(metrics.usGainTwd)}">美股 ${money.format(metrics.usGainTwd)}</span>`,
-      noteHtml: `<span class="kpi-split-line">總成本 ${money.format(metrics.investmentCostTwd)}</span><span class="kpi-split-line">報酬率 ${metrics.investmentReturnRate}</span>`,
     },
   ];
 
