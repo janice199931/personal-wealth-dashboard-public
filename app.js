@@ -63,13 +63,6 @@ const MONTHLY_INVESTMENT_TARGET = 35000;
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
-const PURPOSE_LABELS = {
-  monthly: "每月固定投入",
-  dividend: "股息再投入",
-  extra: "額外加碼",
-  rebalance: "再平衡調整",
-  uncategorized: "未分類",
-};
 let dataStatus = null;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -1633,66 +1626,6 @@ function renderRankList(targetId, rows, valueKey = "value", labelKey = "label") 
     .join("");
 }
 
-function renderInsightRows(rows, emptyText) {
-  if (!rows.length) return `<div class="empty-state compact">${emptyText}</div>`;
-  const max = Math.max(...rows.map((row) => row.value), 1);
-  return rows
-    .map((row, index) => {
-      const pct = Math.max(4, (row.value / max) * 100);
-      return `<div class="insight-row">
-        <div>
-          <strong>${escapeHtml(row.label)}</strong>
-          <span>${escapeHtml(row.note || "")}</span>
-        </div>
-        <em>${money.format(Math.round(row.value))}</em>
-        <i style="width:${pct}%; background:${colors[index % colors.length]}"></i>
-      </div>`;
-    })
-    .join("");
-}
-
-function renderDividendRanking() {
-  const target = document.getElementById("dividendRanking");
-  if (!target) return;
-  const rowsBySymbol = new Map();
-  data.dividends
-    .filter((dividend) => String(dividend.date || "").slice(0, 4) === currentYearKey())
-    .forEach((dividend) => {
-      const symbol = String(dividend.symbol || "未分類").toUpperCase();
-      const current = rowsBySymbol.get(symbol) || { label: symbol, note: dividend.name || "", value: 0 };
-      current.value += dividendNetTwd(dividend);
-      if (!current.note && dividend.name) current.note = dividend.name;
-      rowsBySymbol.set(symbol, current);
-    });
-  const rows = [...rowsBySymbol.values()].sort((a, b) => b.value - a.value).slice(0, 6);
-  target.innerHTML = renderInsightRows(rows, "今年還沒有股息紀錄。");
-}
-
-function renderPurposeStats() {
-  const target = document.getElementById("purposeStats");
-  if (!target) return;
-  const rowsByPurpose = new Map();
-  data.transactions
-    .filter((transaction) => {
-      const action = String(transaction.action || "").toUpperCase();
-      return action === "BUY" && String(transaction.date || "").slice(0, 4) === currentYearKey();
-    })
-    .forEach((transaction) => {
-      const key = String(transaction.purpose || "uncategorized") || "uncategorized";
-      const label = PURPOSE_LABELS[key] || PURPOSE_LABELS.uncategorized;
-      const current = rowsByPurpose.get(key) || { label, note: "今年買進投入", value: 0 };
-      current.value += transactionInvestmentAmount(transaction);
-      rowsByPurpose.set(key, current);
-    });
-  const rows = [...rowsByPurpose.values()].sort((a, b) => b.value - a.value);
-  target.innerHTML = renderInsightRows(rows, "今年還沒有買進交易。");
-}
-
-function renderInsightStats() {
-  renderDividendRanking();
-  renderPurposeStats();
-}
-
 function formatMonthLabel(month) {
   const [year, mm] = month.split("-");
   return `${rocYear(year)} 年 ${Number(mm)} 月`;
@@ -1782,7 +1715,6 @@ function render() {
   renderDataUpdates();
   renderDataStatusCards();
   renderInvestmentCards();
-  renderInsightStats();
   renderLedger();
 }
 
