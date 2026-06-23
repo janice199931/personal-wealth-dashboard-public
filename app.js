@@ -840,16 +840,12 @@ function renderKpis() {
     {
       label: "緊急預備金",
       value: money.format(metrics.cash),
-      change: `${money.format(metrics.cash)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
-      tone: "positive",
     },
     { label: "負債", value: money.format(metrics.debt) },
     { label: "本月增加", value: money.format(metrics.monthNet) },
     {
       label: "本月投資",
       value: money.format(monthlyInvestmentRounded),
-      change: `${money.format(monthlyInvestmentRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)}`,
-      tone: "positive",
     },
     {
       label: "投資總損益",
