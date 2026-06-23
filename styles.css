@@ -386,10 +386,10 @@ main {
 .hero-card {
   position: relative;
   overflow: hidden;
-  min-height: 150px;
-  padding: 18px 24px;
+  min-height: 118px;
+  padding: 12px 22px 14px;
   border: 1px solid var(--glass-border);
-  border-radius: 28px;
+  border-radius: 24px;
   background:
     radial-gradient(circle at 86% 35%, rgba(239, 143, 155, 0.22), transparent 24%),
     radial-gradient(circle at 48% 118%, rgba(240, 189, 118, 0.24), transparent 34%),
@@ -431,7 +431,7 @@ main {
 }
 
 .hero-card h1 {
-  margin-top: 3px;
+  margin: 1px 0 0;
   font-size: clamp(15px, 1.4vw, 20px);
   letter-spacing: 0;
   color: #6f554a;
@@ -440,8 +440,8 @@ main {
 .hero-overview {
   display: grid;
   justify-items: center;
-  gap: 4px;
-  margin-top: -2px;
+  gap: 2px;
+  margin-top: -8px;
   text-align: center;
 }
 
@@ -452,14 +452,14 @@ main {
 }
 
 .hero-overview > strong {
-  font-size: clamp(42px, 5vw, 64px);
-  line-height: 1.08;
+  font-size: clamp(36px, 4.2vw, 52px);
+  line-height: 1;
   color: #4a3f3a;
   text-shadow: none;
 }
 
 .hero-overview > small {
-  padding: 4px 12px;
+  padding: 3px 11px;
   border: 1px solid rgba(239, 143, 155, 0.22);
   border-radius: 999px;
   background: rgba(255, 237, 237, 0.78);
@@ -488,9 +488,9 @@ main {
 
 .hero-milestone {
   width: min(720px, 92%);
-  margin: 5px auto 0;
+  margin: 3px auto 0;
   display: grid;
-  gap: 5px;
+  gap: 3px;
 }
 
 .hero-milestone-head {
@@ -510,7 +510,7 @@ main {
 }
 
 .hero-progress {
-  height: 6px;
+  height: 5px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(147, 122, 108, 0.14);
@@ -543,123 +543,116 @@ main {
   display: none;
 }
 
-.hero-cat {
+.hero-character {
   position: absolute;
   right: clamp(18px, 4vw, 58px);
-  top: 12px;
-  width: min(18vw, 220px);
-  max-width: 220px;
-  height: min(11vw, 140px);
-  max-height: 140px;
-  min-width: 132px;
-  min-height: 84px;
+  top: 6px;
+  width: min(16vw, 180px);
+  max-width: 180px;
+  height: min(10vw, 116px);
+  max-height: 116px;
+  min-width: 112px;
+  min-height: 72px;
   z-index: 1;
-  opacity: 0.96;
+  opacity: 0.92;
 }
 
-.hero-cat::before {
+.hero-character::before {
   content: "";
   position: absolute;
-  inset: auto 10px -8px 12px;
-  height: 18px;
+  inset: auto 20px -6px 20px;
+  height: 14px;
   border-radius: 999px;
   background: rgba(183, 134, 112, 0.14);
   filter: blur(5px);
 }
 
-.hero-cat::after {
+.hero-character::after {
   content: "";
   position: absolute;
-  right: 8px;
-  top: 8px;
-  width: 18px;
-  height: 18px;
+  right: 12px;
+  top: 10px;
+  width: 14px;
+  height: 14px;
   border-radius: 999px;
   background: var(--icon-pink);
   box-shadow:
-    -98px 4px 0 -4px rgba(246, 183, 183, 0.86),
-    -110px 20px 0 -6px rgba(246, 183, 183, 0.64);
+    -86px 5px 0 -4px rgba(246, 183, 183, 0.78),
+    -98px 20px 0 -6px rgba(246, 183, 183, 0.56);
 }
 
-.hero-cat-illustration {
+.hero-character-illustration {
   position: relative;
   z-index: 1;
   width: 100%;
   height: 100%;
-  max-width: 220px;
-  max-height: 140px;
+  max-width: 180px;
+  max-height: 116px;
   display: block;
   overflow: visible;
   filter: drop-shadow(0 12px 16px rgba(158, 103, 88, 0.12));
 }
 
-.cat-shadow {
+.person-shadow {
   fill: rgba(183, 134, 112, 0.13);
 }
 
-.cat-body,
-.cat-head {
-  fill: var(--cat-cream);
-  stroke: #CBA07C;
-  stroke-width: 2.7;
+.person-face {
+  fill: #FFF0E8;
+  stroke: #B98D7A;
+  stroke-width: 2.8;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.cat-tail-shape {
+.person-back-hair,
+.person-bangs,
+.person-hair-side {
+  fill: #8F6B61;
+  stroke: #7C5C52;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.person-body {
+  fill: #F6B7B7;
+  stroke: #B98D7A;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.person-collar,
+.person-arm,
+.person-eye,
+.person-mouth,
+.person-detail {
   fill: none;
-  stroke: #D8B18D;
-  stroke-width: 15;
+  stroke: #7C5C52;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.cat-ear {
-  fill: var(--cat-cream);
-  stroke: #CBA07C;
-  stroke-width: 2.7;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.person-collar,
+.person-detail {
+  stroke: #FFF7EA;
 }
 
-.cat-ear-inner,
-.cat-blush {
-  fill: var(--cat-blush);
-  opacity: 0.62;
+.person-blush {
+  fill: #F6B7B7;
+  opacity: 0.58;
 }
 
-.cat-stripe {
-  fill: none;
-  stroke: #C49A78;
-  stroke-width: 4.4;
-  stroke-linecap: round;
+.person-sparkle {
+  fill: #D9CCF7;
   opacity: 0.72;
 }
 
-.body-stripe {
-  stroke-width: 5;
-  opacity: 0.42;
-}
-
-.cat-eye {
-  fill: none;
-  stroke: #8B6A59;
-  stroke-width: 2.6;
-  stroke-linecap: round;
-}
-
-.cat-nose {
-  fill: var(--cat-blush);
-}
-
-.cat-mouth,
-.cat-whisker,
-.cat-paw {
-  fill: none;
-  stroke: #8B6A59;
-  stroke-width: 2.2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+.person-sparkle.small {
+  fill: #FFD7A8;
+  opacity: 0.82;
 }
 
 .wealth-summary {
@@ -1941,12 +1934,12 @@ canvas {
     font-size: 11px;
   }
 
-  .hero-cat {
+  .hero-character {
     display: block;
-    top: -18px;
+    top: -10px;
     right: 14px;
-    opacity: 0.46;
-    transform: scale(0.54);
+    opacity: 0.5;
+    transform: scale(0.58);
     transform-origin: right top;
   }
 
