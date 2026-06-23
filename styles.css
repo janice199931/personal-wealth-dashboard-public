@@ -1260,6 +1260,27 @@ main {
   line-height: 1.5;
 }
 
+.monthly-conclusion {
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid rgba(155, 143, 208, 0.22);
+  border-radius: 16px;
+  background: rgba(155, 143, 208, 0.08);
+}
+
+.monthly-conclusion strong {
+  display: block;
+  font-size: 14px;
+}
+
+.monthly-conclusion p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.5;
+}
+
 .check-row {
   display: grid;
   grid-template-columns: 26px minmax(0, 1fr);

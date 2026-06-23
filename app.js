@@ -921,6 +921,25 @@ function nextContributionMessage(metrics) {
   return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考 00685L ${money.format(leveragedAmount)} / 現金 ${money.format(cashAmount)}。`;
 }
 
+function monthlyInvestmentSummary(metrics) {
+  const invested = Math.round(metrics.monthlyInvestment);
+  const gap = MONTHLY_INVESTMENT_TARGET - invested;
+  if (gap > 0) return `已投入 ${money.format(invested)}，還差 ${money.format(gap)} 達成本月目標。`;
+  if (gap < 0) return `已投入 ${money.format(invested)}，本月已超過目標 ${money.format(Math.abs(gap))}。`;
+  return `已投入 ${money.format(invested)}，剛好達成本月目標。`;
+}
+
+function rebalanceActionSummary(metrics) {
+  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷 00685L / 現金比例。";
+  const ratioText = `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%`;
+  if (Math.abs(metrics.leveragedDrift) <= REBALANCE_BAND) {
+    return `${ratioText}，比例接近目標，下一筆可照 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO} 分配。`;
+  }
+  return metrics.leveragedDrift > 0
+    ? `${ratioText}，比例偏高，下一筆先留現金。`
+    : `${ratioText}，比例偏低，下一筆優先買 00685L。`;
+}
+
 function savingsRateStatus(rate) {
   if (rate >= 50) return { className: "good", label: "很好" };
   if (rate >= 30) return { className: "watch", label: "穩定" };
@@ -942,7 +961,14 @@ function renderTodayActions() {
   const emergencyText = metrics.cash >= EMERGENCY_FUND_TARGET
     ? "緊急預備金已達標，可把焦點放回投資紀律。"
     : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.cash)}。`;
+  const rebalance = rebalanceMessage(metrics);
   const rows = [
+    {
+      status: metrics.monthlyInvestmentRemaining <= 0 ? "good" : "watch",
+      title: "本月還可投入",
+      text: monthlyInvestmentSummary(metrics),
+    },
+    { status: rebalance.status, title: "00685L / 現金比例", text: rebalanceActionSummary(metrics) },
     { status: "watch", title: "下一筆投入", text: nextContributionMessage(metrics) },
     { status: savings.className, title: "本月儲蓄率", text: `${savings.label}，目前約 ${savingsRate.toFixed(1)}%。` },
     {
@@ -962,6 +988,20 @@ function renderTodayActions() {
       </div>
     </div>`)
     .join("");
+}
+
+function monthlyConclusion(metrics, currentMonth, rebalance) {
+  const hasIncome = Number(currentMonth?.income || 0) > 0;
+  const hasExpense = Number(currentMonth?.expense || 0) > 0;
+  if (!hasIncome || !hasExpense) return "本月收入或支出還沒填完整，先補資料，結論會更準。";
+  if (Math.round(metrics.monthlyInvestment) < MONTHLY_INVESTMENT_TARGET) {
+    return `本月投資還差 ${money.format(metrics.monthlyInvestmentRemaining)}，可優先補足投入目標。`;
+  }
+  if (metrics.cash < EMERGENCY_FUND_TARGET) {
+    return `本月投資已達標，緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.cash)}。`;
+  }
+  if (rebalance.status !== "good") return `本月投資與現金安全墊都正常，接著看 00685L / 現金比例。`;
+  return "本月收入支出已填、投資達標、現金安全，整體狀態穩定。";
 }
 
 function renderHealthDashboard() {
@@ -1007,6 +1047,10 @@ function renderHealthDashboard() {
       </div>
     </div>`)
     .join("");
+
+  document.getElementById("monthlyConclusion").innerHTML = `
+    <strong>本月結論</strong>
+    <p>${monthlyConclusion(metrics, currentMonth, rebalance)}</p>`;
 
   document.getElementById("monthlyChecklist").innerHTML = checklist
     .map((item) => `<div class="check-row ${item.done ? "done" : ""}">
