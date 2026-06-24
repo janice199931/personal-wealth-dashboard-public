@@ -56,6 +56,14 @@ app = FastAPI(title="Personal Wealth Dashboard Local API")
 PORTFOLIO_REBUILD_LOCK = Lock()
 
 
+@app.exception_handler(RuntimeError)
+async def runtime_error_handler(request: Request, error: RuntimeError) -> JSONResponse:
+    message = str(error) or "資料暫時無法保存，請稍後再試。"
+    if "Supabase" not in message:
+        message = "資料暫時無法保存，請稍後再試。"
+    return JSONResponse(status_code=503, content={"detail": message})
+
+
 def utf8_json(payload: Any) -> Response:
     return Response(
         content=json.dumps(payload, ensure_ascii=False, separators=(",", ":")),

@@ -343,6 +343,17 @@ def _row_value(row: Any, key: str) -> Any:
     return row[key]
 
 
+def _using_supabase_fallback(backend: Backend) -> bool:
+    return backend == "sqlite" and bool(supabase_url()) and bool(_SUPABASE_FALLBACK_REASON)
+
+
+def _raise_supabase_write_error(error: Exception | None = None) -> None:
+    message = "Supabase 目前無法寫入，資料未保存。請稍後再試，或到設定頁確認 Database Health。"
+    if error is None:
+        raise RuntimeError(message)
+    raise RuntimeError(message) from error
+
+
 def _execute_read(sqlite_sql: str, postgres_sql: str | None = None, params: tuple[Any, ...] = ()):
     backend = active_backend()
     query = postgres_sql if backend == "supabase" and postgres_sql else sqlite_sql
@@ -365,6 +376,8 @@ def _execute_read(sqlite_sql: str, postgres_sql: str | None = None, params: tupl
 
 def _execute_write(sqlite_sql: str, postgres_sql: str | None = None, params: tuple[Any, ...] = ()) -> Backend:
     backend = active_backend()
+    if _using_supabase_fallback(backend):
+        _raise_supabase_write_error()
     query = postgres_sql if backend == "supabase" and postgres_sql else sqlite_sql
     try:
         with connect() as connection:
@@ -378,16 +391,14 @@ def _execute_write(sqlite_sql: str, postgres_sql: str | None = None, params: tup
     except Exception as error:
         if backend == "supabase":
             _mark_supabase_failed(error)
-            init_sqlite()
-            with _connect_sqlite() as connection:
-                connection.execute(sqlite_sql, params)
-                connection.commit()
-            return "sqlite"
+            _raise_supabase_write_error(error)
         raise
 
 
 def _execute_many(sqlite_sql: str, postgres_sql: str | None, rows: list[tuple[Any, ...]]) -> Backend:
     backend = active_backend()
+    if _using_supabase_fallback(backend):
+        _raise_supabase_write_error()
     query = postgres_sql if backend == "supabase" and postgres_sql else sqlite_sql
     try:
         with connect() as connection:
@@ -401,11 +412,7 @@ def _execute_many(sqlite_sql: str, postgres_sql: str | None, rows: list[tuple[An
     except Exception as error:
         if backend == "supabase":
             _mark_supabase_failed(error)
-            init_sqlite()
-            with _connect_sqlite() as connection:
-                connection.executemany(sqlite_sql, rows)
-                connection.commit()
-            return "sqlite"
+            _raise_supabase_write_error(error)
         raise
 
 
@@ -413,6 +420,8 @@ def _replace_rows(table: str, sqlite_insert: str, postgres_insert: str | None, r
     if table not in TABLES:
         raise ValueError(f"Unknown table: {table}")
     backend = active_backend()
+    if _using_supabase_fallback(backend):
+        _raise_supabase_write_error()
     insert = postgres_insert if backend == "supabase" and postgres_insert else sqlite_insert
     try:
         with connect() as connection:
@@ -430,13 +439,7 @@ def _replace_rows(table: str, sqlite_insert: str, postgres_insert: str | None, r
     except Exception as error:
         if backend == "supabase":
             _mark_supabase_failed(error)
-            init_sqlite()
-            with _connect_sqlite() as connection:
-                connection.execute(f"DELETE FROM {table}")
-                if rows:
-                    connection.executemany(sqlite_insert, rows)
-                connection.commit()
-            return "sqlite"
+            _raise_supabase_write_error(error)
         raise
 
 
@@ -589,6 +592,8 @@ def write_prices(prices: dict[str, Any]) -> Backend:
 
 def clear_all() -> None:
     backend = active_backend()
+    if _using_supabase_fallback(backend):
+        _raise_supabase_write_error()
     try:
         with connect() as connection:
             if backend == "sqlite":
@@ -603,11 +608,7 @@ def clear_all() -> None:
         if backend != "supabase":
             raise
         _mark_supabase_failed(error)
-        init_sqlite()
-        with _connect_sqlite() as connection:
-            for table in ["accounts", "transactions", "dividends", "portfolio_snapshots", "net_worth_history", "prices"]:
-                connection.execute(f"DELETE FROM {table}")
-            connection.commit()
+        _raise_supabase_write_error(error)
 
 
 def read_transactions() -> list[dict[str, Any]]:
