@@ -259,6 +259,12 @@ function percent(value, total, digits = 1) {
   return total ? `${((value / total) * 100).toFixed(digits)}%` : "0.0%";
 }
 
+function compactPercent(value) {
+  const numeric = Number.parseFloat(String(value).replace("%", ""));
+  if (!Number.isFinite(numeric)) return "0%";
+  return `${new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 }).format(numeric)}%`;
+}
+
 function signedMoney(value, formatter = money) {
   const formatted = formatter.format(Math.abs(value));
   return `${value >= 0 ? "+" : "-"}${formatted}`;
@@ -858,7 +864,7 @@ function renderKpis() {
       value: money.format(monthlyInvestmentRounded),
     },
     {
-      label: "投資總損益",
+      label: `投資總損益(${compactPercent(metrics.investmentReturnRate)})`,
       value: money.format(metrics.investmentGainTwd),
       valueTone: investmentGainTone,
     },
