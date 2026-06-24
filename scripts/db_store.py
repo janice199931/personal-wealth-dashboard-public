@@ -215,6 +215,18 @@ def _postgres_statements() -> list[str]:
     ]
 
 
+def _postgres_security_statements() -> list[str]:
+    statements: list[str] = []
+    for table in sorted(TABLES):
+        statements.extend(
+            [
+                f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY",
+                f"REVOKE ALL ON TABLE public.{table} FROM anon, authenticated",
+            ]
+        )
+    return statements
+
+
 def _mark_supabase_failed(error: Exception) -> None:
     global _SUPABASE_FALLBACK_REASON, _SUPABASE_READY
     _SUPABASE_FALLBACK_REASON = str(error)
@@ -281,6 +293,8 @@ def init_supabase() -> None:
     with _connect_postgres() as connection:
         with connection.cursor() as cursor:
             for statement in _postgres_statements():
+                cursor.execute(statement)
+            for statement in _postgres_security_statements():
                 cursor.execute(statement)
         connection.commit()
     _SUPABASE_READY = True
