@@ -7,6 +7,10 @@ const cancelEditButton = document.getElementById("cancelEditButton");
 const modeBanner = document.getElementById("modeBanner");
 const quickFilters = document.getElementById("quickFilters");
 const symbolOptions = document.getElementById("symbolOptions");
+const transactionPreviewCard = document.getElementById("transactionPreviewCard");
+const transactionPreviewGrid = document.getElementById("transactionPreviewGrid");
+const previewTitle = document.getElementById("previewTitle");
+const previewStatus = document.getElementById("previewStatus");
 const filters = {
   search: document.getElementById("searchFilter"),
   market: document.getElementById("marketFilter"),
@@ -18,6 +22,7 @@ const filters = {
 let transactions = [];
 let editingId = null;
 let lastAutoFilledName = "";
+let previewTimer = null;
 const stockNameMap = new Map(Object.entries({
   "0050": "元大台灣50",
   GOOG: "Alphabet",
@@ -37,6 +42,12 @@ form.elements.date.value = "";
 
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 6 }).format(Number(value) || 0);
+}
+
+function formatSignedNumber(value) {
+  const amount = Number(value) || 0;
+  const prefix = amount > 0 ? "+" : "";
+  return `${prefix}${formatNumber(amount)}`;
 }
 
 function escapeHtml(value) {
@@ -295,6 +306,7 @@ function resetForm() {
   form.elements.fee.value = "0";
   lastAutoFilledName = "";
   setFormMode(null);
+  renderPreview(null);
 }
 
 function transactionTime(item) {
@@ -467,6 +479,72 @@ function currentTransaction() {
   };
 }
 
+function canPreviewTransaction() {
+  return [
+    form.elements.date.value,
+    form.elements.market.value,
+    form.elements.symbol.value,
+    form.elements.name.value,
+    form.elements.action.value,
+    form.elements.shares.value,
+    form.elements.price.value,
+  ].every((value) => String(value || "").trim());
+}
+
+function renderPreview(payload) {
+  if (!transactionPreviewCard || !transactionPreviewGrid) return;
+  if (!payload) {
+    transactionPreviewCard.hidden = true;
+    transactionPreviewGrid.innerHTML = "";
+    if (previewStatus) previewStatus.textContent = "尚未預覽";
+    return;
+  }
+  transactionPreviewCard.hidden = false;
+  previewTitle.textContent = `${payload.market}:${payload.symbol} 保存後結果`;
+  previewStatus.textContent = "已依目前欄位估算";
+  const items = [
+    ["持股股數", `${formatNumber(payload.before.shares)} → ${formatNumber(payload.after.shares)}`, formatSignedNumber(payload.deltaShares)],
+    ["平均成本", `${formatNumber(payload.before.averageCost)} → ${formatNumber(payload.after.averageCost)}`, ""],
+    ["剩餘總成本", `${formatNumber(payload.before.totalCost)} → ${formatNumber(payload.after.totalCost)}`, formatSignedNumber(payload.deltaCost)],
+    ["已實現損益", `${formatNumber(payload.before.realizedGain)} → ${formatNumber(payload.after.realizedGain)}`, ""],
+  ];
+  transactionPreviewGrid.innerHTML = items
+    .map(([label, value, note]) => `<article class="result-box">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(value)}</strong>
+      ${note ? `<small>${escapeHtml(note)}</small>` : ""}
+    </article>`)
+    .join("");
+}
+
+async function updateTransactionPreview() {
+  if (!canPreviewTransaction()) {
+    renderPreview(null);
+    return;
+  }
+  try {
+    const response = await fetch("/api/transactions/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...currentTransaction(), editingId }),
+    });
+    const payload = await readApiPayload(response, "交易預覽失敗。");
+    if (!response.ok) throw new Error(friendlyApiError(payload, "交易預覽失敗。"));
+    renderPreview(payload);
+  } catch (error) {
+    if (!transactionPreviewCard) return;
+    transactionPreviewCard.hidden = false;
+    previewTitle.textContent = "交易前預覽";
+    previewStatus.textContent = error.message;
+    transactionPreviewGrid.innerHTML = "";
+  }
+}
+
+function schedulePreviewUpdate() {
+  window.clearTimeout(previewTimer);
+  previewTimer = window.setTimeout(updateTransactionPreview, 280);
+}
+
 function editTransaction(id) {
   const transaction = transactions.find((item) => item.id === id);
   if (!transaction) return;
@@ -484,6 +562,7 @@ function editTransaction(id) {
   form.elements.note.value = transaction.note || "";
   setFormMode(id);
   setStatus("正在編輯交易，確認欄位後按「更新交易」。", "working");
+  schedulePreviewUpdate();
   form.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -509,6 +588,22 @@ async function saveTransaction() {
   return payload;
 }
 
+async function verifySavedTransaction(payload, actionType, targetId = "") {
+  const response = await fetch("/api/transactions", { cache: "no-store" });
+  const latest = await readApiPayload(response, "交易已送出，但重新讀取確認失敗，請重新整理確認。");
+  if (!response.ok) throw new Error(friendlyApiError(latest, "交易已送出，但重新讀取確認失敗，請重新整理確認。"));
+  const latestTransactions = latest.transactions || [];
+  const savedId = targetId || payload.transaction?.id || editingId;
+  if (actionType === "delete") {
+    if (latestTransactions.some((item) => item.id === savedId)) {
+      throw new Error("交易刪除後重新檢查仍看到這筆資料，請重新整理確認。");
+    }
+  } else if (!latestTransactions.some((item) => item.id === savedId)) {
+    throw new Error("交易儲存後重新檢查沒有找到這筆資料，請重新整理確認。");
+  }
+  setTransactions(latestTransactions);
+}
+
 async function deleteTransaction(id) {
   const transaction = transactions.find((item) => item.id === id);
   if (!transaction) return;
@@ -521,6 +616,7 @@ async function deleteTransaction(id) {
   if (!response.ok) throw new Error(friendlyApiError(payload, "交易刪除失敗，請稍後再試。"));
 
   setTransactions(payload.transactions || []);
+  await verifySavedTransaction(payload, "delete", id);
   if (editingId === id) resetForm();
   setStatus(`已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 }
@@ -532,9 +628,10 @@ form.addEventListener("submit", async (event) => {
 
   try {
     const payload = await saveTransaction();
-    setTransactions(payload.transactions || []);
+    const mode = editingId ? "update" : "create";
+    await verifySavedTransaction(payload, mode);
     setStatus(
-      editingId
+      mode === "update"
         ? `已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`
         : `已新增，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`,
       "success",
@@ -598,6 +695,12 @@ form.elements.symbol.addEventListener("blur", autoFillStockName);
 form.elements.market.addEventListener("change", autoFillStockName);
 form.elements.name.addEventListener("input", () => {
   if (form.elements.name.value.trim() !== lastAutoFilledName) lastAutoFilledName = "";
+});
+["date", "market", "symbol", "name", "action", "shares", "price", "fee", "purpose"].forEach((name) => {
+  const input = form.elements[name];
+  if (!input) return;
+  input.addEventListener("input", schedulePreviewUpdate);
+  input.addEventListener("change", schedulePreviewUpdate);
 });
 setupDatePicker(form.elements.date);
 renderStockOptions();

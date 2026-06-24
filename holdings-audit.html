@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>持股校正</title>
+    <link rel="stylesheet" href="./form-pages.css?v=20260624-stability" />
+  </head>
+  <body>
+    <main>
+      <section class="card hero-card">
+        <div>
+          <h1>持股校正</h1>
+          <p>查看每檔股票的股數、平均成本與交易拆解，快速確認資料是否對得上。</p>
+        </div>
+        <div class="page-actions">
+          <a href="./index.html">← 回到首頁</a>
+          <a href="./transaction-manager.html">交易紀錄</a>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div>
+            <span>Holding Audit</span>
+            <h2>目前持股</h2>
+          </div>
+          <small id="auditStatus">讀取中...</small>
+        </div>
+        <div class="filters audit-filters">
+          <label>
+            搜尋
+            <input id="auditSearch" type="search" placeholder="股票代號 / 名稱" />
+          </label>
+          <label>
+            市場
+            <select id="auditMarket">
+              <option value="">全部</option>
+              <option value="TW">TW</option>
+              <option value="US">US</option>
+            </select>
+          </label>
+        </div>
+        <div id="auditList" class="audit-list"></div>
+      </section>
+    </main>
+
+    <script>
+      const auditList = document.getElementById("auditList");
+      const auditStatus = document.getElementById("auditStatus");
+      const auditSearch = document.getElementById("auditSearch");
+      const auditMarket = document.getElementById("auditMarket");
+      let holdings = [];
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function formatNumber(value, digits = 6) {
+        return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: digits }).format(Number(value) || 0);
+      }
+
+      function formatDate(value) {
+        const date = new Date(`${value || ""}T00:00:00`);
+        if (Number.isNaN(date.getTime())) return value || "";
+        const year = date.getFullYear() - 1911;
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}/${month}/${day}`;
+      }
+
+      function filteredHoldings() {
+        const keyword = auditSearch.value.trim().toLowerCase();
+        const market = auditMarket.value;
+        return holdings.filter((holding) => {
+          const searchText = [holding.symbol, holding.name].join(" ").toLowerCase();
+          return (!keyword || searchText.includes(keyword)) && (!market || holding.market === market);
+        });
+      }
+
+      function renderAudit() {
+        const rows = filteredHoldings();
+        if (!rows.length) {
+          auditList.innerHTML = '<div class="empty-list">目前沒有符合條件的持股</div>';
+          return;
+        }
+
+        auditList.innerHTML = rows.map((holding) => {
+          const audit = holding.audit || {};
+          const steps = audit.steps || [];
+          return `<article class="audit-item">
+            <details>
+              <summary>
+                <div>
+                  <span>${escapeHtml(holding.market)}:${escapeHtml(holding.symbol)}</span>
+                  <strong>${escapeHtml(holding.name || holding.symbol)}</strong>
+                </div>
+                <div class="audit-summary">
+                  <span>股數 ${formatNumber(audit.shares)}</span>
+                  <span>均價 ${formatNumber(audit.averageCost, 4)}</span>
+                  <span>成本 ${formatNumber(audit.totalCost, 2)}</span>
+                </div>
+              </summary>
+              <div class="table-wrap audit-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>日期</th>
+                      <th>動作</th>
+                      <th>股數</th>
+                      <th>成交價</th>
+                      <th>交易後股數</th>
+                      <th>交易後均價</th>
+                      <th>剩餘成本</th>
+                      <th>已實現損益</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${steps.map((step) => `<tr>
+                      <td>${escapeHtml(formatDate(step.date))}</td>
+                      <td><span class="badge ${step.action === "SELL" ? "sell" : "buy"}">${escapeHtml(step.action)}</span></td>
+                      <td>${formatNumber(step.shares)}</td>
+                      <td>${formatNumber(step.price, 4)}</td>
+                      <td>${formatNumber(step.afterShares)}</td>
+                      <td>${formatNumber(step.afterAverageCost, 4)}</td>
+                      <td>${formatNumber(step.remainingCost, 2)}</td>
+                      <td>${formatNumber(step.realizedGain, 2)}</td>
+                    </tr>`).join("")}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </article>`;
+        }).join("");
+      }
+
+      async function loadAudit() {
+        auditStatus.textContent = "讀取中...";
+        try {
+          const response = await fetch("/api/holdings-audit", { cache: "no-store" });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.detail || "持股校正資料讀取失敗。");
+          holdings = payload.holdings || [];
+          auditStatus.textContent = `已載入 ${holdings.length} 檔持股`;
+          renderAudit();
+        } catch (error) {
+          auditStatus.textContent = error.message || "讀取失敗";
+          auditList.innerHTML = '<div class="empty-list">讀取失敗，請重新整理或確認登入狀態。</div>';
+        }
+      }
+
+      auditSearch.addEventListener("input", renderAudit);
+      auditMarket.addEventListener("change", renderAudit);
+      loadAudit();
+    </script>
+  </body>
+</html>

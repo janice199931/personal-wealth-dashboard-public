@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>交易紀錄管理</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260622-symbol-list" />
+    <link rel="stylesheet" href="./form-pages.css?v=20260624-stability" />
   </head>
   <body>
     <main>
@@ -85,6 +85,17 @@
         </div>
       </form>
 
+      <section class="card preview-card" id="transactionPreviewCard" hidden>
+        <div class="section-heading">
+          <div>
+            <span>交易前預覽</span>
+            <h2 id="previewTitle">輸入交易後會顯示結果</h2>
+          </div>
+          <small id="previewStatus">尚未預覽</small>
+        </div>
+        <div class="result-grid preview-grid" id="transactionPreviewGrid"></div>
+      </section>
+
       <section class="card">
         <div class="quick-filters" id="quickFilters" aria-label="快速篩選交易">
           <button class="active" type="button" data-filter="all">全部</button>
@@ -150,6 +161,6 @@
         <div class="transaction-card-list" id="transactionCards"></div>
       </section>
     </main>
-    <script src="./transaction-manager.js?v=20260622-purpose"></script>
+    <script src="./transaction-manager.js?v=20260624-stability"></script>
   </body>
 </html>

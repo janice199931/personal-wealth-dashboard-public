@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>設定｜Janice的小天地</title>
-    <link rel="stylesheet" href="./styles.css?v=20260613-mobile-ux" />
+    <link rel="stylesheet" href="./styles.css?v=20260624-stability" />
   </head>
   <body>
     <aside class="sidebar" aria-label="主選單">
@@ -45,6 +45,18 @@
           <button class="action-button" id="refreshDiagnosticsButton" type="button">重新整理</button>
         </div>
         <div id="diagnosticsGrid" class="diagnostics-grid"></div>
+      </section>
+
+      <section class="panel full diagnostics-panel" aria-label="Data Health">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Data Health</p>
+            <h2>正式資料健康檢查</h2>
+          </div>
+          <button class="action-button" id="createBackupButton" type="button">建立備份</button>
+        </div>
+        <div id="dataHealthGrid" class="diagnostics-grid"></div>
+        <p id="dataHealthNote" class="settings-note"></p>
       </section>
     </main>
 
@@ -91,6 +103,69 @@
           .join("");
       }
 
+      function formatHealthValue(value) {
+        if (!value) return "尚未記錄";
+        if (typeof value === "object" && value.createdAt) return formatDiagnosticsDate(value.createdAt);
+        return formatDiagnosticsDate(value);
+      }
+
+      function renderDataHealth(payload) {
+        const backup = payload.lastAutoBackup || payload.backup || {};
+        const items = [
+          ["Supabase 可讀", payload.readOk ? "正常" : "異常"],
+          ["Supabase 可寫", payload.writeOk ? "正常" : "異常"],
+          ["最近成功保存", formatHealthValue(payload.lastSuccessfulSave)],
+          ["最近自動備份", formatHealthValue(backup)],
+          ["交易紀錄", `${payload.status?.counts?.transactions ?? 0} 筆`],
+          ["股息紀錄", `${payload.status?.counts?.dividends ?? 0} 筆`],
+        ];
+        document.getElementById("dataHealthGrid").innerHTML = items
+          .map(([label, value]) => `<article class="diagnostics-card">
+            <span>${label}</span>
+            <strong>${value}</strong>
+          </article>`)
+          .join("");
+        const issues = payload.anomalies || [];
+        document.getElementById("dataHealthNote").textContent = issues.length
+          ? issues.join(" ")
+          : "目前沒有發現明顯異常。";
+      }
+
+      async function loadDataHealth() {
+        const target = document.getElementById("dataHealthGrid");
+        target.innerHTML = '<article class="diagnostics-card"><span>Status</span><strong>檢查中</strong></article>';
+        try {
+          const response = await fetch("/api/data-health", { cache: "no-store" });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.detail || "資料健康檢查失敗");
+          renderDataHealth(payload);
+        } catch (error) {
+          target.innerHTML = `<article class="diagnostics-card">
+            <span>Status</span>
+            <strong>檢查失敗</strong>
+            <small>${error.message || "請稍後再試"}</small>
+          </article>`;
+        }
+      }
+
+      async function createBackup() {
+        const button = document.getElementById("createBackupButton");
+        button.disabled = true;
+        button.textContent = "建立中...";
+        try {
+          const response = await fetch("/api/db/auto-backup", { method: "POST" });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.detail || "備份建立失敗");
+          document.getElementById("dataHealthNote").textContent = `備份完成：${payload.backup?.name || ""}`;
+          await loadDataHealth();
+        } catch (error) {
+          document.getElementById("dataHealthNote").textContent = error.message || "備份建立失敗";
+        } finally {
+          button.disabled = false;
+          button.textContent = "建立備份";
+        }
+      }
+
       async function loadDiagnostics() {
         const target = document.getElementById("diagnosticsGrid");
         target.innerHTML = '<article class="diagnostics-card"><span>Status</span><strong>讀取中</strong></article>';
@@ -109,7 +184,9 @@
       }
 
       document.getElementById("refreshDiagnosticsButton").addEventListener("click", loadDiagnostics);
+      document.getElementById("createBackupButton").addEventListener("click", createBackup);
       loadDiagnostics();
+      loadDataHealth();
     </script>
   </body>
 </html>

@@ -1817,6 +1817,14 @@ async function loadExternalData() {
   if (financeData?.years?.length) window.financeData = financeData;
 }
 
+async function runDailyDataHealthCheck() {
+  try {
+    await fetchWithTimeout("/api/data-health", { cache: "no-store" }, 12000);
+  } catch {
+    // Settings page shows detailed health status; the dashboard should stay quiet.
+  }
+}
+
 window.addEventListener("resize", render);
 setupPriceUpdater();
 setupDataBackupControls();
@@ -1829,6 +1837,7 @@ async function initializeDashboard() {
   renderInitialLoading();
   await loadExternalData();
   render();
+  runDailyDataHealthCheck();
   await runAutomaticPriceUpdate();
 }
 

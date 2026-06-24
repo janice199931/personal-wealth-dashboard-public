@@ -706,6 +706,13 @@ main {
   font-weight: 800;
 }
 
+.settings-note {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-weight: 850;
+  line-height: 1.6;
+}
+
 .kpi-card:hover,
 .data-status-card:hover,
 .panel:hover,

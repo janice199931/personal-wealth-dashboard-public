@@ -430,14 +430,53 @@ def build_history_from_finance_data(
 def transaction_response(transactions: list[dict[str, Any]], transaction: dict[str, Any] | None, portfolio: dict[str, Any]) -> dict:
     return {
         "ok": True,
+        "verified": True,
         "transaction": transaction,
         "transactions": transactions,
         "portfolioSummary": portfolio["summary"],
     }
 
 
+def transaction_matches_saved(saved: dict[str, Any], expected: dict[str, Any]) -> bool:
+    text_fields = ["id", "date", "market", "symbol", "name", "action", "purpose", "note"]
+    number_fields = ["shares", "price", "fee"]
+    return (
+        all(str(saved.get(field, "")).strip() == str(expected.get(field, "")).strip() for field in text_fields)
+        and all(abs(float(saved.get(field, 0) or 0) - float(expected.get(field, 0) or 0)) < 0.000001 for field in number_fields)
+    )
+
+
 def backup_folder_name() -> str:
     return datetime.now(TWD).strftime("%Y-%m-%d_%H-%M-%S")
+
+
+def backup_file_name(prefix: str = "wealth-dashboard-auto") -> str:
+    return f"{prefix}-{datetime.now(TWD).strftime('%Y-%m-%d')}.json"
+
+
+def write_database_backup(prefix: str = "wealth-dashboard-auto") -> dict[str, Any]:
+    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+    payload = db_store.export_backup()
+    target = BACKUPS_DIR / backup_file_name(prefix)
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    info = {
+        "name": target.name,
+        "path": str(target),
+        "size": target.stat().st_size,
+        "createdAt": payload["exportedAt"],
+    }
+    db_store.set_metadata("lastBackup", payload["exportedAt"])
+    db_store.set_metadata("lastAutoBackup", info)
+    return info
+
+
+def ensure_daily_backup() -> dict[str, Any]:
+    metadata = db_store.read_metadata()
+    today = datetime.now(TWD).date().isoformat()
+    last_backup = metadata.get("lastAutoBackup")
+    if isinstance(last_backup, dict) and str(last_backup.get("createdAt", "")).startswith(today):
+        return {**last_backup, "created": False}
+    return {**write_database_backup(), "created": True}
 
 
 def backup_path(name: str) -> Path:
@@ -455,6 +494,15 @@ def backup_info(path: Path) -> dict[str, Any]:
         "name": path.name,
         "files": files,
         "fileCount": len(files),
+    }
+
+
+def backup_file_info(path: Path) -> dict[str, Any]:
+    return {
+        "name": path.name,
+        "files": [path.name],
+        "fileCount": 1,
+        "size": path.stat().st_size,
     }
 
 
@@ -544,6 +592,117 @@ def save_manual_monthly_finance(month_key: str, income: int, expense: int) -> di
     }
 
 
+def position_state(transactions: list[dict[str, Any]], market: str, symbol: str) -> dict[str, Any]:
+    shares = 0.0
+    cost = 0.0
+    realized_gain = 0.0
+    steps: list[dict[str, Any]] = []
+    key_market = market.upper()
+    key_symbol = symbol.upper()
+
+    for item in sorted(transactions, key=lambda row: (row.get("date", ""), row.get("id", ""))):
+        if str(item.get("market", "")).upper() != key_market or str(item.get("symbol", "")).upper() != key_symbol:
+            continue
+        action = str(item.get("action", "")).upper()
+        trade_shares = float(item.get("shares") or 0)
+        price = float(item.get("price") or 0)
+        fee = float(item.get("fee") or 0)
+        before_shares = shares
+        before_average = cost / shares if shares else 0
+        realized_this_trade = 0.0
+
+        if action == "BUY":
+            shares += trade_shares
+            cost += trade_shares * price + fee
+        elif action == "SELL":
+            if trade_shares > shares:
+                raise HTTPException(status_code=400, detail=f"{key_market}:{key_symbol} 賣出股數大於目前持股。")
+            sold_cost = before_average * trade_shares
+            proceeds = trade_shares * price - fee
+            shares -= trade_shares
+            cost -= sold_cost
+            realized_this_trade = proceeds - sold_cost
+            realized_gain += realized_this_trade
+
+        steps.append({
+            "id": item.get("id", ""),
+            "date": item.get("date", ""),
+            "action": action,
+            "shares": round(trade_shares, 6),
+            "price": round(price, 4),
+            "fee": round(fee, 2),
+            "beforeShares": round(before_shares, 6),
+            "beforeAverageCost": round(before_average, 4),
+            "afterShares": round(shares, 6),
+            "afterAverageCost": round(cost / shares, 4) if shares else 0,
+            "remainingCost": round(cost, 2),
+            "realizedGain": round(realized_this_trade, 2),
+        })
+
+    return {
+        "market": key_market,
+        "symbol": key_symbol,
+        "shares": round(shares, 6),
+        "averageCost": round(cost / shares, 4) if shares else 0,
+        "totalCost": round(cost, 2),
+        "realizedGain": round(realized_gain, 2),
+        "steps": steps,
+    }
+
+
+def build_holding_audit() -> dict[str, Any]:
+    transactions = read_transactions(use_examples=False)
+    portfolio = read_portfolio(use_examples=False) or rebuild_portfolio_outputs()
+    holdings = []
+    for holding in portfolio.get("holdings", []):
+        symbol = str(holding.get("symbol", "")).upper()
+        market = str(holding.get("market", "")).upper()
+        if not symbol or not market:
+            continue
+        audit = position_state(transactions, market, symbol)
+        holdings.append({
+            **holding,
+            "audit": audit,
+            "transactionCount": len(audit["steps"]),
+        })
+    holdings.sort(key=lambda row: (str(row.get("market", "")), str(row.get("symbol", ""))))
+    return {
+        "ok": True,
+        "holdings": holdings,
+        "summary": portfolio.get("summary", {}),
+        "currentDb": db_store.active_backend(),
+    }
+
+
+def transaction_preview(transactions: list[dict[str, Any]], transaction: dict[str, Any], editing_id: str | None = None) -> dict[str, Any]:
+    next_transactions = []
+    replaced = False
+    for row in transactions:
+        if editing_id and row.get("id") == editing_id:
+            next_transactions.append({**transaction, "id": editing_id})
+            replaced = True
+        else:
+            next_transactions.append(row)
+    if not editing_id:
+        next_transactions.append(transaction)
+    elif not replaced:
+        raise HTTPException(status_code=404, detail="找不到要預覽的交易紀錄。")
+
+    validate_positions(next_transactions)
+    before = position_state(transactions, transaction["market"], transaction["symbol"])
+    after = position_state(next_transactions, transaction["market"], transaction["symbol"])
+    return {
+        "ok": True,
+        "symbol": transaction["symbol"],
+        "market": transaction["market"],
+        "before": {key: before[key] for key in ["shares", "averageCost", "totalCost", "realizedGain"]},
+        "after": {key: after[key] for key in ["shares", "averageCost", "totalCost", "realizedGain"]},
+        "deltaShares": round(after["shares"] - before["shares"], 6),
+        "deltaCost": round(after["totalCost"] - before["totalCost"], 2),
+        "latestStep": after["steps"][-1] if after["steps"] else None,
+    }
+
+
 async def save_upload(upload: UploadFile, folder: Path) -> Path:
     safe_name = Path(upload.filename or "upload").name
     suffix = Path(safe_name).suffix
@@ -575,6 +734,58 @@ def db_status() -> Response:
     return utf8_json(db_store.status())
 
 
+@app.get("/api/data-health")
+def data_health() -> Response:
+    read_ok = True
+    write_ok = True
+    read_error = ""
+    write_error = ""
+    backup: dict[str, Any] | None = None
+    anomalies: list[str] = []
+
+    try:
+        transactions = read_transactions(use_examples=False)
+        calculate_positions(transactions)
+    except Exception as error:
+        read_ok = False
+        read_error = str(error)
+        transactions = []
+
+    try:
+        db_store.set_metadata("lastWriteCheck", db_store.now_iso())
+        metadata = db_store.read_metadata()
+        write_ok = bool(metadata.get("lastWriteCheck"))
+    except Exception as error:
+        write_ok = False
+        write_error = str(error)
+
+    try:
+        backup = ensure_daily_backup()
+    except Exception as error:
+        anomalies.append(f"每日備份未完成：{error}")
+
+    status = db_store.status()
+    if status.get("fallbackActive"):
+        anomalies.append("Supabase 目前不是正式寫入狀態。")
+    if not transactions:
+        anomalies.append("目前沒有交易紀錄。")
+
+    payload = {
+        "ok": read_ok and write_ok,
+        "readOk": read_ok,
+        "writeOk": write_ok,
+        "readError": read_error,
+        "writeError": write_error,
+        "lastSuccessfulSave": status.get("metadata", {}).get("lastSuccessfulSave"),
+        "lastBackup": status.get("metadata", {}).get("lastBackup"),
+        "lastAutoBackup": status.get("metadata", {}).get("lastAutoBackup"),
+        "backup": backup,
+        "anomalies": anomalies,
+        "status": status,
+    }
+    return utf8_json(payload)
+
+
 @app.get("/api/db/debug-supabase")
 def debug_supabase() -> dict[str, Any]:
     return db_store.debug_supabase()
@@ -584,6 +795,11 @@ def debug_supabase() -> dict[str, Any]:
 def get_portfolio() -> dict[str, Any]:
     portfolio = read_portfolio(use_examples=True)
     return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if portfolio else "example"}
+
+
+@app.get("/api/holdings-audit")
+def holdings_audit() -> Response:
+    return utf8_json(build_holding_audit())
 
 
 @app.get("/api/accounts")
@@ -815,8 +1031,14 @@ def migrate_to_supabase() -> dict[str, Any]:
 def list_backups() -> dict:
     BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
     backups = [backup_info(path) for path in BACKUPS_DIR.iterdir() if path.is_dir()]
+    backups.extend(backup_file_info(path) for path in BACKUPS_DIR.glob("*.json") if path.is_file())
     backups.sort(key=lambda row: row["name"], reverse=True)
     return {"ok": True, "backups": backups}
+
+
+@app.post("/api/db/auto-backup")
+def create_database_backup() -> dict[str, Any]:
+    return {"ok": True, "backup": write_database_backup("wealth-dashboard-manual")}
 
 
 @app.post("/api/backups")
@@ -874,6 +1096,20 @@ def get_transactions() -> dict:
     return {"ok": True, "transactions": transactions, "source": db_store.active_backend() if transactions else "empty"}
 
 
+@app.post("/api/transactions/preview")
+async def preview_transaction(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="交易資料格式錯誤。") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="交易資料格式錯誤。")
+
+    editing_id = str(payload.get("editingId", "")).strip() or None
+    transaction = normalize_transaction(payload)
+    return transaction_preview(read_transactions(use_examples=False), transaction, editing_id)
+
+
 @app.post("/api/transactions")
 async def create_transaction(request: Request) -> dict:
     try:
@@ -892,8 +1128,12 @@ async def create_transaction(request: Request) -> dict:
     validate_positions(next_transactions)
 
     write_transactions(next_transactions)
+    verified_transactions = read_transactions(use_examples=False)
+    if not any(transaction_matches_saved(row, transaction) for row in verified_transactions):
+        raise HTTPException(status_code=503, detail="交易已送出，但重新讀取後沒有找到這筆資料，請不要重複新增，先重新整理確認。")
+    db_store.set_metadata("lastSuccessfulSave", db_store.now_iso())
     portfolio = rebuild_portfolio_outputs()
-    return transaction_response(next_transactions, transaction, portfolio)
+    return transaction_response(verified_transactions, transaction, portfolio)
 
 
 @app.put("/api/transactions/{transaction_id}")
@@ -916,8 +1156,12 @@ async def update_transaction(transaction_id: str, request: Request) -> dict:
     validate_positions(next_transactions)
 
     write_transactions(next_transactions)
+    verified_transactions = read_transactions(use_examples=False)
+    if not any(transaction_matches_saved(row, transaction) for row in verified_transactions):
+        raise HTTPException(status_code=503, detail="交易已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    db_store.set_metadata("lastSuccessfulSave", db_store.now_iso())
     portfolio = rebuild_portfolio_outputs()
-    return transaction_response(next_transactions, transaction, portfolio)
+    return transaction_response(verified_transactions, transaction, portfolio)
 
 
 @app.delete("/api/transactions/{transaction_id}")
@@ -929,8 +1173,12 @@ def delete_transaction(transaction_id: str) -> dict:
 
     validate_positions(next_transactions)
     write_transactions(next_transactions)
+    verified_transactions = read_transactions(use_examples=False)
+    if any(row.get("id") == transaction_id for row in verified_transactions):
+        raise HTTPException(status_code=503, detail="交易刪除已送出，但重新讀取後仍看到這筆資料，請重新整理確認。")
+    db_store.set_metadata("lastSuccessfulSave", db_store.now_iso())
     portfolio = rebuild_portfolio_outputs()
-    return transaction_response(next_transactions, None, portfolio)
+    return transaction_response(verified_transactions, None, portfolio)
 
 
 @app.get("/api/dividends")
@@ -1259,6 +1507,11 @@ def snapshot_manager_page() -> FileResponse:
 @app.api_route("/rebalancer.html", methods=["GET", "HEAD"])
 def rebalancer_page() -> FileResponse:
     return FileResponse(ROOT / "rebalancer.html")
+
+
+@app.api_route("/holdings-audit.html", methods=["GET", "HEAD"])
+def holdings_audit_page() -> FileResponse:
+    return FileResponse(ROOT / "holdings-audit.html")
 
 
 app.mount("/", StaticFiles(directory=ROOT, html=True), name="static")
