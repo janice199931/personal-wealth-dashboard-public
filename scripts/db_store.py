@@ -222,6 +222,7 @@ def _postgres_security_statements() -> list[str]:
             [
                 f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY",
                 f"REVOKE ALL ON TABLE public.{table} FROM anon, authenticated",
+                f"GRANT ALL ON TABLE public.{table} TO CURRENT_USER",
                 f"DROP POLICY IF EXISTS dashboard_backend_all ON public.{table}",
                 (
                     f"CREATE POLICY dashboard_backend_all ON public.{table} "
@@ -229,6 +230,7 @@ def _postgres_security_statements() -> list[str]:
                 ),
             ]
         )
+    statements.append("GRANT USAGE, SELECT ON SEQUENCE public.portfolio_snapshots_id_seq TO CURRENT_USER")
     return statements
 
 
@@ -356,7 +358,7 @@ def _raise_supabase_write_error(error: Exception | None = None) -> None:
     message = "Supabase 目前無法寫入，資料未保存。請稍後再試，或到設定頁確認 Database Health。"
     if error is None:
         raise RuntimeError(message)
-    raise RuntimeError(message) from error
+    raise RuntimeError(f"{message} 原因：{error}") from error
 
 
 def _execute_read(sqlite_sql: str, postgres_sql: str | None = None, params: tuple[Any, ...] = ()):
