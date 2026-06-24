@@ -222,6 +222,11 @@ def _postgres_security_statements() -> list[str]:
             [
                 f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY",
                 f"REVOKE ALL ON TABLE public.{table} FROM anon, authenticated",
+                f"DROP POLICY IF EXISTS dashboard_backend_all ON public.{table}",
+                (
+                    f"CREATE POLICY dashboard_backend_all ON public.{table} "
+                    "FOR ALL TO public USING (true) WITH CHECK (true)"
+                ),
             ]
         )
     return statements
