@@ -1776,15 +1776,21 @@ async function loadExternalData() {
   }
 
   async function fetchJson(primaryPath, examplePath, fallbackValue, payloadKey = "") {
-    try {
-      const primaryResponse = await fetchWithTimeout(primaryPath, { cache: "no-store" });
-      if (primaryResponse.ok) {
-        const payload = await primaryResponse.json();
-        return payloadKey ? payload[payloadKey] : payload;
+    const isLiveApi = window.location.protocol !== "file:" && primaryPath.startsWith("/api/");
+    const attempts = isLiveApi ? [22000, 30000] : [10000];
+    for (const timeoutMs of attempts) {
+      try {
+        const primaryResponse = await fetchWithTimeout(primaryPath, { cache: "no-store" }, timeoutMs);
+        if (primaryResponse.ok) {
+          const payload = await primaryResponse.json();
+          return payloadKey ? payload[payloadKey] : payload;
+        }
+      } catch {
+        // Retry live API once before deciding whether to use fallback data.
       }
-    } catch {
-      // Fall through to example data or fallback value.
     }
+
+    if (isLiveApi) return fallbackValue;
 
     if (examplePath) {
       try {
