@@ -97,7 +97,12 @@ def _connect_postgres():
     import psycopg
     from psycopg.rows import dict_row
 
-    connection = psycopg.connect(supabase_connection_url(), row_factory=dict_row, connect_timeout=6)
+    connection = psycopg.connect(
+        supabase_connection_url(),
+        row_factory=dict_row,
+        connect_timeout=6,
+        prepare_threshold=None,
+    )
     connection.execute("SET statement_timeout TO '8000ms'")
     connection.execute("SET lock_timeout TO '5000ms'")
     return connection
