@@ -328,16 +328,6 @@ h2 {
   transform: none;
 }
 
-.backup-status {
-  flex: 1 0 100%;
-  min-height: 14px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.25;
-  text-align: left;
-}
-
 .update-strip {
   min-width: min(520px, 48vw);
   padding: 8px 12px;
@@ -1743,11 +1733,6 @@ canvas {
     min-height: 40px;
     padding: 0 10px;
     font-size: 12px;
-  }
-
-  .backup-status {
-    grid-column: 1 / -1;
-    text-align: left;
   }
 
   main {

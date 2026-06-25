@@ -91,7 +91,6 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
 function handleAuthExpired(response) {
   if (!response || response.status !== 401) return false;
   renderPriceUpdateNotice("登入已過期，請重新登入。");
-  setBackupStatus("登入已過期，正在前往登入頁...");
   window.setTimeout(() => {
     window.location.href = "/login.html";
   }, 700);
@@ -1169,15 +1168,6 @@ function databaseHealth(status) {
   return { value: "Online", note: status.currentDb === "supabase" ? "Supabase Connected" : "SQLite Online" };
 }
 
-function backupReminder(status) {
-  const lastBackup = status?.metadata?.lastBackup;
-  if (!lastBackup) return "尚未匯出備份，建議先下載一份。";
-  const backupTime = new Date(lastBackup).getTime();
-  if (!Number.isFinite(backupTime)) return "";
-  const days = Math.floor((Date.now() - backupTime) / 86400000);
-  return days >= 7 ? `已 ${days} 天未備份，建議今天匯出。` : "";
-}
-
 function renderDataStatusCards() {
   const status = dataStatus;
   updateMigrateButtonVisibility(status);
@@ -1188,7 +1178,6 @@ function renderDataStatusCards() {
   const rows = [
     { label: "Current DB", value: status?.currentDbLabel ?? "讀取中", note: currentDbNote(status) },
     { label: "Database Health", value: health.value, note: health.note },
-    { label: "Last Backup", value: formatStatusDate(metadata.lastBackup), note: backupReminder(status) },
     { label: "Last Price Update", value: formatStatusDate(metadata.lastPriceUpdate || data.updatedAt), note: "" },
     { label: "Data Status", value: dataStatusMessage(status), note: dataStatusNote(status) },
   ];
@@ -1524,7 +1513,6 @@ async function runAutomaticPriceUpdate() {
   } catch (error) {
     console.warn("自動更新股價失敗", error);
     renderDataUpdates();
-    setBackupStatus("股價尚未自動更新；需要時可手動按「更新股價」。");
   } finally {
     progress.stop();
   }
@@ -1537,105 +1525,6 @@ async function readApiPayload(response, fallbackMessage = "資料讀取失敗，
   } catch {
     return { detail: fallbackMessage };
   }
-}
-
-function setBackupStatus(message) {
-  const target = document.getElementById("backupStatus");
-  if (target) target.textContent = message;
-}
-
-function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
-function setupDataBackupControls() {
-  const exportButton = document.getElementById("exportBackupButton");
-  const importButton = document.getElementById("importBackupButton");
-  const rebuildButton = document.getElementById("rebuildPortfolioButton");
-  const migrateButton = document.getElementById("migrateSupabaseButton");
-  const fileInput = document.getElementById("backupFileInput");
-  if (!exportButton || !importButton || !rebuildButton || !fileInput || exportButton.dataset.ready) return;
-  exportButton.dataset.ready = "true";
-  if (migrateButton) migrateButton.hidden = true;
-
-  exportButton.addEventListener("click", async () => {
-    exportButton.disabled = true;
-    setBackupStatus("正在匯出備份...");
-    try {
-      const response = await fetch("/api/db/export-json", { cache: "no-store" });
-      if (handleAuthExpired(response)) return;
-      if (!response.ok) {
-        const payload = await readApiPayload(response);
-        throw new Error(payload.detail || `匯出失敗（HTTP ${response.status}）`);
-      }
-      const blob = await response.blob();
-      const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
-      downloadBlob(blob, `wealth-dashboard-backup-${stamp}.json`);
-      setBackupStatus("備份已下載到這台電腦。");
-      await refreshDataStatus();
-      renderDataStatusCards();
-    } catch (error) {
-      console.warn("匯出備份失敗", error);
-      setBackupStatus(error.message || "匯出備份失敗。");
-    } finally {
-      exportButton.disabled = false;
-    }
-  });
-
-  importButton.addEventListener("click", () => {
-    fileInput.value = "";
-    fileInput.click();
-  });
-
-  fileInput.addEventListener("change", async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    if (!window.confirm("匯入前會檢查備份完整性；完整備份會覆蓋正式資料。確定匯入？")) return;
-    importButton.disabled = true;
-    setBackupStatus("正在匯入備份...");
-    try {
-      const formData = new FormData();
-      formData.append("backup", file);
-      const response = await fetch("/api/db/import-json", { method: "POST", body: formData });
-      if (handleAuthExpired(response)) return;
-      const payload = await readApiPayload(response);
-      if (!response.ok) throw new Error(payload.detail || `匯入失敗（HTTP ${response.status}）`);
-      setBackupStatus("備份已匯入，正在重新整理...");
-      setTimeout(() => window.location.reload(), 900);
-    } catch (error) {
-      console.warn("匯入備份失敗", error);
-      setBackupStatus(error.message || "匯入備份失敗。");
-    } finally {
-      importButton.disabled = false;
-    }
-  });
-
-  rebuildButton.addEventListener("click", async () => {
-    rebuildButton.disabled = true;
-    setBackupStatus("正在重建投資組合...");
-    try {
-      const response = await fetch("/api/db/rebuild-portfolio", { method: "POST" });
-      if (handleAuthExpired(response)) return;
-      const payload = await readApiPayload(response);
-      if (!response.ok) throw new Error(payload.detail || `重建失敗（HTTP ${response.status}）`);
-      setBackupStatus("投資組合已重建，正在重新整理...");
-      setTimeout(() => window.location.reload(), 900);
-    } catch (error) {
-      console.warn("重建投資組合失敗", error);
-      setBackupStatus(error.message || "重建投資組合失敗。");
-    } finally {
-      rebuildButton.disabled = false;
-    }
-  });
-
-  if (migrateButton) migrateButton.hidden = true;
 }
 
 function renderInvestmentCards() {
@@ -1943,7 +1832,6 @@ async function runDailyDataHealthCheck() {
 
 window.addEventListener("resize", render);
 setupPriceUpdater();
-setupDataBackupControls();
 
 async function initializeDashboard() {
   if (window.location.protocol === "file:") {
