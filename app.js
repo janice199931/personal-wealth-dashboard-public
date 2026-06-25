@@ -1016,6 +1016,43 @@ function investableCashSummary(metrics) {
   return `可加碼 ${money.format(metrics.investableSinopacCash)}，永豐 ${money.format(metrics.sinopacBalance)} - 緊急預備金 ${money.format(EMERGENCY_FUND_TARGET)}。`;
 }
 
+function todayConclusion(metrics) {
+  if (!metrics.sinopacBalance) {
+    return {
+      status: "warn",
+      text: "先填永豐餘額，今天能不能加碼才會準。",
+    };
+  }
+  if (metrics.sinopacBalance < EMERGENCY_FUND_TARGET) {
+    return {
+      status: "warn",
+      text: `先不要買，永豐低於緊急預備金 ${money.format(EMERGENCY_FUND_TARGET)}。`,
+    };
+  }
+  if (metrics.monthlySinopacTransferRemaining > 0) {
+    return {
+      status: "watch",
+      text: `先轉 ${money.format(metrics.monthlySinopacTransferRemaining)} 到永豐，再看買點。`,
+    };
+  }
+  if (metrics.investableSinopacCash <= 0) {
+    return {
+      status: "warn",
+      text: "永豐剛好達緊急預備金，今天先不要加碼。",
+    };
+  }
+  if (metrics.monthlyInvestmentRemaining <= 0) {
+    return {
+      status: "good",
+      text: "本月已達標，今天不用急著買。",
+    };
+  }
+  return {
+    status: "good",
+    text: `可加碼 ${money.format(Math.min(metrics.investableSinopacCash, metrics.monthlyInvestmentRemaining))}。`,
+  };
+}
+
 function nextActionSummary(metrics) {
   if (!metrics.sinopacBalance) return "先補上永豐餘額，下一筆建議才會準。";
   if (metrics.investableSinopacCash <= 0) return "先守住永豐緊急預備金，不建議買進。";
@@ -1032,15 +1069,15 @@ function leveragedPriceSignalText(metrics) {
   if (signal.state === "idle" || signal.state === "loading") return "正在讀取 00685L 近 20 個交易日價格。";
   if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先用本月投資額度與 70/30 比例判斷。";
   const base = `近 20 日高點 ${stockPriceTwd.format(signal.high)}，現價 ${stockPriceTwd.format(signal.price)}，回落 ${signal.pullback.toFixed(1)}%。`;
-  if (signal.pullback < 5) return `${base} 燈號：不急，照原計畫。`;
+  if (signal.pullback < 5) return `${base} 燈號：不急，照原計畫，不額外加碼。`;
   if (signal.pullback < 10) return `${base} 燈號：觀察，先不用急著加碼。`;
   if (signal.pullback < 15) {
     return metrics.investableSinopacCash > 0 && metrics.monthlyInvestmentRemaining > 0
-      ? `${base} 燈號：小額加碼，可用本月剩餘額度分批。`
+      ? `${base} 燈號：小額加碼，建議最多 ${money.format(Math.min(10000, metrics.investableSinopacCash, metrics.monthlyInvestmentRemaining))}。`
       : `${base} 燈號：小額加碼，但先確認永豐可用現金與本月額度。`;
   }
   return metrics.investableSinopacCash > 0 && metrics.monthlyInvestmentRemaining > 0
-    ? `${base} 燈號：分批加碼，只用本月額度，不一次重壓。`
+    ? `${base} 燈號：分批加碼，建議分 2-3 筆，每筆最多 ${money.format(Math.min(10000, metrics.investableSinopacCash, metrics.monthlyInvestmentRemaining))}。`
     : `${base} 燈號：分批加碼，但目前先不要動到緊急預備金。`;
 }
 
@@ -1108,7 +1145,13 @@ function renderTodayActions() {
   if (!target) return;
   const metrics = getPortfolioMetrics();
   if (metrics.hasLeveragedHolding) loadLeveragedPullbackSignal();
+  const conclusion = todayConclusion(metrics);
   const rows = [
+    {
+      status: conclusion.status,
+      title: "今日結論",
+      text: conclusion.text,
+    },
     {
       status: metrics.monthlySinopacTransferRemaining <= 0 ? "good" : "watch",
       title: "本月轉入永豐",
