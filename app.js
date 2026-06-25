@@ -66,6 +66,7 @@ const usd = new Intl.NumberFormat("en-US", {
 const number = new Intl.NumberFormat("zh-TW");
 let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
+const PRICE_AUTO_REFRESH_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 200000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
@@ -73,6 +74,8 @@ const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
 let dataStatus = null;
+let priceUpdateInProgress = false;
+let priceAutoRefreshTimer = null;
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController();
@@ -1432,8 +1435,10 @@ function setupPriceUpdater() {
   if (!button || button.dataset.ready) return;
   button.dataset.ready = "true";
   button.addEventListener("click", async () => {
+    if (priceUpdateInProgress) return;
     const originalText = button.textContent;
     let progress = null;
+    priceUpdateInProgress = true;
     button.disabled = true;
     progress = startPriceProgress(button);
     try {
@@ -1481,11 +1486,14 @@ function setupPriceUpdater() {
       }, 1600);
     } finally {
       if (progress) progress.stop();
+      priceUpdateInProgress = false;
     }
   });
 }
 
 async function runAutomaticPriceUpdate() {
+  if (priceUpdateInProgress) return;
+  priceUpdateInProgress = true;
   const progress = startPriceProgress(null, true);
   try {
     const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
@@ -1509,7 +1517,18 @@ async function runAutomaticPriceUpdate() {
     renderDataUpdates();
   } finally {
     progress.stop();
+    priceUpdateInProgress = false;
   }
+}
+
+function setupAutomaticPriceRefresh() {
+  if (priceAutoRefreshTimer || window.location.protocol === "file:") return;
+  priceAutoRefreshTimer = window.setInterval(() => {
+    if (!document.hidden) runAutomaticPriceUpdate();
+  }, PRICE_AUTO_REFRESH_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) runAutomaticPriceUpdate();
+  });
 }
 
 async function readApiPayload(response, fallbackMessage = "資料讀取失敗，請重新整理或確認登入狀態。") {
@@ -1836,6 +1855,7 @@ async function initializeDashboard() {
   await loadExternalData();
   render();
   window.setTimeout(runDailyDataHealthCheck, 45000);
+  setupAutomaticPriceRefresh();
   await runAutomaticPriceUpdate();
 }
 
