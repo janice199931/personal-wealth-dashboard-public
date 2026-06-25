@@ -1427,11 +1427,6 @@ function markTodayPriceUpdated() {
   window.localStorage.setItem(AUTO_PRICE_UPDATE_KEY, todayKey());
 }
 
-function hasAutoUpdatedToday() {
-  if (!window.localStorage) return false;
-  return window.localStorage.getItem(AUTO_PRICE_UPDATE_KEY) === todayKey();
-}
-
 function setupPriceUpdater() {
   const button = document.getElementById("updatePricesButton");
   if (!button || button.dataset.ready) return;
@@ -1491,7 +1486,6 @@ function setupPriceUpdater() {
 }
 
 async function runAutomaticPriceUpdate() {
-  if (hasAutoUpdatedToday()) return;
   const progress = startPriceProgress(null, true);
   try {
     const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
