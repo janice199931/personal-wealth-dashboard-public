@@ -331,10 +331,9 @@ h2 {
 .topbar-updates {
   display: flex;
   flex: 1 1 auto;
-  flex-direction: column;
   justify-content: flex-end;
-  align-items: flex-end;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -1758,14 +1757,14 @@ canvas {
 
   .topbar-updates {
     width: 100%;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 6px;
+    align-items: stretch;
+    gap: 8px;
   }
 
   .price-refresh-button {
     width: auto;
     min-height: 30px;
+    align-self: stretch;
   }
 
   .action-button,
@@ -1787,7 +1786,7 @@ canvas {
   }
 
   .update-strip {
-    width: 100%;
+    flex: 1 1 auto;
     min-width: 0;
     grid-template-columns: 1fr;
     justify-content: stretch;
