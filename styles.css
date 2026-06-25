@@ -331,24 +331,26 @@ h2 {
 .topbar-updates {
   display: flex;
   flex: 1 1 auto;
+  flex-direction: column;
   justify-content: flex-end;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: flex-end;
+  gap: 6px;
   min-width: 0;
 }
 
 .price-refresh-button {
-  min-height: 34px;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 12px;
   color: var(--muted);
   font: inherit;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   border: 1px solid rgba(147, 122, 108, 0.16);
   border-radius: 999px;
-  background: rgba(255, 253, 250, 0.72);
+  background: rgba(255, 253, 250, 0.58);
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: 0 8px 18px rgba(177, 102, 101, 0.08);
 }
 
 .price-refresh-button:disabled {
@@ -1757,12 +1759,13 @@ canvas {
   .topbar-updates {
     width: 100%;
     flex-direction: column;
-    gap: 8px;
+    align-items: flex-end;
+    gap: 6px;
   }
 
   .price-refresh-button {
-    width: 100%;
-    min-height: 38px;
+    width: auto;
+    min-height: 30px;
   }
 
   .action-button,
