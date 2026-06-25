@@ -110,6 +110,18 @@ function formatDisplayDate(value) {
   return formatInputRocDate(date);
 }
 
+function formatSavedAt(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const year = rocYear(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}/${month}/${day} ${hour}:${minute}`;
+}
+
 function parseRocInputDate(value) {
   const text = String(value || "").trim();
   const parts = text.replaceAll(".", "/").replaceAll("-", "/").split("/").map((part) => part.trim()).filter(Boolean);
@@ -618,7 +630,8 @@ async function deleteTransaction(id) {
   setTransactions(payload.transactions || []);
   await verifySavedTransaction(payload, "delete", id);
   if (editingId === id) resetForm();
-  setStatus(`已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
+  const savedTime = formatSavedAt(payload.savedAt);
+  setStatus(`已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`, "success");
 }
 
 form.addEventListener("submit", async (event) => {
@@ -632,13 +645,13 @@ form.addEventListener("submit", async (event) => {
     await verifySavedTransaction(payload, mode);
     setStatus(
       mode === "update"
-        ? `已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`
-        : `已新增，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`,
+        ? `已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆${formatSavedAt(payload.savedAt) ? `。最後成功保存：${formatSavedAt(payload.savedAt)}` : ""}`
+        : `已新增，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆${formatSavedAt(payload.savedAt) ? `。最後成功保存：${formatSavedAt(payload.savedAt)}` : ""}`,
       "success",
     );
     resetForm();
   } catch (error) {
-    setStatus(error.message, "error");
+    setStatus(`${error.message || "交易儲存失敗"}。你剛輸入的內容已保留，不用重打。`, "error");
   } finally {
     submitButton.disabled = false;
   }

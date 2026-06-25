@@ -945,6 +945,15 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/app-version")
+def app_version() -> dict[str, Any]:
+    return {
+        "ok": True,
+        "version": os.getenv("RENDER_GIT_COMMIT", "")[:7] or "local",
+        "label": os.getenv("APP_VERSION_LABEL", "2026-06-25 stability"),
+    }
+
+
 @app.api_route("/login.html", methods=["GET", "HEAD"])
 def login_page(request: Request) -> Response:
     has_error = request.query_params.get("error") == "1"
@@ -1190,18 +1199,18 @@ def future_result_or_default(future: Any, default: Any, label: str) -> Any:
 
 
 @app.get("/api/dashboard-core")
-def get_dashboard_core() -> Response:
+def get_dashboard_core(fast: bool = False) -> Response:
     with ThreadPoolExecutor(max_workers=6) as executor:
         portfolio_future = executor.submit(read_portfolio, True)
         history_future = executor.submit(read_net_worth_history, False)
-        transactions_future = executor.submit(read_transactions, False)
-        dividends_future = executor.submit(read_dividends, False)
         accounts_future = executor.submit(db_store.read_accounts, {})
+        transactions_future = None if fast else executor.submit(read_transactions, False)
+        dividends_future = None if fast else executor.submit(read_dividends, False)
         finance_future = executor.submit(db_store.read_finance_data, {})
         portfolio = future_result_or_default(portfolio_future, lambda: read_portfolio(use_examples=True), "portfolio")
         history = future_result_or_default(history_future, [], "history")
-        transactions = future_result_or_default(transactions_future, [], "transactions")
-        dividends = future_result_or_default(dividends_future, [], "dividends")
+        transactions = [] if fast else future_result_or_default(transactions_future, [], "transactions")
+        dividends = [] if fast else future_result_or_default(dividends_future, [], "dividends")
         accounts = future_result_or_default(accounts_future, {}, "accounts")
         finance_data = future_result_or_default(finance_future, {}, "finance")
     current_month = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m")
@@ -1218,10 +1227,11 @@ def get_dashboard_core() -> Response:
         "ok": True,
         "portfolio": portfolio,
         "history": history,
-        "transactions": transactions,
-        "dividends": dividends,
+        "transactions": None if fast else transactions,
+        "dividends": None if fast else dividends,
         "accounts": accounts,
         "currentMonthFinance": current_month_finance,
+        "fast": fast,
         "source": db_store.active_backend() if portfolio else "example",
     })
 

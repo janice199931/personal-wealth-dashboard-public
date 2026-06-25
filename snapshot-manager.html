@@ -98,6 +98,18 @@
         return { year: Number(parts[0]), month: parts[1] };
       }
 
+      function formatSavedAt(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        const year = rocYear(date.getFullYear());
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hour = String(date.getHours()).padStart(2, "0");
+        const minute = String(date.getMinutes()).padStart(2, "0");
+        return `${year}/${month}/${day} ${hour}:${minute}`;
+      }
+
       function setupMonthSelectors() {
         const current = currentTaiwanDate();
         const years = Array.from({ length: 16 }, (_, index) => current.year - 10 + index);
@@ -160,9 +172,10 @@
           const payload = await readApiPayload(response, "資產快照更新失敗，請重新整理或確認登入狀態。");
           if (!response.ok) throw new Error(payload.detail || "資產快照更新失敗，請重新整理或確認登入狀態。");
           renderResult(payload);
-          setStatus(payload.monthlyFinance ? "資產快照 / 月份統計 / 永豐資料已更新，回首頁即可看到最新數字。" : "資產快照 / 永豐資料已更新，回首頁即可看到最新數字。", "success");
+          const savedTime = formatSavedAt(payload.savedAt);
+          setStatus(`${payload.monthlyFinance ? "資產快照 / 月份統計 / 永豐資料已更新" : "資產快照 / 永豐資料已更新"}，回首頁即可看到最新數字。${savedTime ? `最後成功保存：${savedTime}` : ""}`, "success");
         } catch (error) {
-          setStatus(error.message || "資產快照更新失敗，請稍後再試。", "error");
+          setStatus(`${error.message || "資產快照更新失敗，請稍後再試。"} 你剛輸入的內容已保留，不用重打。`, "error");
         } finally {
           submitButton.disabled = false;
         }

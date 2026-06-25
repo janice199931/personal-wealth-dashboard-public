@@ -117,7 +117,11 @@ function readLastDashboardCore() {
 function rememberDashboardCore(core) {
   if (!window.localStorage || !core?.portfolio) return;
   try {
-    window.localStorage.setItem(DASHBOARD_CORE_CACHE_KEY, JSON.stringify(core));
+    const previous = readLastDashboardCore();
+    const nextCore = core.fast && previous
+      ? { ...core, transactions: previous.transactions, dividends: previous.dividends }
+      : core;
+    window.localStorage.setItem(DASHBOARD_CORE_CACHE_KEY, JSON.stringify(nextCore));
   } catch {
     // Last-good data is only a safety net; live Supabase data remains the source of truth.
   }
@@ -1576,7 +1580,7 @@ function setupPriceUpdater() {
 async function runAutomaticPriceUpdate() {
   if (priceUpdateInProgress) return;
   priceUpdateInProgress = true;
-  const progress = startPriceProgress(null, true);
+  const startedAt = Date.now();
   try {
     const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, AUTO_PRICE_UPDATE_TIMEOUT_MS);
     if (handleAuthExpired(response)) return;
@@ -1584,7 +1588,6 @@ async function runAutomaticPriceUpdate() {
     if (!response.ok) throw new Error(payload.detail || `自動更新失敗（HTTP ${response.status}）`);
     markTodayPriceUpdated();
     localStorage.removeItem("wealthDashboardUpdateWarning");
-    renderPriceUpdateProgress("自動更新完成", "重新整理首頁資料", Math.floor((Date.now() - progress.startedAt) / 1000));
     await loadExternalData();
     await fetchWithTimeout("/api/prices", { cache: "no-store" }, 12000);
     render();
@@ -1598,7 +1601,7 @@ async function runAutomaticPriceUpdate() {
     console.warn("自動更新股價失敗", error);
     renderDataUpdates();
   } finally {
-    progress.stop();
+    console.info(`自動股價更新結束，耗時 ${Math.floor((Date.now() - startedAt) / 1000)} 秒`);
     priceUpdateInProgress = false;
   }
 }
@@ -1876,7 +1879,7 @@ async function loadExternalData() {
     render();
   }
 
-  let core = await fetchJson("/api/dashboard-core", "", null);
+  let core = await fetchJson("/api/dashboard-core?fast=1", "", null);
   if (core?.portfolio) {
     rememberDashboardCore(core);
   } else {
@@ -1933,7 +1936,23 @@ async function loadExternalData() {
 
   const financeData = await financeDataPromise;
   if (financeData?.years?.length) window.financeData = financeData;
+  if (core?.portfolio) {
+    rememberDashboardCore({ ...core, transactions: data.transactions, dividends: data.dividends, fast: false });
+  }
   render();
+}
+
+async function loadAppVersion() {
+  const target = document.getElementById("appVersionText");
+  if (!target || window.location.protocol === "file:") return;
+  try {
+    const response = await fetchWithTimeout("/api/app-version", { cache: "no-store" }, 5000);
+    if (!response.ok) return;
+    const payload = await response.json();
+    target.textContent = `目前版本：${payload.label || "正式版"}${payload.version ? ` / ${payload.version}` : ""}`;
+  } catch {
+    target.textContent = "目前版本：正式版";
+  }
 }
 
 async function runDailyDataHealthCheck() {
@@ -1954,6 +1973,7 @@ async function runDailyBackupCheck() {
 
 window.addEventListener("resize", render);
 setupPriceUpdater();
+loadAppVersion();
 
 async function initializeDashboard() {
   if (window.location.protocol === "file:") {

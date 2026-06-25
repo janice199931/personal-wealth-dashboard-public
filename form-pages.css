@@ -132,6 +132,14 @@ a {
   color: var(--ink);
 }
 
+.save-meta {
+  display: inline-block;
+  margin-left: 8px;
+  color: #8faa83;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .mode-banner.editing {
   border-color: rgba(216, 104, 104, 0.32);
   background: rgba(255, 231, 231, 0.86);

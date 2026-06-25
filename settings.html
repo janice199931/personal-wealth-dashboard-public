@@ -58,8 +58,19 @@
             <button class="action-button subtle-action" id="createBackupButton" type="button">建立備份</button>
           </div>
         </div>
+        <div id="dataHealthConclusion" class="health-conclusion">尚未檢查</div>
         <div id="dataHealthGrid" class="diagnostics-grid"></div>
         <p id="dataHealthNote" class="settings-note"></p>
+      </section>
+
+      <section class="panel full diagnostics-panel" aria-label="Version">
+        <div class="panel-title">
+          <div>
+            <p class="eyebrow">Version</p>
+            <h2>目前版本</h2>
+          </div>
+        </div>
+        <div id="versionGrid" class="diagnostics-grid"></div>
       </section>
     </main>
 
@@ -118,16 +129,23 @@
 
       function renderDataHealth(payload, pricePayload = null) {
         const backup = payload.lastAutoBackup || payload.backup || {};
+        const formalDataOk = payload.status?.currentDb === "supabase" && !payload.status?.fallbackActive;
+        const canSave = Boolean(payload.authOk && payload.readOk && payload.writeOk && formalDataOk);
         const items = [
           ["登入狀態", healthLabel(payload.authOk)],
           ["Supabase 可讀", healthLabel(payload.readOk)],
           ["Supabase 可寫", healthLabel(payload.writeOk)],
-          ["正式資料", payload.status?.currentDb === "supabase" && !payload.status?.fallbackActive ? "正常" : "請確認"],
+          ["正式資料", formalDataOk ? "正常" : "請確認"],
           ["股價更新", pricePayload?.ok ? "正常" : healthLabel(payload.priceApiOk)],
           ["最近成功保存", formatHealthValue(payload.lastSuccessfulSave)],
           ["最近自動備份", formatHealthValue(backup)],
           ["最近股價更新", formatHealthValue(payload.lastPriceUpdate)],
         ];
+        const conclusion = document.getElementById("dataHealthConclusion");
+        conclusion.className = `health-conclusion ${canSave ? "success" : "error"}`;
+        conclusion.textContent = canSave
+          ? "網站狀態正常，可以放心輸入資料。"
+          : "目前資料狀態需要確認，先不要新增或修改重要資料。";
         document.getElementById("dataHealthGrid").innerHTML = items
           .map(([label, value]) => `<article class="diagnostics-card">
             <span>${label}</span>
@@ -146,6 +164,29 @@
           return await response.json();
         } catch {
           return { ok: false, detail: response.status === 401 ? "登入已過期，請重新登入。" : "檢查結果讀取失敗。" };
+        }
+      }
+
+      async function loadVersion() {
+        const target = document.getElementById("versionGrid");
+        target.innerHTML = '<article class="diagnostics-card"><span>Version</span><strong>讀取中</strong></article>';
+        try {
+          const response = await fetch("/api/app-version", { cache: "no-store" });
+          const payload = await readJsonSafely(response);
+          if (!response.ok) throw new Error(payload.detail || "版本讀取失敗");
+          target.innerHTML = [
+            ["版本", payload.label || "正式版"],
+            ["部署代碼", payload.version || "尚未記錄"],
+          ].map(([label, value]) => `<article class="diagnostics-card">
+            <span>${label}</span>
+            <strong>${value}</strong>
+          </article>`).join("");
+        } catch (error) {
+          target.innerHTML = `<article class="diagnostics-card">
+            <span>Version</span>
+            <strong>讀取失敗</strong>
+            <small>${error.message || "請稍後再試"}</small>
+          </article>`;
         }
       }
 
@@ -219,6 +260,7 @@
       document.getElementById("createBackupButton").addEventListener("click", createBackup);
       loadDiagnostics();
       loadDataHealth();
+      loadVersion();
     </script>
   </body>
 </html>

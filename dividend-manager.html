@@ -195,6 +195,18 @@
         return formatInputRocDate(date);
       }
 
+      function formatSavedAt(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        const year = rocYear(date.getFullYear());
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hour = String(date.getHours()).padStart(2, "0");
+        const minute = String(date.getMinutes()).padStart(2, "0");
+        return `${year}/${month}/${day} ${hour}:${minute}`;
+      }
+
       function parseRocInputDate(value) {
         const text = String(value || "").trim();
         const parts = text.replaceAll(".", "/").replaceAll("-", "/").split("/").map((part) => part.trim()).filter(Boolean);
@@ -585,7 +597,8 @@
         if (!response.ok) throw new Error(friendlyApiError(payload, "股息刪除失敗，請稍後再試。"));
         setDividends(payload.dividends || []);
         if (editingId === id) resetForm();
-        setStatus(`已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, "success");
+        const savedTime = formatSavedAt(payload.savedAt);
+        setStatus(`已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`, "success");
       }
 
       form.addEventListener("submit", async (event) => {
@@ -595,15 +608,16 @@
         try {
           const payload = await saveDividend();
           setDividends(payload.dividends || []);
+          const savedTime = formatSavedAt(payload.savedAt);
           setStatus(
             editingId
-              ? `已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`
-              : `已新增，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`,
+              ? `已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`
+              : `已新增，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`,
             "success",
           );
           resetForm();
         } catch (error) {
-          setStatus(error.message, "error");
+          setStatus(`${error.message || "股息儲存失敗"}。你剛輸入的內容已保留，不用重打。`, "error");
         } finally {
           submitButton.disabled = false;
         }
