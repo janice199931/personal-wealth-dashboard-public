@@ -1134,6 +1134,18 @@ def get_portfolio() -> dict[str, Any]:
     return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if portfolio else "example"}
 
 
+def future_result_or_default(future: Any, default: Any, label: str) -> Any:
+    try:
+        return future.result()
+    except Exception as error:
+        print(f"Dashboard core skipped {label}: {error}")
+        try:
+            return default() if callable(default) else default
+        except Exception as fallback_error:
+            print(f"Dashboard core fallback failed {label}: {fallback_error}")
+            return {} if label in {"portfolio", "accounts", "finance"} else []
+
+
 @app.get("/api/dashboard-core")
 def get_dashboard_core() -> Response:
     with ThreadPoolExecutor(max_workers=6) as executor:
@@ -1143,12 +1155,12 @@ def get_dashboard_core() -> Response:
         dividends_future = executor.submit(read_dividends, False)
         accounts_future = executor.submit(db_store.read_accounts, {})
         finance_future = executor.submit(db_store.read_finance_data, {})
-        portfolio = portfolio_future.result()
-        history = history_future.result()
-        transactions = transactions_future.result()
-        dividends = dividends_future.result()
-        accounts = accounts_future.result()
-        finance_data = finance_future.result()
+        portfolio = future_result_or_default(portfolio_future, lambda: read_portfolio(use_examples=True), "portfolio")
+        history = future_result_or_default(history_future, [], "history")
+        transactions = future_result_or_default(transactions_future, [], "transactions")
+        dividends = future_result_or_default(dividends_future, [], "dividends")
+        accounts = future_result_or_default(accounts_future, {}, "accounts")
+        finance_data = future_result_or_default(finance_future, {}, "finance")
     current_month = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m")
     current_month_finance = None
     if isinstance(finance_data, dict):

@@ -73,6 +73,8 @@ const MONTHLY_INVESTMENT_TARGET = 35000;
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
+const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
+const PRICE_UPDATE_TIMEOUT_MS = 65000;
 let dataStatus = null;
 let priceUpdateInProgress = false;
 let priceAutoRefreshTimer = null;
@@ -98,6 +100,25 @@ function handleAuthExpired(response) {
     window.location.href = "/login.html";
   }, 700);
   return true;
+}
+
+function readLastDashboardCore() {
+  if (!window.localStorage) return null;
+  try {
+    return JSON.parse(window.localStorage.getItem(DASHBOARD_CORE_CACHE_KEY) || "null");
+  } catch {
+    window.localStorage.removeItem(DASHBOARD_CORE_CACHE_KEY);
+    return null;
+  }
+}
+
+function rememberDashboardCore(core) {
+  if (!window.localStorage || !core?.portfolio) return;
+  try {
+    window.localStorage.setItem(DASHBOARD_CORE_CACHE_KEY, JSON.stringify(core));
+  } catch {
+    // Last-good data is only a safety net; live Supabase data remains the source of truth.
+  }
 }
 
 function escapeHtml(value) {
@@ -1493,7 +1514,7 @@ function setupPriceUpdater() {
     button.disabled = true;
     progress = startPriceProgress(button);
     try {
-      const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
+      const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, PRICE_UPDATE_TIMEOUT_MS);
       if (handleAuthExpired(response)) return;
       const payload = await readApiPayload(response, "股價更新失敗，請重新整理或確認登入狀態。");
       if (!response.ok) {
@@ -1507,7 +1528,7 @@ function setupPriceUpdater() {
       markTodayPriceUpdated();
       renderPriceUpdateProgress("更新完成", "重新整理首頁資料", Math.floor((Date.now() - progress.startedAt) / 1000));
       await loadExternalData();
-      await fetch("/api/prices", { cache: "no-store" });
+      await fetchWithTimeout("/api/prices", { cache: "no-store" }, 12000);
       render();
       renderDetailedPriceUpdate(payload);
       button.textContent = payload.warnings?.length ? "部分更新完成" : "股價更新完成";
@@ -1529,8 +1550,11 @@ function setupPriceUpdater() {
     } catch (error) {
       button.textContent = "更新失敗";
       console.warn("股價更新失敗", error);
-      localStorage.setItem("wealthDashboardUpdateWarning", error.message || "股價更新失敗");
-      renderUpdateWarning(error.message || "股價更新失敗");
+      const message = error.name === "AbortError" || String(error.message || "").includes("Request timeout")
+        ? "股價更新等候過久，已先保留原本資料。"
+        : error.message || "股價更新失敗";
+      localStorage.setItem("wealthDashboardUpdateWarning", message);
+      renderUpdateWarning(message);
       setTimeout(() => {
         button.textContent = originalText;
         button.disabled = false;
@@ -1547,7 +1571,7 @@ async function runAutomaticPriceUpdate() {
   priceUpdateInProgress = true;
   const progress = startPriceProgress(null, true);
   try {
-    const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
+    const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, PRICE_UPDATE_TIMEOUT_MS);
     if (handleAuthExpired(response)) return;
     const payload = await readApiPayload(response);
     if (!response.ok) throw new Error(payload.detail || `自動更新失敗（HTTP ${response.status}）`);
@@ -1555,7 +1579,7 @@ async function runAutomaticPriceUpdate() {
     localStorage.removeItem("wealthDashboardUpdateWarning");
     renderPriceUpdateProgress("自動更新完成", "重新整理首頁資料", Math.floor((Date.now() - progress.startedAt) / 1000));
     await loadExternalData();
-    await fetch("/api/prices", { cache: "no-store" });
+    await fetchWithTimeout("/api/prices", { cache: "no-store" }, 12000);
     render();
     if (payload.warnings?.length) {
       console.warn("自動更新股價警告", payload.warnings);
@@ -1834,7 +1858,15 @@ async function loadExternalData() {
     .then(renderDataStatusCards)
     .catch(() => {});
 
-  const core = await fetchJson("/api/dashboard-core", "", null);
+  let core = await fetchJson("/api/dashboard-core", "", null);
+  if (core?.portfolio) {
+    rememberDashboardCore(core);
+  } else {
+    core = readLastDashboardCore();
+    if (core?.portfolio) {
+      renderPriceUpdateNotice("目前連線不穩，先顯示上次成功載入的資料。");
+    }
+  }
   let transactionsLoaded = false;
   let dividendsLoaded = false;
   if (core?.portfolio) {
@@ -1903,8 +1935,14 @@ async function initializeDashboard() {
     return;
   }
   renderInitialLoading();
-  await loadExternalData();
-  render();
+  try {
+    await loadExternalData();
+    render();
+  } catch (error) {
+    console.warn("首頁資料載入失敗", error);
+    renderPriceUpdateNotice("資料載入不穩，請重新整理或稍後再試。");
+    render();
+  }
   window.setTimeout(runDailyDataHealthCheck, 45000);
   setupAutomaticPriceRefresh();
   await runAutomaticPriceUpdate();
