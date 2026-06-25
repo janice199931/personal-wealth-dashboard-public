@@ -1401,6 +1401,7 @@ function renderDataUpdates() {
     { label: "資料更新", value: formatUpdateTime(data.updatedAt) },
     { label: "台股更新", value: formatUpdateTime(data.investments.tw.updatedAt) },
     { label: "美股更新", value: formatUpdateTime(data.investments.us.updatedAt) },
+    { label: "同步成功", value: formatUpdateTime(dataStatus?.metadata?.lastSuccessfulSave) },
   ];
   document.getElementById("dataUpdates").innerHTML = rows
     .map((row) => `<div class="update-row"><span>${row.label}</span><strong>${row.value}</strong></div>`)
@@ -1420,20 +1421,24 @@ function priceUpdateMessages(payload) {
   return [...new Set(messages.filter(Boolean))];
 }
 
-function marketUpdateLabel(updatedAt, fallbackAt, failedSymbols = []) {
+function marketUpdateLabel(updatedAt, fallbackAt, failedSymbols = [], status = "") {
+  if (status === "ok") return "已更新";
+  if (status === "partial") return "部分保留原價";
+  if (status === "unchanged" && (updatedAt || fallbackAt)) return "保留原價";
   if (updatedAt || fallbackAt) return failedSymbols.length ? "部分保留原價" : "已更新";
   return "尚未更新";
 }
 
 function renderUpdateResult(payload = {}) {
   const marketUpdates = payload.marketUpdates ?? {};
+  const marketStatus = payload.marketStatus ?? {};
   setSidebarUpdatedAt(payload.updatedAt || data.updatedAt);
   const failedSymbols = payload.failedSymbols || [];
   const rows = [
-    { label: "台股", value: marketUpdateLabel(marketUpdates.TW, data.investments.tw.updatedAt, failedSymbols.filter((symbol) => /^\d/.test(symbol))) },
-    { label: "美股", value: marketUpdateLabel(marketUpdates.US, data.investments.us.updatedAt, failedSymbols.filter((symbol) => !/^\d/.test(symbol))) },
+    { label: "台股", value: marketUpdateLabel(marketUpdates.TW, data.investments.tw.updatedAt, failedSymbols.filter((symbol) => /^\d/.test(symbol)), marketStatus.TW) },
+    { label: "美股", value: marketUpdateLabel(marketUpdates.US, data.investments.us.updatedAt, failedSymbols.filter((symbol) => !/^\d/.test(symbol)), marketStatus.US) },
     { label: "匯率", value: payload.fxRate ? `1 USD = ${payload.fxRate} TWD` : data.fxNote.replace("美股以 ", "") },
-    { label: "最近更新", value: formatUpdateTime(payload.updatedAt || data.updatedAt) },
+    { label: "同步成功", value: formatUpdateTime(dataStatus?.metadata?.lastSuccessfulSave || payload.updatedAt || data.updatedAt) },
   ];
   document.getElementById("dataUpdates").innerHTML = rows
     .map((row) => `<div class="update-row"><span>${row.label}</span><strong>${row.value}</strong></div>`)
@@ -1814,6 +1819,7 @@ async function refreshDataStatus() {
     if (handleAuthExpired(response)) return;
     if (!response.ok) return;
     dataStatus = await response.json();
+    renderDataUpdates();
   } catch {
     dataStatus = null;
   }
@@ -1926,6 +1932,14 @@ async function runDailyDataHealthCheck() {
   }
 }
 
+async function runDailyBackupCheck() {
+  try {
+    await fetchWithTimeout("/api/db/daily-backup", { method: "POST", cache: "no-store" }, 20000);
+  } catch {
+    // Daily backup should never interrupt the dashboard.
+  }
+}
+
 window.addEventListener("resize", render);
 setupPriceUpdater();
 
@@ -1944,6 +1958,7 @@ async function initializeDashboard() {
     render();
   }
   window.setTimeout(runDailyDataHealthCheck, 45000);
+  window.setTimeout(runDailyBackupCheck, 9000);
   setupAutomaticPriceRefresh();
   await runAutomaticPriceUpdate();
 }

@@ -689,9 +689,21 @@ main {
   align-items: center;
 }
 
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.subtle-action {
+  background: rgba(255, 253, 250, 0.72);
+  color: var(--muted);
+}
+
 .diagnostics-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1865,6 +1877,14 @@ canvas {
 
   .data-status-grid {
     grid-template-columns: 1fr;
+  }
+
+  .settings-actions {
+    width: 100%;
+  }
+
+  .settings-actions .action-button {
+    flex: 1 1 100%;
   }
 
   .diagnostics-grid {

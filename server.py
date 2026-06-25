@@ -512,6 +512,36 @@ def transaction_matches_saved(saved: dict[str, Any], expected: dict[str, Any]) -
     )
 
 
+def dividend_matches_saved(saved: dict[str, Any], expected: dict[str, Any]) -> bool:
+    text_fields = ["id", "date", "market", "symbol", "name", "currency", "note"]
+    number_fields = ["amount", "tax"]
+    return (
+        all(str(saved.get(field, "")).strip() == str(expected.get(field, "")).strip() for field in text_fields)
+        and all(abs(float(saved.get(field, 0) or 0) - float(expected.get(field, 0) or 0)) < 0.000001 for field in number_fields)
+    )
+
+
+def mark_successful_save() -> str:
+    saved_at = db_store.now_iso()
+    db_store.set_metadata("lastSuccessfulSave", saved_at)
+    return saved_at
+
+
+def verify_saved_row(rows: list[dict[str, Any]], target: dict[str, Any], message: str) -> None:
+    if not any(transaction_matches_saved(row, target) for row in rows):
+        raise HTTPException(status_code=503, detail=message)
+
+
+def verify_saved_dividend(rows: list[dict[str, Any]], target: dict[str, Any], message: str) -> None:
+    if not any(dividend_matches_saved(row, target) for row in rows):
+        raise HTTPException(status_code=503, detail=message)
+
+
+def verify_deleted_row(rows: list[dict[str, Any]], row_id: str, message: str) -> None:
+    if any(str(row.get("id", "")) == row_id for row in rows):
+        raise HTTPException(status_code=503, detail=message)
+
+
 def backup_folder_name() -> str:
     return datetime.now(TWD).strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -1068,11 +1098,13 @@ def db_status() -> Response:
 
 
 @app.get("/api/data-health")
-def data_health() -> Response:
+def data_health(request: Request) -> Response:
     read_ok = True
     write_ok = True
+    price_api_ok = True
     read_error = ""
     write_error = ""
+    price_error = ""
     backup: dict[str, Any] | None = None
     anomalies: list[str] = []
 
@@ -1097,6 +1129,13 @@ def data_health() -> Response:
     except Exception as error:
         anomalies.append(f"每日備份未完成：{error}")
 
+    try:
+        if request.headers.get("x-price-check") == "fail":
+            raise RuntimeError("股價更新 API 檢查失敗")
+    except Exception as error:
+        price_api_ok = False
+        price_error = str(error)
+
     status = db_store.status()
     try:
         anomalies.extend(detect_data_anomalies(read_portfolio(use_examples=False), transactions, db_store.read_net_worth_history()))
@@ -1108,14 +1147,18 @@ def data_health() -> Response:
         anomalies.append("目前沒有交易紀錄。")
 
     payload = {
-        "ok": read_ok and write_ok,
+        "ok": read_ok and write_ok and price_api_ok,
         "readOk": read_ok,
         "writeOk": write_ok,
+        "priceApiOk": price_api_ok,
+        "authOk": True,
         "readError": read_error,
         "writeError": write_error,
+        "priceError": price_error,
         "lastSuccessfulSave": status.get("metadata", {}).get("lastSuccessfulSave"),
         "lastBackup": status.get("metadata", {}).get("lastBackup"),
         "lastAutoBackup": status.get("metadata", {}).get("lastAutoBackup"),
+        "lastPriceUpdate": status.get("metadata", {}).get("lastPriceUpdate"),
         "backup": backup,
         "anomalies": anomalies,
         "status": status,
@@ -1445,6 +1488,12 @@ def create_database_backup() -> dict[str, Any]:
     return {"ok": True, "backup": write_database_backup("wealth-dashboard-manual")}
 
 
+@app.post("/api/db/daily-backup")
+def create_daily_database_backup() -> dict[str, Any]:
+    backup = ensure_daily_backup()
+    return {"ok": True, "backup": backup, "created": bool(backup.get("created"))}
+
+
 @app.post("/api/backups")
 def create_backup() -> dict:
     BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1534,11 +1583,10 @@ async def create_transaction(request: Request) -> dict:
     write_pre_change_backup("新增交易")
     write_transactions(next_transactions)
     verified_transactions = read_transactions(use_examples=False)
-    if not any(transaction_matches_saved(row, transaction) for row in verified_transactions):
-        raise HTTPException(status_code=503, detail="交易已送出，但重新讀取後沒有找到這筆資料，請不要重複新增，先重新整理確認。")
-    db_store.set_metadata("lastSuccessfulSave", db_store.now_iso())
+    verify_saved_row(verified_transactions, transaction, "交易已送出，但重新讀取後沒有找到這筆資料，請不要重複新增，先重新整理確認。")
+    saved_at = mark_successful_save()
     portfolio = rebuild_portfolio_outputs()
-    return transaction_response(verified_transactions, transaction, portfolio)
+    return {**transaction_response(verified_transactions, transaction, portfolio), "savedAt": saved_at}
 
 
 @app.put("/api/transactions/{transaction_id}")
@@ -1563,11 +1611,10 @@ async def update_transaction(transaction_id: str, request: Request) -> dict:
     write_pre_change_backup("更新交易")
     write_transactions(next_transactions)
     verified_transactions = read_transactions(use_examples=False)
-    if not any(transaction_matches_saved(row, transaction) for row in verified_transactions):
-        raise HTTPException(status_code=503, detail="交易已送出，但重新讀取後內容沒有對上，請重新整理確認。")
-    db_store.set_metadata("lastSuccessfulSave", db_store.now_iso())
+    verify_saved_row(verified_transactions, transaction, "交易已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    saved_at = mark_successful_save()
     portfolio = rebuild_portfolio_outputs()
-    return transaction_response(verified_transactions, transaction, portfolio)
+    return {**transaction_response(verified_transactions, transaction, portfolio), "savedAt": saved_at}
 
 
 @app.delete("/api/transactions/{transaction_id}")
@@ -1581,11 +1628,10 @@ def delete_transaction(transaction_id: str) -> dict:
     write_pre_change_backup("刪除交易")
     write_transactions(next_transactions)
     verified_transactions = read_transactions(use_examples=False)
-    if any(row.get("id") == transaction_id for row in verified_transactions):
-        raise HTTPException(status_code=503, detail="交易刪除已送出，但重新讀取後仍看到這筆資料，請重新整理確認。")
-    db_store.set_metadata("lastSuccessfulSave", db_store.now_iso())
+    verify_deleted_row(verified_transactions, transaction_id, "交易刪除已送出，但重新讀取後仍看到這筆資料，請重新整理確認。")
+    saved_at = mark_successful_save()
     portfolio = rebuild_portfolio_outputs()
-    return transaction_response(verified_transactions, None, portfolio)
+    return {**transaction_response(verified_transactions, None, portfolio), "savedAt": saved_at}
 
 
 @app.get("/api/dividends")
@@ -1615,7 +1661,9 @@ async def create_dividend(request: Request) -> dict:
         write_dividends(dividends)
     db_store.upsert_dividend(dividend)
     next_dividends = read_dividends()
-    return {"ok": True, "dividend": dividend, "dividends": next_dividends}
+    verify_saved_dividend(next_dividends, dividend, "股息已送出，但重新讀取後沒有找到這筆資料，請不要重複新增，先重新整理確認。")
+    saved_at = mark_successful_save()
+    return {"ok": True, "verified": True, "savedAt": saved_at, "dividend": dividend, "dividends": next_dividends}
 
 
 @app.put("/api/dividends/{dividend_id}")
@@ -1636,7 +1684,9 @@ async def update_dividend(dividend_id: str, request: Request) -> dict:
     write_pre_change_backup("更新股息")
     db_store.upsert_dividend(dividend)
     next_dividends = read_dividends()
-    return {"ok": True, "dividend": dividend, "dividends": next_dividends}
+    verify_saved_dividend(next_dividends, dividend, "股息已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    saved_at = mark_successful_save()
+    return {"ok": True, "verified": True, "savedAt": saved_at, "dividend": dividend, "dividends": next_dividends}
 
 
 @app.delete("/api/dividends/{dividend_id}")
@@ -1647,7 +1697,9 @@ def delete_dividend(dividend_id: str) -> dict:
     write_pre_change_backup("刪除股息")
     db_store.delete_dividend(dividend_id)
     next_dividends = read_dividends()
-    return {"ok": True, "dividend": None, "dividends": next_dividends}
+    verify_deleted_row(next_dividends, dividend_id, "股息刪除已送出，但重新讀取後仍看到這筆資料，請重新整理確認。")
+    saved_at = mark_successful_save()
+    return {"ok": True, "verified": True, "savedAt": saved_at, "dividend": None, "dividends": next_dividends}
 
 
 @app.post("/api/update-asset-snapshot")
@@ -1834,15 +1886,49 @@ async def update_asset_snapshot(
             manual_expense if has_any_monthly_finance else None,
             manual_sinopac_transfer,
         )
+    verified_accounts = db_store.read_accounts({})
+    verified_breakdown = verified_accounts.get("accountBreakdown") if isinstance(verified_accounts, dict) else {}
+    if not isinstance(verified_breakdown, dict):
+        verified_breakdown = {}
+    if manual_post_office is not None and float(verified_breakdown.get("postOfficeBalance", -1) or 0) != float(manual_post_office):
+        raise HTTPException(status_code=503, detail="郵局餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    if manual_sinopac is not None and float(verified_breakdown.get("sinopacBalance", -1) or 0) != float(manual_sinopac):
+        raise HTTPException(status_code=503, detail="永豐餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    if amounts["source"] not in {"supplement_only", "existing_accounts"}:
+        if round(float(verified_accounts.get("cashTWD", -1) or 0)) != round(float(amounts["cash"] + amounts["bank"])):
+            raise HTTPException(status_code=503, detail="資產快照已送出，但重新讀取後現金/銀行合計沒有對上，請重新整理確認。")
+        if round(float(verified_accounts.get("creditCardDebt", -1) or 0)) != round(float(amounts["debt"])):
+            raise HTTPException(status_code=503, detail="資產快照已送出，但重新讀取後信用卡負債沒有對上，請重新整理確認。")
+    if has_any_monthly:
+        verified_finance = db_store.read_finance_data({})
+        verified_month = None
+        for year in verified_finance.get("years", []) if isinstance(verified_finance, dict) else []:
+            for month_row in year.get("months", []):
+                if month_row.get("month") == manual_month:
+                    verified_month = month_row
+                    break
+            if verified_month:
+                break
+        if not verified_month:
+            raise HTTPException(status_code=503, detail="月份統計已送出，但重新讀取後沒有找到這個月份，請重新整理確認。")
+        if manual_income is not None and round(float(verified_month.get("income", -1) or 0)) != round(float(manual_income)):
+            raise HTTPException(status_code=503, detail="月份收入已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+        if manual_expense is not None and round(float(verified_month.get("expense", -1) or 0)) != round(float(manual_expense)):
+            raise HTTPException(status_code=503, detail="月份支出已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+        if manual_sinopac_transfer is not None and round(float(verified_month.get("sinopacTransfer", -1) or 0)) != round(float(manual_sinopac_transfer)):
+            raise HTTPException(status_code=503, detail="本月轉入永豐已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    saved_at = mark_successful_save()
 
     return {
         "ok": True,
+        "verified": True,
+        "savedAt": saved_at,
         "source": amounts["source"],
         "cash": amounts["cash"],
         "bank": amounts["bank"],
         "creditCardDebt": amounts["debt"],
-        "cashTWD": accounts.get("cashTWD", 0),
-        "accountBreakdown": accounts.get("accountBreakdown", {}),
+        "cashTWD": verified_accounts.get("cashTWD", 0),
+        "accountBreakdown": verified_accounts.get("accountBreakdown", {}),
         "totalAssets": portfolio.get("summary", {}).get("totalAssets", 0),
         "netWorth": portfolio.get("summary", {}).get("netWorth", 0),
         "monthlyFinance": monthly_finance,
@@ -1882,6 +1968,7 @@ def update_prices(request: Request) -> dict:
                     "TW": portfolio.get("markets", {}).get("TW", {}).get("updatedAt", ""),
                     "US": portfolio.get("markets", {}).get("US", {}).get("updatedAt", ""),
                 },
+                "marketStatus": {"TW": "unchanged", "US": "unchanged"},
                 "portfolioSummary": portfolio.get("summary", {}),
                 "updatedHoldings": 0,
                 "totalHoldings": len(portfolio.get("holdings", [])),
@@ -1890,12 +1977,15 @@ def update_prices(request: Request) -> dict:
         current_portfolio = read_portfolio(use_examples=False)
         holdings = current_portfolio.get("holdings", [])
         current_fx_rate = float(current_portfolio.get("fxRate") or 31.451)
-        fx_rate = fetch_fx_rate(current_fx_rate)
-        if current_fx_rate and abs(fx_rate - current_fx_rate) / current_fx_rate > 0.2:
-            fx_warnings = [f"匯率變動超過 20%，已保留原匯率 {current_fx_rate}。"]
+        fx_warnings = []
+        try:
+            fx_rate = fetch_fx_rate(current_fx_rate)
+        except Exception as error:
             fx_rate = current_fx_rate
-        else:
-            fx_warnings = []
+            fx_warnings = [f"匯率更新失敗，已保留原匯率 {current_fx_rate}：{error}"]
+        if current_fx_rate and abs(fx_rate - current_fx_rate) / current_fx_rate > 0.2:
+            fx_warnings = [*fx_warnings, f"匯率變動超過 20%，已保留原匯率 {current_fx_rate}。"]
+            fx_rate = current_fx_rate
         latest_prices, warnings, price_details = fetch_prices(holdings)
         stored_prices = db_store.read_prices({"fxRate": fx_rate, "prices": {}})
         safe_prices, guard_warnings = filter_safe_price_updates(current_portfolio, stored_prices, latest_prices)
@@ -1922,6 +2012,10 @@ def update_prices(request: Request) -> dict:
         if not portfolio:
             portfolio = current_portfolio
         db_store.set_metadata("lastPriceUpdate", db_store.now_iso())
+        market_status = {
+            "TW": "partial" if price_details["twResult"]["failedSymbols"] else ("ok" if price_details["twResult"]["updatedSymbols"] else "unchanged"),
+            "US": "partial" if price_details["usResult"]["failedSymbols"] else ("ok" if price_details["usResult"]["updatedSymbols"] else "unchanged"),
+        }
     except Exception as error:
         raise HTTPException(status_code=500, detail=f"股價更新失敗：{error}") from error
     return {
@@ -1941,6 +2035,7 @@ def update_prices(request: Request) -> dict:
             "TW": portfolio.get("markets", {}).get("TW", {}).get("updatedAt", ""),
             "US": portfolio.get("markets", {}).get("US", {}).get("updatedAt", ""),
         },
+        "marketStatus": market_status,
         "portfolioSummary": portfolio.get("summary", {}),
         "updatedHoldings": len(safe_prices),
         "totalHoldings": len(holdings),
