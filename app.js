@@ -79,6 +79,16 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   });
 }
 
+function handleAuthExpired(response) {
+  if (!response || response.status !== 401) return false;
+  renderPriceUpdateNotice("登入已過期，請重新登入。");
+  setBackupStatus("登入已過期，正在前往登入頁...");
+  window.setTimeout(() => {
+    window.location.href = "/login.html";
+  }, 700);
+  return true;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1393,6 +1403,7 @@ function setupPriceUpdater() {
     progress = startPriceProgress(button);
     try {
       const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
+      if (handleAuthExpired(response)) return;
       const payload = await readApiPayload(response, "股價更新失敗，請重新整理或確認登入狀態。");
       if (!response.ok) {
         const missingRouteMessage =
@@ -1444,6 +1455,7 @@ async function runAutomaticPriceUpdate() {
   const progress = startPriceProgress(null, true);
   try {
     const response = await fetch("/api/update-prices", { method: "POST", cache: "no-store" });
+    if (handleAuthExpired(response)) return;
     const payload = await readApiPayload(response);
     if (!response.ok) throw new Error(payload.detail || `自動更新失敗（HTTP ${response.status}）`);
     markTodayPriceUpdated();
@@ -1507,6 +1519,7 @@ function setupDataBackupControls() {
     setBackupStatus("正在匯出備份...");
     try {
       const response = await fetch("/api/db/export-json", { cache: "no-store" });
+      if (handleAuthExpired(response)) return;
       if (!response.ok) {
         const payload = await readApiPayload(response);
         throw new Error(payload.detail || `匯出失敗（HTTP ${response.status}）`);
@@ -1540,6 +1553,7 @@ function setupDataBackupControls() {
       const formData = new FormData();
       formData.append("backup", file);
       const response = await fetch("/api/db/import-json", { method: "POST", body: formData });
+      if (handleAuthExpired(response)) return;
       const payload = await readApiPayload(response);
       if (!response.ok) throw new Error(payload.detail || `匯入失敗（HTTP ${response.status}）`);
       setBackupStatus("備份已匯入，正在重新整理...");
@@ -1557,6 +1571,7 @@ function setupDataBackupControls() {
     setBackupStatus("正在重建投資組合...");
     try {
       const response = await fetch("/api/db/rebuild-portfolio", { method: "POST" });
+      if (handleAuthExpired(response)) return;
       const payload = await readApiPayload(response);
       if (!response.ok) throw new Error(payload.detail || `重建失敗（HTTP ${response.status}）`);
       setBackupStatus("投資組合已重建，正在重新整理...");
@@ -1769,6 +1784,7 @@ function render() {
 async function refreshDataStatus() {
   try {
     const response = await fetchWithTimeout("/api/db/status", { cache: "no-store" });
+    if (handleAuthExpired(response)) return;
     if (!response.ok) return;
     dataStatus = await response.json();
   } catch {
@@ -1787,6 +1803,7 @@ async function loadExternalData() {
     for (const timeoutMs of attempts) {
       try {
         const primaryResponse = await fetchWithTimeout(primaryPath, { cache: "no-store" }, timeoutMs);
+        if (handleAuthExpired(primaryResponse)) return fallbackValue;
         if (primaryResponse.ok) {
           const payload = await primaryResponse.json();
           return payloadKey ? payload[payloadKey] : payload;
@@ -1810,23 +1827,33 @@ async function loadExternalData() {
     return fallbackValue;
   }
 
-  const financeData = await fetchJson("/api/finance-data", "", null, "financeData");
-  const portfolio = await fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio");
-  const history = await fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history");
-  const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
-  const transactions = await fetchJson("/api/transactions", "./data/example-transactions.json", [], "transactions");
   await refreshDataStatus().catch(() => {});
+  renderDataStatusCards();
 
+  const [portfolio, history] = await Promise.all([
+    fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
+    fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
+  ]);
   if (portfolio) {
     applyPortfolioData(portfolio, history);
+    render();
   }
-  if (dividends) {
-    applyDividendData(dividends);
-  }
+
+  const transactions = await fetchJson("/api/transactions", "./data/example-transactions.json", [], "transactions");
   if (transactions) {
     applyTransactionData(transactions);
+    render();
   }
+
+  const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
+  if (dividends) {
+    applyDividendData(dividends);
+    render();
+  }
+
+  const financeData = await fetchJson("/api/finance-data", "", null, "financeData");
   if (financeData?.years?.length) window.financeData = financeData;
+  render();
 }
 
 async function runDailyDataHealthCheck() {

@@ -515,7 +515,8 @@ def backup_folder_name() -> str:
 
 
 def backup_file_name(prefix: str = "wealth-dashboard-auto") -> str:
-    return f"{prefix}-{datetime.now(TWD).strftime('%Y-%m-%d')}.json"
+    stamp = datetime.now(TWD).strftime("%Y-%m-%d") if prefix == "wealth-dashboard-auto" else datetime.now(TWD).strftime("%Y-%m-%d_%H-%M-%S")
+    return f"{prefix}-{stamp}.json"
 
 
 def write_database_backup(prefix: str = "wealth-dashboard-auto") -> dict[str, Any]:
@@ -530,7 +531,14 @@ def write_database_backup(prefix: str = "wealth-dashboard-auto") -> dict[str, An
         "createdAt": payload["exportedAt"],
     }
     db_store.set_metadata("lastBackup", payload["exportedAt"])
-    db_store.set_metadata("lastAutoBackup", info)
+    if prefix == "wealth-dashboard-auto":
+        db_store.set_metadata("lastAutoBackup", info)
+    return info
+
+
+def write_pre_change_backup(reason: str) -> dict[str, Any]:
+    info = write_database_backup("wealth-dashboard-before-change")
+    db_store.set_metadata("lastPreChangeBackup", {**info, "reason": reason})
     return info
 
 
@@ -767,6 +775,112 @@ def transaction_preview(transactions: list[dict[str, Any]], transaction: dict[st
     }
 
 
+def to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def detect_data_anomalies(
+    portfolio: dict[str, Any] | None = None,
+    transactions: list[dict[str, Any]] | None = None,
+    history: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    anomalies: list[str] = []
+    portfolio = portfolio if portfolio is not None else read_portfolio(use_examples=False)
+    transactions = transactions if transactions is not None else read_transactions(use_examples=False)
+    history = history if history is not None else db_store.read_net_worth_history()
+    if not portfolio:
+        return ["目前讀不到投資組合資料。"]
+
+    summary = portfolio.get("summary", {})
+    net_worth = to_float(summary.get("netWorth"))
+    total_assets = to_float(summary.get("totalAssets"))
+    stock_assets = to_float(summary.get("stockAssets"))
+    cash = to_float(summary.get("cash"))
+    debt = to_float(summary.get("debt"))
+    if total_assets < 0 or net_worth < 0:
+        anomalies.append("總資產或淨資產小於 0，請確認資產快照。")
+    if abs((stock_assets + cash) - total_assets) > max(1000, total_assets * 0.02):
+        anomalies.append("總資產與股票資產加現金沒有對上，請確認資產組合。")
+    if debt > total_assets and total_assets > 0:
+        anomalies.append("負債大於總資產，請確認負債資料。")
+
+    history_rows = [
+        row
+        for row in (history or [])
+        if to_float(row.get("netWorth")) > 0 and to_float(row.get("netWorth")) != net_worth
+    ]
+    if history_rows:
+        previous_net_worth = to_float(history_rows[-1].get("netWorth"))
+        if previous_net_worth and net_worth < previous_net_worth * 0.7:
+            anomalies.append("淨資產比前次紀錄少超過 30%，請先確認資料是否被覆蓋。")
+
+    positions = calculate_positions(transactions or [])
+    holdings = portfolio.get("holdings", [])
+    holding_map = {
+        f"{str(row.get('market', '')).upper()}:{str(row.get('symbol', '')).upper()}": row
+        for row in holdings
+    }
+    for key, position in positions.items():
+        holding = holding_map.get(key)
+        if not holding:
+            anomalies.append(f"{key} 有交易紀錄但目前持股資料沒有顯示。")
+            continue
+        position_shares = to_float(position.get("shares"))
+        holding_shares = to_float(holding.get("shares"))
+        if abs(position_shares - holding_shares) > 0.001:
+            anomalies.append(f"{key} 持股股數與交易紀錄加總不一致。")
+
+    for holding in holdings:
+        market = str(holding.get("market", "")).upper()
+        symbol = str(holding.get("symbol", "")).upper()
+        label = f"{market}:{symbol}"
+        shares = to_float(holding.get("shares"))
+        price = to_float(holding.get("price"))
+        average_cost = to_float(holding.get("averageCost"))
+        market_value = to_float(holding.get("marketValueTWD"))
+        return_rate = to_float(holding.get("returnRate"))
+        if shares > 0 and price <= 0:
+            anomalies.append(f"{label} 現價不是有效數字，請先不要更新股價。")
+        if shares > 0 and average_cost <= 0:
+            anomalies.append(f"{label} 平均成本不是有效數字，請確認交易紀錄。")
+        if shares > 0 and market_value <= 0:
+            anomalies.append(f"{label} 市值不是有效數字，請確認股價。")
+        if abs(return_rate) > 300:
+            anomalies.append(f"{label} 報酬率超過 300%，請確認成本或股價。")
+
+    return anomalies
+
+
+def filter_safe_price_updates(
+    current_portfolio: dict[str, Any],
+    stored_prices: dict[str, Any],
+    latest_prices: dict[str, dict[str, Any]],
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    warnings: list[str] = []
+    holdings = {
+        f"{str(row.get('market', '')).upper()}:{str(row.get('symbol', '')).upper()}": row
+        for row in current_portfolio.get("holdings", [])
+    }
+    previous_prices = stored_prices.get("prices", {}) if isinstance(stored_prices.get("prices"), dict) else {}
+    safe_prices: dict[str, dict[str, Any]] = {}
+    for key, row in latest_prices.items():
+        new_price = to_float(row.get("price"))
+        old_price = to_float((previous_prices.get(key) or {}).get("price")) or to_float((holdings.get(key) or {}).get("price"))
+        if new_price <= 0:
+            warnings.append(f"{key} 價格為 0 或無效，已保留原價格。")
+            continue
+        if old_price > 0:
+            change_ratio = abs(new_price - old_price) / old_price
+            if change_ratio > 0.8:
+                warnings.append(f"{key} 新價格與原價格差距超過 80%，已保留原價格。")
+                continue
+        safe_prices[key] = row
+    return safe_prices, warnings
+
+
 async def save_upload(upload: UploadFile, folder: Path) -> Path:
     safe_name = Path(upload.filename or "upload").name
     suffix = Path(safe_name).suffix
@@ -965,6 +1079,10 @@ def data_health() -> Response:
         anomalies.append(f"每日備份未完成：{error}")
 
     status = db_store.status()
+    try:
+        anomalies.extend(detect_data_anomalies(read_portfolio(use_examples=False), transactions, db_store.read_net_worth_history()))
+    except Exception as error:
+        anomalies.append(f"資料異常檢查未完成：{error}")
     if status.get("fallbackActive"):
         anomalies.append("Supabase 目前不是正式寫入狀態。")
     if not transactions:
@@ -1043,6 +1161,7 @@ async def import_finance_data(request: Request) -> dict[str, Any]:
     if not isinstance(finance_data, dict) or not isinstance(finance_data.get("years"), list):
         raise HTTPException(status_code=400, detail="對帳資料必須包含 years 陣列。")
 
+    write_pre_change_backup("匯入年度/月度對帳")
     saved_to = db_store.write_finance_data(finance_data)
     db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
     portfolio = read_portfolio(use_examples=False)
@@ -1104,6 +1223,7 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
             imported.append("financeData")
 
         if imported == ["financeData"]:
+            write_pre_change_backup("匯入年度/月度對帳備份")
             saved_to = db_store.write_finance_data(finance_data)
             db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
             portfolio = read_portfolio(use_examples=False)
@@ -1119,6 +1239,7 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
             }
 
         safety_backup = db_store.export_backup()
+        write_pre_change_backup("匯入完整備份")
         try:
             db_store.import_backup_payload(clean_payload)
         except Exception:
@@ -1137,36 +1258,50 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
         }
 
     imported: list[str] = []
+    local_import_backup_created = False
+
+    def ensure_local_import_backup() -> None:
+        nonlocal local_import_backup_created
+        if local_import_backup_created:
+            return
+        write_pre_change_backup("匯入本機 JSON")
+        local_import_backup_created = True
 
     accounts = read_json(DATA_DIR / "accounts.json", None)
     if isinstance(accounts, dict):
+        ensure_local_import_backup()
         db_store.write_accounts(accounts)
         imported.append("accounts.json")
 
     transactions = read_json(DATA_DIR / "transactions.json", None)
     if isinstance(transactions, list):
+        ensure_local_import_backup()
         transactions, _ = ensure_transaction_ids(transactions)
         db_store.write_transactions(transactions)
         imported.append("transactions.json")
 
     dividends = read_json(DATA_DIR / "dividends.json", None)
     if isinstance(dividends, list):
+        ensure_local_import_backup()
         dividends, _ = ensure_dividend_ids(dividends)
         db_store.write_dividends(dividends)
         imported.append("dividends.json")
 
     prices = read_json(DATA_DIR / "prices.json", None)
     if isinstance(prices, dict):
+        ensure_local_import_backup()
         db_store.write_prices(prices)
         imported.append("prices.json")
 
     history = read_json(DATA_DIR / "net-worth-history.json", None)
     if isinstance(history, list):
+        ensure_local_import_backup()
         db_store.write_net_worth_history(history)
         imported.append("net-worth-history.json")
 
     finance_data = read_local_finance_data()
     if finance_data:
+        ensure_local_import_backup()
         db_store.write_finance_data(finance_data)
         imported.append("finance-data.js")
 
@@ -1208,6 +1343,7 @@ def backfill_net_worth_history() -> dict[str, Any]:
 
 @app.post("/api/db/rebuild-portfolio")
 def rebuild_portfolio_from_db() -> dict[str, Any]:
+    write_pre_change_backup("重建投資組合")
     portfolio = rebuild_portfolio_outputs()
     return {
         "ok": True,
@@ -1327,6 +1463,7 @@ async def create_transaction(request: Request) -> dict:
     next_transactions = transactions + [transaction]
     validate_positions(next_transactions)
 
+    write_pre_change_backup("新增交易")
     write_transactions(next_transactions)
     verified_transactions = read_transactions(use_examples=False)
     if not any(transaction_matches_saved(row, transaction) for row in verified_transactions):
@@ -1355,6 +1492,7 @@ async def update_transaction(transaction_id: str, request: Request) -> dict:
     next_transactions[index] = transaction
     validate_positions(next_transactions)
 
+    write_pre_change_backup("更新交易")
     write_transactions(next_transactions)
     verified_transactions = read_transactions(use_examples=False)
     if not any(transaction_matches_saved(row, transaction) for row in verified_transactions):
@@ -1372,6 +1510,7 @@ def delete_transaction(transaction_id: str) -> dict:
         raise HTTPException(status_code=404, detail="找不到交易紀錄。")
 
     validate_positions(next_transactions)
+    write_pre_change_backup("刪除交易")
     write_transactions(next_transactions)
     verified_transactions = read_transactions(use_examples=False)
     if any(row.get("id") == transaction_id for row in verified_transactions):
@@ -1403,6 +1542,7 @@ async def create_dividend(request: Request) -> dict:
     dividend = normalize_dividend(payload)
     dividend["id"] = f"div-{uuid4().hex[:12]}"
     dividends, changed = ensure_dividend_ids(read_dividends())
+    write_pre_change_backup("新增股息")
     if changed:
         write_dividends(dividends)
     db_store.upsert_dividend(dividend)
@@ -1425,6 +1565,7 @@ async def update_dividend(dividend_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="找不到股息紀錄。")
 
     dividend = normalize_dividend({**payload, "id": dividend_id})
+    write_pre_change_backup("更新股息")
     db_store.upsert_dividend(dividend)
     next_dividends = read_dividends()
     return {"ok": True, "dividend": dividend, "dividends": next_dividends}
@@ -1435,6 +1576,7 @@ def delete_dividend(dividend_id: str) -> dict:
     dividends, changed = ensure_dividend_ids(read_dividends())
     if not any(row.get("id") == dividend_id for row in dividends):
         raise HTTPException(status_code=404, detail="找不到股息紀錄。")
+    write_pre_change_backup("刪除股息")
     db_store.delete_dividend(dividend_id)
     next_dividends = read_dividends()
     return {"ok": True, "dividend": None, "dividends": next_dividends}
@@ -1557,6 +1699,7 @@ async def update_asset_snapshot(
                 "source": "monthly_finance_only",
             }
 
+    write_pre_change_backup("更新資產快照")
     if amounts["source"] == "monthly_finance_only":
         monthly_finance = save_manual_monthly_finance(manual_month or "", manual_income or 0, manual_expense or 0)
         accounts = db_store.read_accounts({})
@@ -1629,19 +1772,33 @@ def update_prices(request: Request) -> dict:
 
         current_portfolio = read_portfolio(use_examples=False)
         holdings = current_portfolio.get("holdings", [])
-        fx_rate = fetch_fx_rate(float(current_portfolio.get("fxRate") or 31.451))
+        current_fx_rate = float(current_portfolio.get("fxRate") or 31.451)
+        fx_rate = fetch_fx_rate(current_fx_rate)
+        if current_fx_rate and abs(fx_rate - current_fx_rate) / current_fx_rate > 0.2:
+            fx_warnings = [f"匯率變動超過 20%，已保留原匯率 {current_fx_rate}。"]
+            fx_rate = current_fx_rate
+        else:
+            fx_warnings = []
         latest_prices, warnings, price_details = fetch_prices(holdings)
         stored_prices = db_store.read_prices({"fxRate": fx_rate, "prices": {}})
-        merged_prices = {**stored_prices.get("prices", {}), **latest_prices}
+        safe_prices, guard_warnings = filter_safe_price_updates(current_portfolio, stored_prices, latest_prices)
+        warnings = [*fx_warnings, *warnings, *guard_warnings]
+        price_details["errorMessages"] = [*fx_warnings, *price_details["errorMessages"], *guard_warnings]
+        price_details["updatedSymbols"] = sorted(safe_prices)
+        if guard_warnings:
+            guarded_keys = set(latest_prices) - set(safe_prices)
+            price_details["failedSymbols"] = sorted({*price_details["failedSymbols"], *guarded_keys})
+        merged_prices = {**stored_prices.get("prices", {}), **safe_prices}
         stored_prices["fxRate"] = fx_rate
         stored_prices["updatedAt"] = datetime.now(TWD).isoformat(timespec="seconds")
         stored_prices["prices"] = merged_prices
         stored_prices["warnings"] = warnings
-        stored_prices["updatedSymbols"] = price_details["updatedSymbols"]
+        stored_prices["updatedSymbols"] = sorted(safe_prices)
         stored_prices["failedSymbols"] = price_details["failedSymbols"]
         stored_prices["errorMessages"] = price_details["errorMessages"]
         stored_prices["twResult"] = price_details["twResult"]
         stored_prices["usResult"] = price_details["usResult"]
+        write_pre_change_backup("更新股價")
         saved_to = db_store.write_prices(stored_prices)
         portfolio = rebuild_portfolio_outputs()
         current_db = db_store.active_backend()
@@ -1668,7 +1825,7 @@ def update_prices(request: Request) -> dict:
             "US": portfolio.get("markets", {}).get("US", {}).get("updatedAt", ""),
         },
         "portfolioSummary": portfolio.get("summary", {}),
-        "updatedHoldings": len(latest_prices),
+        "updatedHoldings": len(safe_prices),
         "totalHoldings": len(holdings),
         "durationSeconds": round((datetime.now(TWD) - started_at).total_seconds(), 1),
     }
