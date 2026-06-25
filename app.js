@@ -75,6 +75,8 @@ const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const PRICE_UPDATE_TIMEOUT_MS = 65000;
+const AUTO_PRICE_UPDATE_TIMEOUT_MS = 18000;
+const DASHBOARD_CORE_TIMEOUTS = [8000, 12000];
 let dataStatus = null;
 let priceUpdateInProgress = false;
 let priceAutoRefreshTimer = null;
@@ -1576,7 +1578,7 @@ async function runAutomaticPriceUpdate() {
   priceUpdateInProgress = true;
   const progress = startPriceProgress(null, true);
   try {
-    const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, PRICE_UPDATE_TIMEOUT_MS);
+    const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, AUTO_PRICE_UPDATE_TIMEOUT_MS);
     if (handleAuthExpired(response)) return;
     const payload = await readApiPayload(response);
     if (!response.ok) throw new Error(payload.detail || `自動更新失敗（HTTP ${response.status}）`);
@@ -1832,7 +1834,7 @@ async function loadExternalData() {
 
   async function fetchJson(primaryPath, examplePath, fallbackValue, payloadKey = "") {
     const isLiveApi = window.location.protocol !== "file:" && primaryPath.startsWith("/api/");
-    const attempts = isLiveApi ? [22000, 30000] : [10000];
+    const attempts = isLiveApi ? DASHBOARD_CORE_TIMEOUTS : [10000];
     for (const timeoutMs of attempts) {
       try {
         const primaryResponse = await fetchWithTimeout(primaryPath, { cache: "no-store" }, timeoutMs);
@@ -1863,6 +1865,16 @@ async function loadExternalData() {
   refreshDataStatus()
     .then(renderDataStatusCards)
     .catch(() => {});
+
+  const cachedCore = readLastDashboardCore();
+  if (cachedCore?.portfolio) {
+    applyPortfolioData(cachedCore.portfolio, cachedCore.history || []);
+    applyAccountData(cachedCore.accounts || {});
+    applyCurrentMonthFinance(cachedCore.currentMonthFinance || null);
+    if (cachedCore.transactions) applyTransactionData(cachedCore.transactions);
+    if (cachedCore.dividends) applyDividendData(cachedCore.dividends);
+    render();
+  }
 
   let core = await fetchJson("/api/dashboard-core", "", null);
   if (core?.portfolio) {
@@ -1960,7 +1972,7 @@ async function initializeDashboard() {
   window.setTimeout(runDailyDataHealthCheck, 45000);
   window.setTimeout(runDailyBackupCheck, 9000);
   setupAutomaticPriceRefresh();
-  await runAutomaticPriceUpdate();
+  window.setTimeout(runAutomaticPriceUpdate, 1200);
 }
 
 initializeDashboard();
