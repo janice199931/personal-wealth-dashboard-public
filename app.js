@@ -38,6 +38,7 @@ const data = {
   transactions: [],
   accountBreakdown: {},
   currentMonthFinance: null,
+  leveragedPullbackSignal: { state: "idle" },
   rebalancer: {
     leveragedValue: 0,
     hasLeveragedHolding: false,
@@ -49,6 +50,12 @@ const money = new Intl.NumberFormat("zh-TW", {
   style: "currency",
   currency: "TWD",
   maximumFractionDigits: 0,
+});
+const stockPriceTwd = new Intl.NumberFormat("zh-TW", {
+  style: "currency",
+  currency: "TWD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 const usd = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -916,7 +923,7 @@ function renderKpis() {
 }
 
 function healthTone(status) {
-  if (status === "good") return "健康";
+  if (status === "good") return "完成";
   if (status === "watch") return "留意";
   return "優先";
 }
@@ -988,6 +995,100 @@ function rebalanceActionSummary(metrics) {
     : `${ratioText}，比例偏低，下一筆優先買 00685L。`;
 }
 
+function monthlyTransferSummary(metrics) {
+  const transferred = Math.round(metrics.monthlySinopacTransfer);
+  const gap = MONTHLY_INVESTMENT_TARGET - transferred;
+  if (gap > 0) return `已轉入 ${money.format(transferred)}，還差 ${money.format(gap)} 到本月固定轉入目標。`;
+  if (gap < 0) return `已轉入 ${money.format(transferred)}，本月已超過固定轉入目標 ${money.format(Math.abs(gap))}。`;
+  return `已轉入 ${money.format(transferred)}，本月固定轉入已完成。`;
+}
+
+function investableCashSummary(metrics) {
+  if (!metrics.sinopacBalance) return "請先在更新資產快照填永豐餘額，才會知道今天能不能加碼。";
+  if (metrics.sinopacBalance < EMERGENCY_FUND_TARGET) {
+    return `永豐 ${money.format(metrics.sinopacBalance)}，低於緊急預備金 ${money.format(EMERGENCY_FUND_TARGET)}，先不要加碼。`;
+  }
+  if (metrics.investableSinopacCash <= 0) {
+    return `永豐剛好達緊急預備金 ${money.format(EMERGENCY_FUND_TARGET)}，今天先不要動用。`;
+  }
+  return `可加碼 ${money.format(metrics.investableSinopacCash)}，永豐 ${money.format(metrics.sinopacBalance)} - 緊急預備金 ${money.format(EMERGENCY_FUND_TARGET)}。`;
+}
+
+function nextActionSummary(metrics) {
+  if (!metrics.sinopacBalance) return "先補上永豐餘額，下一筆建議才會準。";
+  if (metrics.investableSinopacCash <= 0) return "先守住永豐緊急預備金，不建議買進。";
+  if (metrics.monthlySinopacTransferRemaining > 0) {
+    return `本月還差 ${money.format(metrics.monthlySinopacTransferRemaining)} 轉入永豐，先完成轉入再看買點。`;
+  }
+  if (metrics.monthlyInvestmentRemaining <= 0) return "本月投資已達標，下一筆不用急，照 70/30 檢查比例。";
+  return nextContributionMessage(metrics);
+}
+
+function leveragedPriceSignalText(metrics) {
+  const signal = data.leveragedPullbackSignal || { state: "idle" };
+  if (!metrics.hasLeveragedHolding) return "目前找不到 00685L 持股，請先確認交易紀錄或更新股價。";
+  if (signal.state === "idle" || signal.state === "loading") return "正在讀取 00685L 近 20 個交易日價格。";
+  if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先用本月投資額度與 70/30 比例判斷。";
+  const base = `近 20 日高點 ${stockPriceTwd.format(signal.high)}，現價 ${stockPriceTwd.format(signal.price)}，回落 ${signal.pullback.toFixed(1)}%。`;
+  if (signal.pullback < 5) return `${base} 燈號：不急，照原計畫。`;
+  if (signal.pullback < 10) return `${base} 燈號：觀察，先不用急著加碼。`;
+  if (signal.pullback < 15) {
+    return metrics.investableSinopacCash > 0 && metrics.monthlyInvestmentRemaining > 0
+      ? `${base} 燈號：小額加碼，可用本月剩餘額度分批。`
+      : `${base} 燈號：小額加碼，但先確認永豐可用現金與本月額度。`;
+  }
+  return metrics.investableSinopacCash > 0 && metrics.monthlyInvestmentRemaining > 0
+    ? `${base} 燈號：分批加碼，只用本月額度，不一次重壓。`
+    : `${base} 燈號：分批加碼，但目前先不要動到緊急預備金。`;
+}
+
+function leveragedPriceSignalStatus() {
+  const signal = data.leveragedPullbackSignal || { state: "idle" };
+  if (signal.state !== "ready") return "watch";
+  if (signal.pullback >= 15) return "warn";
+  if (signal.pullback >= 10) return "watch";
+  return "good";
+}
+
+function loadLeveragedPullbackSignal() {
+  const signal = data.leveragedPullbackSignal || {};
+  const today = todayKey();
+  if (signal.state === "loading" || signal.checkedKey === today) return;
+  data.leveragedPullbackSignal = { state: "loading", checkedKey: today };
+  const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${today}&stockNo=00685L&response=json`;
+  fetchWithTimeout(url, { cache: "no-store" }, 8000)
+    .then((response) => {
+      if (!response.ok) throw new Error("TWSE history unavailable");
+      return response.json();
+    })
+    .then((payload) => {
+      const rows = (payload.data || [])
+        .map((row) => ({
+          date: row[0],
+          high: parseAmount(row[4]),
+          price: parseAmount(row[6]),
+        }))
+        .filter((row) => Number.isFinite(row.high) && row.high > 0 && Number.isFinite(row.price) && row.price > 0)
+        .slice(-20);
+      if (!rows.length) throw new Error("TWSE history empty");
+      const latest = rows[rows.length - 1];
+      const high = Math.max(...rows.map((row) => row.high));
+      data.leveragedPullbackSignal = {
+        state: "ready",
+        checkedKey: today,
+        price: latest.price,
+        high,
+        pullback: high ? ((high - latest.price) / high) * 100 : 0,
+        priceDate: latest.date,
+      };
+      renderTodayActions();
+    })
+    .catch(() => {
+      data.leveragedPullbackSignal = { state: "error", checkedKey: today };
+      renderTodayActions();
+    });
+}
+
 function savingsRateStatus(rate) {
   if (rate >= 50) return { className: "good", label: "很好" };
   if (rate >= 30) return { className: "watch", label: "穩定" };
@@ -1004,28 +1105,25 @@ function renderTodayActions() {
   const target = document.getElementById("todayActions");
   if (!target) return;
   const metrics = getPortfolioMetrics();
-  const currentMonth = currentFinanceMonth();
-  const savingsRate = Number(currentMonth?.savingsRate ?? metrics.latestMonth?.savingsRate ?? 0) || 0;
-  const savings = savingsRateStatus(savingsRate);
-  const emergencyText = metrics.cash >= EMERGENCY_FUND_TARGET
-    ? "緊急預備金已達標，可把焦點放回投資紀律。"
-    : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.cash)}。`;
-  const rebalance = rebalanceMessage(metrics);
+  if (metrics.hasLeveragedHolding) loadLeveragedPullbackSignal();
   const rows = [
     {
+      status: metrics.monthlySinopacTransferRemaining <= 0 ? "good" : "watch",
+      title: "本月轉入永豐",
+      text: monthlyTransferSummary(metrics),
+    },
+    {
+      status: metrics.sinopacBalance && metrics.investableSinopacCash > 0 ? "good" : "warn",
+      title: "今日可加碼",
+      text: investableCashSummary(metrics),
+    },
+    {
       status: metrics.monthlyInvestmentRemaining <= 0 ? "good" : "watch",
-      title: "本月還可投入",
+      title: "本月投資進度",
       text: monthlyInvestmentSummary(metrics),
     },
-    { status: rebalance.status, title: "00685L / 現金比例", text: rebalanceActionSummary(metrics) },
-    { status: "watch", title: "下一筆投入", text: nextContributionMessage(metrics) },
-    { status: savings.className, title: "本月儲蓄率", text: `${savings.label}，目前約 ${savingsRate.toFixed(1)}%。` },
-    {
-      status: metrics.investmentGainTwd >= 0 ? "good" : "warn",
-      title: "投資狀態",
-      text: `${metrics.investmentGainTwd >= 0 ? "目前投資總損益為正" : "目前投資總損益為負"}，總報酬率 ${metrics.investmentReturnRate}。`,
-    },
-    { status: metrics.cash >= EMERGENCY_FUND_TARGET ? "good" : "warn", title: "現金安全墊", text: emergencyText },
+    { status: leveragedPriceSignalStatus(), title: "00685L 加碼燈號", text: leveragedPriceSignalText(metrics) },
+    { status: "watch", title: "下一筆建議", text: nextActionSummary(metrics) },
   ];
 
   target.innerHTML = rows
