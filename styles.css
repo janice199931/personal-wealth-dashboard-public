@@ -1093,11 +1093,6 @@ main {
   margin-bottom: 10px;
 }
 
-.health-dashboard {
-  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
-  margin-bottom: 10px;
-}
-
 .action-dashboard {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 10px;
@@ -1124,19 +1119,11 @@ main {
   overflow: visible;
 }
 
-.health-panel,
-.checklist-panel {
-  min-height: 0;
-}
-
-.health-signal-list,
-.monthly-checklist,
 .today-actions {
   display: grid;
   gap: 10px;
 }
 
-.health-signal,
 .today-action {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
@@ -1149,7 +1136,6 @@ main {
   background: rgba(255, 253, 250, 0.66);
 }
 
-.health-signal > span,
 .today-action > span {
   display: inline-flex;
   align-items: center;
@@ -1162,91 +1148,29 @@ main {
   background: #9B8FD0;
 }
 
-.health-signal.good > span,
 .today-action.good > span {
   background: #8faa83;
 }
 
-.health-signal.watch > span,
 .today-action.watch > span {
   background: #d8a45f;
 }
 
-.health-signal.warn > span,
 .today-action.warn > span {
   background: #d98787;
 }
 
-.health-signal strong,
-.today-action strong,
-.check-row strong {
+.today-action strong {
   display: block;
   font-size: 15px;
 }
 
-.health-signal p,
 .today-action p {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 800;
   line-height: 1.5;
-}
-
-.monthly-conclusion {
-  margin-bottom: 10px;
-  padding: 12px;
-  border: 1px solid rgba(155, 143, 208, 0.22);
-  border-radius: 16px;
-  background: rgba(155, 143, 208, 0.08);
-}
-
-.monthly-conclusion strong {
-  display: block;
-  font-size: 14px;
-}
-
-.monthly-conclusion p {
-  margin: 4px 0 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 850;
-  line-height: 1.5;
-}
-
-.check-row {
-  display: grid;
-  grid-template-columns: 26px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  min-height: 48px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: rgba(255, 253, 250, 0.66);
-  color: var(--muted);
-}
-
-.check-row span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid rgba(147, 122, 108, 0.2);
-  border-radius: 999px;
-  color: #fff;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.check-row.done {
-  color: var(--ink);
-}
-
-.check-row.done span {
-  border-color: transparent;
-  background: #9B8FD0;
 }
 
 .panel.wide {
@@ -1742,10 +1666,6 @@ canvas {
 
   .dashboard {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .health-dashboard {
-    grid-template-columns: 1fr;
   }
 
   .milestone-panel {

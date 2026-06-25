@@ -1039,76 +1039,6 @@ function renderTodayActions() {
     .join("");
 }
 
-function monthlyConclusion(metrics, currentMonth, rebalance) {
-  const hasIncome = Number(currentMonth?.income || 0) > 0;
-  const hasExpense = Number(currentMonth?.expense || 0) > 0;
-  if (!hasIncome || !hasExpense) return "本月收入或支出還沒填完整，先補資料，結論會更準。";
-  if (Math.round(metrics.monthlyInvestment) < MONTHLY_INVESTMENT_TARGET) {
-    return `本月投資還差 ${money.format(metrics.monthlyInvestmentRemaining)}，可優先補足投入目標。`;
-  }
-  if (metrics.cash < EMERGENCY_FUND_TARGET) {
-    return `本月投資已達標，緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.cash)}。`;
-  }
-  if (rebalance.status !== "good") return `本月投資與現金安全墊都正常，接著看 00685L / 現金比例。`;
-  return "本月收入支出已填、投資達標、現金安全，整體狀態穩定。";
-}
-
-function renderHealthDashboard() {
-  const metrics = getPortfolioMetrics();
-  const currentMonth = currentFinanceMonth();
-  const rebalance = rebalanceMessage(metrics);
-  const emergencyReady = metrics.cash >= EMERGENCY_FUND_TARGET;
-  const monthlyInvestmentReady = Math.round(metrics.monthlyInvestment) >= MONTHLY_INVESTMENT_TARGET;
-  const hasIncome = Number(currentMonth?.income || 0) > 0;
-  const hasExpense = Number(currentMonth?.expense || 0) > 0;
-  const rebalanceReady = rebalance.status === "good";
-  const signals = [
-    {
-      status: emergencyReady ? "good" : "warn",
-      title: "緊急預備金",
-      text: emergencyReady
-        ? `已達 ${money.format(EMERGENCY_FUND_TARGET)} 目標。`
-        : `還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.cash)}，建議先把現金補穩。`,
-    },
-    {
-      status: monthlyInvestmentReady ? "good" : "watch",
-      title: "本月可投入",
-      text: monthlyInvestmentReady
-        ? `本月已投入 ${money.format(Math.round(metrics.monthlyInvestment))}，已達標。`
-        : nextContributionMessage(metrics),
-    },
-    rebalance,
-  ];
-  const checklist = [
-    { done: hasIncome, label: "本月收入已填" },
-    { done: hasExpense, label: "本月支出已填" },
-    { done: monthlyInvestmentReady, label: "本月投資達標" },
-    { done: emergencyReady, label: "緊急預備金達標" },
-    { done: rebalanceReady, label: "00685L / 現金比例正常" },
-  ];
-
-  document.getElementById("healthSignals").innerHTML = signals
-    .map((item) => `<div class="health-signal ${item.status}">
-      <span>${healthTone(item.status)}</span>
-      <div>
-        <strong>${item.title}</strong>
-        <p>${item.text}</p>
-      </div>
-    </div>`)
-    .join("");
-
-  document.getElementById("monthlyConclusion").innerHTML = `
-    <strong>本月結論</strong>
-    <p>${monthlyConclusion(metrics, currentMonth, rebalance)}</p>`;
-
-  document.getElementById("monthlyChecklist").innerHTML = checklist
-    .map((item) => `<div class="check-row ${item.done ? "done" : ""}">
-      <span>${item.done ? "✓" : ""}</span>
-      <strong>${item.label}</strong>
-    </div>`)
-    .join("");
-}
-
 function formatStatusDate(value) {
   if (!value) return "尚未記錄";
   return formatUpdateTime(value);
@@ -1792,7 +1722,6 @@ function renderLedger() {
 function render() {
   renderHero();
   renderKpis();
-  renderHealthDashboard();
   renderTodayActions();
   renderAssetPie();
   drawNetWorthChart();
