@@ -1159,15 +1159,15 @@ function renderTodayActions() {
     },
     {
       status: metrics.sinopacBalance && metrics.investableSinopacCash > 0 ? "good" : "warn",
-      title: "今日可加碼",
+      title: "永豐可用現金",
       text: investableCashSummary(metrics),
     },
+    { status: leveragedPriceSignalStatus(), title: "00685L 加碼燈號", text: leveragedPriceSignalText(metrics) },
     {
       status: metrics.monthlyInvestmentRemaining <= 0 ? "good" : "watch",
       title: "本月投資進度",
       text: monthlyInvestmentSummary(metrics),
     },
-    { status: leveragedPriceSignalStatus(), title: "00685L 加碼燈號", text: leveragedPriceSignalText(metrics) },
     { status: "watch", title: "下一筆建議", text: nextActionSummary(metrics) },
   ];
 
@@ -1378,30 +1378,31 @@ function renderDataUpdates() {
 
 function renderUpdateWarning(message = "部分資料更新失敗，請查看更新結果") {
   document.getElementById("dataUpdates").innerHTML = `
-    <div class="update-row"><span>Warning</span><strong>${escapeHtml(message)}</strong></div>
+    <div class="update-row"><span>提醒</span><strong>${escapeHtml(message)}</strong></div>
   `;
 }
 
 function priceUpdateMessages(payload) {
   const messages = [];
-  if (payload.currentDb) messages.push(`Current DB: ${payload.currentDb}`);
-  if (payload.savedTo) messages.push(`Saved to: ${payload.savedTo}`);
-  if (payload.updatedSymbols?.length) messages.push(`Updated: ${payload.updatedSymbols.join(", ")}`);
-  if (payload.failedSymbols?.length) messages.push(`Failed: ${payload.failedSymbols.join(", ")}`);
-  if (payload.durationSeconds) messages.push(`Duration: ${payload.durationSeconds} 秒`);
+  if (payload.failedSymbols?.length) messages.push(`暫時保留原價：${payload.failedSymbols.join(", ")}`);
   if (payload.errorMessages?.length) messages.push(...payload.errorMessages);
-  if (payload.twResult?.batchError) messages.push(`TW batch: ${payload.twResult.batchError}`);
   return [...new Set(messages.filter(Boolean))];
 }
 
-function renderUpdateResult(payload) {
+function marketUpdateLabel(updatedAt, fallbackAt, failedSymbols = []) {
+  if (updatedAt || fallbackAt) return failedSymbols.length ? "部分保留原價" : "已更新";
+  return "尚未更新";
+}
+
+function renderUpdateResult(payload = {}) {
   const marketUpdates = payload.marketUpdates ?? {};
   setSidebarUpdatedAt(payload.updatedAt || data.updatedAt);
+  const failedSymbols = payload.failedSymbols || [];
   const rows = [
-    { label: "股價更新完成", value: "" },
-    { label: "資料更新", value: formatUpdateTime(payload.updatedAt || data.updatedAt) },
-    { label: "台股更新", value: formatUpdateTime(marketUpdates.TW || data.investments.tw.updatedAt) },
-    { label: "美股更新", value: formatUpdateTime(marketUpdates.US || data.investments.us.updatedAt) },
+    { label: "台股", value: marketUpdateLabel(marketUpdates.TW, data.investments.tw.updatedAt, failedSymbols.filter((symbol) => /^\d/.test(symbol))) },
+    { label: "美股", value: marketUpdateLabel(marketUpdates.US, data.investments.us.updatedAt, failedSymbols.filter((symbol) => !/^\d/.test(symbol))) },
+    { label: "匯率", value: payload.fxRate ? `1 USD = ${payload.fxRate} TWD` : data.fxNote.replace("美股以 ", "") },
+    { label: "最近更新", value: formatUpdateTime(payload.updatedAt || data.updatedAt) },
   ];
   document.getElementById("dataUpdates").innerHTML = rows
     .map((row) => `<div class="update-row"><span>${row.label}</span><strong>${row.value}</strong></div>`)
@@ -1409,18 +1410,15 @@ function renderUpdateResult(payload) {
 }
 
 function renderDetailedPriceUpdate(payload) {
-  const marketUpdates = payload.marketUpdates ?? {};
-  setSidebarUpdatedAt(payload.updatedAt || data.updatedAt);
+  renderUpdateResult(payload);
+  const messages = priceUpdateMessages(payload);
+  if (!messages.length) return;
   const rows = [
-    { label: "股價更新", value: payload.failedSymbols?.length ? "部分完成" : "完成" },
-    { label: "Current DB", value: payload.currentDb || payload.source || "" },
-    { label: "Saved To", value: payload.savedTo || "" },
-    { label: "Updated", value: (payload.updatedSymbols || []).join(", ") || "無" },
-    { label: "Failed", value: (payload.failedSymbols || []).join(", ") || "無" },
-    { label: "資料更新", value: formatUpdateTime(payload.updatedAt || data.updatedAt) },
-    { label: "台股更新", value: formatUpdateTime(marketUpdates.TW || data.investments.tw.updatedAt) },
-    { label: "美股更新", value: formatUpdateTime(marketUpdates.US || data.investments.us.updatedAt) },
-    ...priceUpdateMessages(payload).map((message) => ({ label: "Detail", value: message })),
+    ...Array.from(document.getElementById("dataUpdates").querySelectorAll(".update-row")).map((row) => ({
+      label: row.querySelector("span")?.textContent || "",
+      value: row.querySelector("strong")?.textContent || "",
+    })),
+    ...messages.map((message) => ({ label: "提醒", value: message })),
   ];
   document.getElementById("dataUpdates").innerHTML = rows
     .map((row) => `<div class="update-row"><span>${escapeHtml(row.label)}</span><strong>${escapeHtml(row.value)}</strong></div>`)

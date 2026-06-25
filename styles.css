@@ -276,7 +276,7 @@ h2 {
 
 .topbar-actions {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px;
@@ -328,18 +328,39 @@ h2 {
   transform: none;
 }
 
-.action-button.subtle {
+.topbar-updates {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.price-refresh-button {
+  min-height: 34px;
+  padding: 0 10px;
   color: var(--muted);
-  border-color: rgba(147, 122, 108, 0.16);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  border: 1px solid rgba(147, 122, 108, 0.16);
+  border-radius: 999px;
   background: rgba(255, 253, 250, 0.72);
-  box-shadow: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.price-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
 }
 
 .update-strip {
   min-width: min(520px, 48vw);
   padding: 8px 12px;
   display: grid;
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: repeat(4, auto);
   gap: 8px 14px;
   align-items: center;
   justify-content: end;
@@ -1731,6 +1752,17 @@ canvas {
     width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .topbar-updates {
+    width: 100%;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .price-refresh-button {
+    width: 100%;
+    min-height: 38px;
   }
 
   .action-button,
