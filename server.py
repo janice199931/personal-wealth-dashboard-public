@@ -9,6 +9,7 @@ import secrets
 import shutil
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from datetime import datetime
 from uuid import uuid4
@@ -1113,6 +1114,27 @@ def debug_supabase() -> dict[str, Any]:
 def get_portfolio() -> dict[str, Any]:
     portfolio = read_portfolio(use_examples=True)
     return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if portfolio else "example"}
+
+
+@app.get("/api/dashboard-core")
+def get_dashboard_core() -> Response:
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        portfolio_future = executor.submit(read_portfolio, True)
+        history_future = executor.submit(read_net_worth_history, False)
+        transactions_future = executor.submit(read_transactions, False)
+        dividends_future = executor.submit(read_dividends, False)
+        portfolio = portfolio_future.result()
+        history = history_future.result()
+        transactions = transactions_future.result()
+        dividends = dividends_future.result()
+    return utf8_json({
+        "ok": True,
+        "portfolio": portfolio,
+        "history": history,
+        "transactions": transactions,
+        "dividends": dividends,
+        "source": db_store.active_backend() if portfolio else "example",
+    })
 
 
 @app.get("/api/holdings-audit")

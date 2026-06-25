@@ -1827,31 +1827,56 @@ async function loadExternalData() {
     return fallbackValue;
   }
 
-  await refreshDataStatus().catch(() => {});
-  renderDataStatusCards();
+  refreshDataStatus()
+    .then(renderDataStatusCards)
+    .catch(() => {});
 
-  const [portfolio, history] = await Promise.all([
-    fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
-    fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
-  ]);
-  if (portfolio) {
-    applyPortfolioData(portfolio, history);
+  const core = await fetchJson("/api/dashboard-core", "", null);
+  let transactionsLoaded = false;
+  let dividendsLoaded = false;
+  if (core?.portfolio) {
+    applyPortfolioData(core.portfolio, core.history || []);
     render();
+    if (core.transactions) {
+      applyTransactionData(core.transactions);
+      transactionsLoaded = true;
+      render();
+    }
+    if (core.dividends) {
+      applyDividendData(core.dividends);
+      dividendsLoaded = true;
+      render();
+    }
+  } else {
+    const [portfolio, history] = await Promise.all([
+      fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
+      fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
+    ]);
+    if (portfolio) {
+      applyPortfolioData(portfolio, history);
+      render();
+    }
   }
 
-  const transactions = await fetchJson("/api/transactions", "./data/example-transactions.json", [], "transactions");
-  if (transactions) {
-    applyTransactionData(transactions);
-    render();
+  const financeDataPromise = fetchJson("/api/finance-data", "", null, "financeData");
+
+  if (!transactionsLoaded) {
+    const transactions = await fetchJson("/api/transactions", "./data/example-transactions.json", [], "transactions");
+    if (transactions) {
+      applyTransactionData(transactions);
+      render();
+    }
   }
 
-  const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
-  if (dividends) {
-    applyDividendData(dividends);
-    render();
+  if (!dividendsLoaded) {
+    const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
+    if (dividends) {
+      applyDividendData(dividends);
+      render();
+    }
   }
 
-  const financeData = await fetchJson("/api/finance-data", "", null, "financeData");
+  const financeData = await financeDataPromise;
   if (financeData?.years?.length) window.financeData = financeData;
   render();
 }
@@ -1876,7 +1901,7 @@ async function initializeDashboard() {
   renderInitialLoading();
   await loadExternalData();
   render();
-  runDailyDataHealthCheck();
+  window.setTimeout(runDailyDataHealthCheck, 45000);
   await runAutomaticPriceUpdate();
 }
 
