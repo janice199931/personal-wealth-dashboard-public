@@ -1063,22 +1063,32 @@ function nextActionSummary(metrics) {
   return nextContributionMessage(metrics);
 }
 
+function availableContributionBudget(metrics) {
+  return Math.max(0, Math.min(
+    Number(metrics.investableSinopacCash) || 0,
+    Number(metrics.monthlyInvestmentRemaining) || 0,
+  ));
+}
+
 function leveragedPriceSignalText(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
   if (!metrics.hasLeveragedHolding) return "目前找不到 00685L 持股，請先確認交易紀錄或更新股價。";
   if (signal.state === "idle" || signal.state === "loading") return "正在讀取 00685L 近 20 個交易日價格。";
   if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先用本月投資額度與 70/30 比例判斷。";
   const base = `近 20 日高點 ${stockPriceTwd.format(signal.high)}，現價 ${stockPriceTwd.format(signal.price)}，回落 ${signal.pullback.toFixed(1)}%。`;
-  if (signal.pullback < 5) return `${base} 燈號：不急，照原計畫，不額外加碼。`;
-  if (signal.pullback < 10) return `${base} 燈號：觀察，先不用急著加碼。`;
-  if (signal.pullback < 15) {
-    return metrics.investableSinopacCash > 0 && metrics.monthlyInvestmentRemaining > 0
-      ? `${base} 燈號：小額加碼，建議最多 ${money.format(Math.min(10000, metrics.investableSinopacCash, metrics.monthlyInvestmentRemaining))}。`
-      : `${base} 燈號：小額加碼，但先確認永豐可用現金與本月額度。`;
+  if (!metrics.sinopacBalance || metrics.investableSinopacCash <= 0) {
+    return `${base} 分級：禁止加碼，先守住永豐緊急預備金。`;
   }
-  return metrics.investableSinopacCash > 0 && metrics.monthlyInvestmentRemaining > 0
-    ? `${base} 燈號：分批加碼，建議分 2-3 筆，每筆最多 ${money.format(Math.min(10000, metrics.investableSinopacCash, metrics.monthlyInvestmentRemaining))}。`
-    : `${base} 燈號：分批加碼，但目前先不要動到緊急預備金。`;
+  if (metrics.monthlyInvestmentRemaining <= 0) {
+    return `${base} 分級：只觀察，本月投資目標已達標。`;
+  }
+  const budget = availableContributionBudget(metrics);
+  if (signal.pullback < 5) return `${base} 分級：一般投入，照本月 ${money.format(MONTHLY_INVESTMENT_TARGET)} 計畫，不額外加碼。`;
+  if (signal.pullback < 10) return `${base} 分級：觀察，先不用急著加碼，可保留本月剩餘額度 ${money.format(budget)}。`;
+  if (signal.pullback < 15) {
+    return `${base} 分級：小額加碼，這次最多 ${money.format(Math.min(10000, budget))}。`;
+  }
+  return `${base} 分級：分批加碼，本月最多用 ${money.format(budget)}，分 2-3 筆，每筆最多 ${money.format(Math.min(10000, budget))}。`;
 }
 
 function leveragedPriceSignalStatus() {
@@ -1162,7 +1172,7 @@ function renderTodayActions() {
       title: "永豐可用現金",
       text: investableCashSummary(metrics),
     },
-    { status: leveragedPriceSignalStatus(), title: "00685L 加碼燈號", text: leveragedPriceSignalText(metrics) },
+    { status: leveragedPriceSignalStatus(), title: "加碼資金分級", text: leveragedPriceSignalText(metrics) },
     {
       status: metrics.monthlyInvestmentRemaining <= 0 ? "good" : "watch",
       title: "本月投資進度",
