@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 import secrets
 import shutil
 import tempfile
+import time
 from threading import Lock
 from datetime import datetime
 from uuid import uuid4
@@ -42,6 +45,8 @@ BACKUPS_DIR = DATA_DIR / "backups"
 AUTH_USERNAME = os.getenv("ASSET_DASHBOARD_USERNAME", "admin").strip()
 AUTH_PASSWORD = os.getenv("ASSET_DASHBOARD_PASSWORD", "").strip()
 AUTH_REALM = "Personal Wealth Dashboard"
+AUTH_COOKIE_NAME = "wealth_dashboard_session"
+AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -75,11 +80,57 @@ def unauthorized_response() -> Response:
     return Response(
         status_code=401,
         content="Authentication required.",
-        headers={"WWW-Authenticate": f'Basic realm="{AUTH_REALM}"'},
     )
 
 
+def wants_json(request: Request) -> bool:
+    content_type = request.headers.get("content-type", "")
+    accept = request.headers.get("accept", "")
+    return "application/json" in content_type or "application/json" in accept
+
+
+def login_redirect_response() -> RedirectResponse:
+    return RedirectResponse(url="/login.html", status_code=303)
+
+
+def auth_secret() -> str:
+    return AUTH_PASSWORD or "wealth-dashboard-local"
+
+
+def sign_auth_payload(payload: str) -> str:
+    return hmac.new(auth_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def make_auth_token(username: str) -> str:
+    issued_at = str(int(time.time()))
+    payload = f"{username}:{issued_at}"
+    return f"{payload}:{sign_auth_payload(payload)}"
+
+
+def is_valid_auth_token(token: str) -> bool:
+    parts = str(token or "").split(":")
+    if len(parts) != 3:
+        return False
+    username, issued_at, signature = parts
+    if not secrets.compare_digest(username, AUTH_USERNAME):
+        return False
+    try:
+        age = time.time() - int(issued_at)
+    except ValueError:
+        return False
+    if age < 0 or age > AUTH_COOKIE_MAX_AGE:
+        return False
+    payload = f"{username}:{issued_at}"
+    return secrets.compare_digest(signature, sign_auth_payload(payload))
+
+
+def is_cookie_authorized(request: Request) -> bool:
+    return bool(AUTH_PASSWORD) and is_valid_auth_token(request.cookies.get(AUTH_COOKIE_NAME, ""))
+
+
 def is_authorized(request: Request) -> bool:
+    if is_cookie_authorized(request):
+        return True
     if not AUTH_PASSWORD:
         return False
 
@@ -99,12 +150,25 @@ def is_authorized(request: Request) -> bool:
     return secrets.compare_digest(username, AUTH_USERNAME) and secrets.compare_digest(password, AUTH_PASSWORD)
 
 
+def is_page_request(request: Request) -> bool:
+    path = request.url.path
+    accept = request.headers.get("accept", "")
+    return path in {"/", "/index.html"} or path.endswith(".html") or "text/html" in accept
+
+
+def is_secure_request(request: Request) -> bool:
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").split(",")[0].strip() == "https"
+
+
 @app.middleware("http")
 async def require_password(request: Request, call_next):
-    if request.url.path in {"/api/health", "/api/auth-debug"}:
+    public_paths = {"/api/health", "/api/auth-debug", "/api/login", "/api/logout", "/login.html"}
+    if request.url.path in public_paths:
         return await call_next(request)
     if is_authorized(request):
         return await call_next(request)
+    if is_page_request(request):
+        return login_redirect_response()
     return unauthorized_response()
 
 
@@ -716,6 +780,142 @@ async def save_upload(upload: UploadFile, folder: Path) -> Path:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.api_route("/login.html", methods=["GET", "HEAD"])
+def login_page(request: Request) -> Response:
+    has_error = request.query_params.get("error") == "1"
+    error_html = "<p class=\"error\">帳號或密碼不正確，請再試一次。</p>" if has_error else ""
+    return Response(
+        media_type="text/html; charset=utf-8",
+        content=f"""<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>登入｜Janice的小天地</title>
+    <style>
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        color: #4d3730;
+        font-family: Inter, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+        background:
+          radial-gradient(circle at 58% 12%, rgba(255, 210, 210, 0.46), transparent 34%),
+          radial-gradient(circle at 88% 4%, rgba(241, 222, 205, 0.6), transparent 24%),
+          linear-gradient(180deg, #fff8f3 0%, #fff2ee 46%, #f9eadf 100%);
+      }}
+      main {{
+        width: min(420px, 100%);
+        padding: 28px;
+        border: 1px solid rgba(226, 173, 162, 0.28);
+        border-radius: 24px;
+        background: rgba(255, 253, 250, 0.92);
+        box-shadow: 0 18px 42px rgba(158, 103, 88, 0.12);
+      }}
+      h1 {{ margin: 0 0 8px; font-size: 32px; line-height: 1.1; }}
+      p {{ margin: 0 0 22px; color: #8d746c; font-weight: 750; line-height: 1.6; }}
+      label {{ display: grid; gap: 8px; margin-bottom: 14px; color: #d17f87; font-size: 13px; font-weight: 900; }}
+      input {{
+        width: 100%;
+        min-height: 48px;
+        padding: 12px 14px;
+        border: 1px solid rgba(226, 173, 162, 0.34);
+        border-radius: 14px;
+        color: #4d3730;
+        background: rgba(255, 253, 250, 0.92);
+        font: inherit;
+      }}
+      input:focus {{ outline: 2px solid rgba(209, 127, 135, 0.36); outline-offset: 2px; }}
+      button {{
+        width: 100%;
+        min-height: 48px;
+        border: 1px solid rgba(226, 173, 162, 0.3);
+        border-radius: 999px;
+        color: #4d3730;
+        font: inherit;
+        font-weight: 900;
+        cursor: pointer;
+        background: linear-gradient(135deg, rgba(246, 183, 183, 0.92), rgba(255, 215, 168, 0.72));
+        box-shadow: 0 14px 34px rgba(158, 103, 88, 0.09);
+      }}
+      .error {{
+        margin: 0 0 14px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        color: #9f3449;
+        background: rgba(255, 223, 223, 0.78);
+      }}
+      small {{ display: block; margin-top: 14px; color: #8d746c; font-weight: 800; line-height: 1.55; }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Janice的小天地</h1>
+      <p>登入一次後，這台瀏覽器會記住 30 天。</p>
+      {error_html}
+      <form method="post" action="/api/login">
+        <label>帳號<input name="username" autocomplete="username" value="{AUTH_USERNAME}" required /></label>
+        <label>密碼<input name="password" type="password" autocomplete="current-password" required autofocus /></label>
+        <button type="submit">登入</button>
+      </form>
+      <small>登入後首頁和資料讀取會使用 cookie，不會一直呼叫 MacBook 鑰匙圈。</small>
+    </main>
+  </body>
+</html>""",
+    )
+
+
+@app.post("/api/login")
+async def login(request: Request) -> Response:
+    username = ""
+    password = ""
+    try:
+        if "application/json" in request.headers.get("content-type", ""):
+            payload = await request.json()
+            if isinstance(payload, dict):
+                username = str(payload.get("username", "")).strip()
+                password = str(payload.get("password", ""))
+        else:
+            form = await request.form()
+            username = str(form.get("username", "")).strip()
+            password = str(form.get("password", ""))
+    except Exception:
+        username = ""
+        password = ""
+
+    ok = bool(AUTH_PASSWORD) and secrets.compare_digest(username, AUTH_USERNAME) and secrets.compare_digest(password, AUTH_PASSWORD)
+    if not ok:
+        if wants_json(request):
+            return JSONResponse(status_code=401, content={"ok": False, "detail": "帳號或密碼不正確。"})
+        return RedirectResponse(url="/login.html?error=1", status_code=303)
+
+    response: Response
+    if wants_json(request):
+        response = JSONResponse(content={"ok": True, "message": "登入成功。"})
+    else:
+        response = RedirectResponse(url="/index.html", status_code=303)
+    response.set_cookie(
+        AUTH_COOKIE_NAME,
+        make_auth_token(username),
+        max_age=AUTH_COOKIE_MAX_AGE,
+        httponly=True,
+        secure=is_secure_request(request),
+        samesite="lax",
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/logout")
+def logout() -> JSONResponse:
+    response = JSONResponse(content={"ok": True, "message": "已登出。"})
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    return response
 
 
 @app.get("/api/auth-debug")
