@@ -36,6 +36,8 @@ const data = {
   monthly: [],
   assetTrend: [],
   transactions: [],
+  accountBreakdown: {},
+  currentMonthFinance: null,
   rebalancer: {
     leveragedValue: 0,
     hasLeveragedHolding: false,
@@ -475,6 +477,16 @@ function applyPortfolioData(portfolio, history = []) {
   }
 }
 
+function applyAccountData(accounts = {}) {
+  data.accountBreakdown = accounts.accountBreakdown && typeof accounts.accountBreakdown === "object"
+    ? accounts.accountBreakdown
+    : {};
+}
+
+function applyCurrentMonthFinance(month = null) {
+  data.currentMonthFinance = month && typeof month === "object" ? month : null;
+}
+
 function fitCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -701,6 +713,7 @@ function getPortfolioMetrics() {
   const netWorth = totalAssets - debt;
   const monthlyRows = monthlyMetricRows();
   const latestMonth = monthlyRows[monthlyRows.length - 1] ?? monthlyFallback();
+  const currentMonthFinance = currentFinanceMonth();
   const previousMonth = monthlyRows[monthlyRows.length - 2] ?? monthlyFallback();
   const latestIncome = Number(latestMonth.income) || 0;
   const latestExpense = Number(latestMonth.expense) || 0;
@@ -723,6 +736,10 @@ function getPortfolioMetrics() {
   const twShares = parseShares(tw.shares);
   const monthlyInvestment = investmentAmountForPeriod(currentMonthKey());
   const monthlyInvestmentRemaining = Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlyInvestment));
+  const sinopacBalance = Number(data.accountBreakdown.sinopacBalance) || 0;
+  const postOfficeBalance = Number(data.accountBreakdown.postOfficeBalance) || 0;
+  const monthlySinopacTransfer = Number(currentMonthFinance?.sinopacTransfer) || 0;
+  const investableSinopacCash = Math.max(0, Math.round(sinopacBalance - EMERGENCY_FUND_TARGET));
   const leveragedValue = data.rebalancer.leveragedValue || 0;
   const rebalanceTotal = leveragedValue + cash;
   const leveragedRatio = rebalanceTotal ? (leveragedValue / rebalanceTotal) * 100 : 0;
@@ -761,6 +778,11 @@ function getPortfolioMetrics() {
     usReturnRate: percent(usGain, usCost, 2),
     monthlyInvestment,
     monthlyInvestmentRemaining,
+    sinopacBalance,
+    postOfficeBalance,
+    monthlySinopacTransfer,
+    monthlySinopacTransferRemaining: Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlySinopacTransfer)),
+    investableSinopacCash,
     investmentCostTwd,
     investmentGainTwd,
     investmentReturnRate: percent(investmentGainTwd, investmentCostTwd, 2),
@@ -974,6 +996,7 @@ function savingsRateStatus(rate) {
 
 function currentFinanceMonth() {
   const monthKey = currentMonthKey();
+  if (data.currentMonthFinance?.month === monthKey) return data.currentMonthFinance;
   return financeMonths().find((month) => month.month === monthKey) || null;
 }
 
@@ -1836,6 +1859,8 @@ async function loadExternalData() {
   let dividendsLoaded = false;
   if (core?.portfolio) {
     applyPortfolioData(core.portfolio, core.history || []);
+    applyAccountData(core.accounts || {});
+    applyCurrentMonthFinance(core.currentMonthFinance || null);
     render();
     if (core.transactions) {
       applyTransactionData(core.transactions);

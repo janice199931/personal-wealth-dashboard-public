@@ -15,6 +15,7 @@ from datetime import datetime
 from uuid import uuid4
 from pathlib import Path
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -605,25 +606,41 @@ def parse_month_key(value: Optional[str]) -> Optional[str]:
     return f"{year}-{month:02d}"
 
 
-def save_manual_monthly_finance(month_key: str, income: int, expense: int) -> dict[str, Any]:
+def save_manual_monthly_finance(
+    month_key: str,
+    income: Optional[int] = None,
+    expense: Optional[int] = None,
+    sinopac_transfer: Optional[int] = None,
+) -> dict[str, Any]:
     finance_data = db_store.read_finance_data({})
     if not isinstance(finance_data, dict) or not isinstance(finance_data.get("years"), list):
         finance_data = {"source": "manual", "years": [], "transactions": []}
 
-    net = income - expense
-    month_payload = {
-        "month": month_key,
-        "income": income,
-        "expense": expense,
-        "net": net,
-        "savingsRate": round((net / income * 100), 1) if income else 0,
-        "transactions": 0,
-        "source": "manual",
-        "updatedAt": datetime.now().isoformat(timespec="seconds"),
-    }
     year_key = month_key[:4]
     years = finance_data.setdefault("years", [])
     year_payload = next((year for year in years if str(year.get("year")) == year_key), None)
+    existing_month = None
+    if year_payload is not None:
+        existing_month = next((month for month in year_payload.get("months", []) if month.get("month") == month_key), None)
+
+    next_income = int(income if income is not None else (existing_month or {}).get("income") or 0)
+    next_expense = int(expense if expense is not None else (existing_month or {}).get("expense") or 0)
+    next_transfer = int(
+        sinopac_transfer if sinopac_transfer is not None else (existing_month or {}).get("sinopacTransfer") or 0
+    )
+    net = next_income - next_expense
+    month_payload = {
+        **(existing_month or {}),
+        "month": month_key,
+        "income": next_income,
+        "expense": next_expense,
+        "net": net,
+        "savingsRate": round((net / next_income * 100), 1) if next_income else 0,
+        "transactions": int((existing_month or {}).get("transactions") or 0),
+        "sinopacTransfer": next_transfer,
+        "source": "manual",
+        "updatedAt": datetime.now().isoformat(timespec="seconds"),
+    }
     if year_payload is None:
         year_payload = {"year": year_key, "months": []}
         years.append(year_payload)
@@ -643,6 +660,7 @@ def save_manual_monthly_finance(month_key: str, income: int, expense: int) -> di
         year["net"] = year_net
         year["savingsRate"] = round((year_net / year_income * 100), 1) if year_income else 0
         year["transactions"] = sum(int(month.get("transactions") or 0) for month in year_months)
+        year["sinopacTransfer"] = sum(int(month.get("sinopacTransfer") or 0) for month in year_months)
         year["months"] = sorted(year_months, key=lambda month: str(month.get("month", "")), reverse=True)
 
     years.sort(key=lambda year: str(year.get("year", "")), reverse=True)
@@ -1118,21 +1136,37 @@ def get_portfolio() -> dict[str, Any]:
 
 @app.get("/api/dashboard-core")
 def get_dashboard_core() -> Response:
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         portfolio_future = executor.submit(read_portfolio, True)
         history_future = executor.submit(read_net_worth_history, False)
         transactions_future = executor.submit(read_transactions, False)
         dividends_future = executor.submit(read_dividends, False)
+        accounts_future = executor.submit(db_store.read_accounts, {})
+        finance_future = executor.submit(db_store.read_finance_data, {})
         portfolio = portfolio_future.result()
         history = history_future.result()
         transactions = transactions_future.result()
         dividends = dividends_future.result()
+        accounts = accounts_future.result()
+        finance_data = finance_future.result()
+    current_month = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m")
+    current_month_finance = None
+    if isinstance(finance_data, dict):
+        for year in finance_data.get("years", []):
+            for month in year.get("months", []):
+                if month.get("month") == current_month:
+                    current_month_finance = month
+                    break
+            if current_month_finance:
+                break
     return utf8_json({
         "ok": True,
         "portfolio": portfolio,
         "history": history,
         "transactions": transactions,
         "dividends": dividends,
+        "accounts": accounts,
+        "currentMonthFinance": current_month_finance,
         "source": db_store.active_backend() if portfolio else "example",
     })
 
@@ -1611,10 +1645,13 @@ async def update_asset_snapshot(
     image: Optional[UploadFile] = File(None),
     cash: Optional[str] = Form(None),
     bank: Optional[str] = Form(None),
+    postOfficeBalance: Optional[str] = Form(None),
+    sinopacBalance: Optional[str] = Form(None),
     creditCardDebt: Optional[str] = Form(None),
     month: Optional[str] = Form(None),
     monthlyIncome: Optional[str] = Form(None),
     monthlyExpense: Optional[str] = Form(None),
+    monthlySinopacTransfer: Optional[str] = Form(None),
 ) -> dict:
     form = await request.form()
 
@@ -1630,16 +1667,26 @@ async def update_asset_snapshot(
 
     cash = cash or form_text("cash")
     bank = bank or form_text("bank")
+    postOfficeBalance = postOfficeBalance or form_text("postOfficeBalance", "post_office_balance", "postOffice")
+    sinopacBalance = sinopacBalance or form_text("sinopacBalance", "sinopac_balance", "sinopac")
     creditCardDebt = creditCardDebt or form_text("creditCardDebt", "debt", "credit_card_debt")
     month = month or form_text("month", "financeMonth")
     monthlyIncome = monthlyIncome or form_text("monthlyIncome", "income")
     monthlyExpense = monthlyExpense or form_text("monthlyExpense", "expense")
+    monthlySinopacTransfer = monthlySinopacTransfer or form_text(
+        "monthlySinopacTransfer",
+        "sinopacTransfer",
+        "monthly_sinopac_transfer",
+    )
 
     manual_cash = parse_manual_amount(cash, "現金")
     manual_bank = parse_manual_amount(bank, "銀行")
+    manual_post_office = parse_manual_amount(postOfficeBalance, "郵局餘額")
+    manual_sinopac = parse_manual_amount(sinopacBalance, "永豐餘額")
     manual_debt = parse_manual_amount(creditCardDebt, "信用卡負債")
     manual_income = parse_manual_amount(monthlyIncome, "月份收入")
     manual_expense = parse_manual_amount(monthlyExpense, "月份支出")
+    manual_sinopac_transfer = parse_manual_amount(monthlySinopacTransfer, "本月轉入永豐")
     manual_month = parse_month_key(month)
     manual_values = {
         "現金": manual_cash,
@@ -1653,12 +1700,19 @@ async def update_asset_snapshot(
         missing = [label for label, value in manual_values.items() if value is None]
         raise HTTPException(status_code=400, detail=f"手動輸入時缺少：{', '.join(missing)}。")
 
-    has_any_monthly = any(value is not None for value in [manual_month, manual_income, manual_expense])
-    has_all_monthly = all(value is not None for value in [manual_month, manual_income, manual_expense])
-    if has_any_monthly and not has_all_monthly:
+    has_any_monthly_finance = any(value is not None for value in [manual_income, manual_expense])
+    has_partial_monthly_finance = any(value is not None for value in [manual_income, manual_expense]) and not all(
+        value is not None for value in [manual_income, manual_expense]
+    )
+    has_monthly_transfer = manual_sinopac_transfer is not None
+    has_any_monthly = has_any_monthly_finance or has_monthly_transfer
+    if has_any_monthly and manual_month is None:
+        raise HTTPException(status_code=400, detail="請選擇統計月份。")
+    if has_partial_monthly_finance:
         raise HTTPException(status_code=400, detail="月份收入與支出請同時填寫。")
 
     monthly_finance = None
+    has_account_breakdown = any(value is not None for value in [manual_post_office, manual_sinopac])
 
     with tempfile.TemporaryDirectory(prefix="wealth-snapshot-") as tmp:
         tmp_path = Path(tmp)
@@ -1709,37 +1763,65 @@ async def update_asset_snapshot(
                 "source": "existing_accounts",
             }
         else:
-            if not has_all_monthly:
+            if not has_any_monthly and not has_account_breakdown:
                 raise HTTPException(
                     status_code=400,
-                    detail="請至少上傳 MOZE CSV、帳戶總覽截圖，填寫現金、銀行、信用卡負債，或填寫月份收入與支出。",
+                    detail="請至少上傳 MOZE CSV、帳戶總覽截圖，填寫現金、銀行、信用卡負債，或填寫月份統計 / 永豐資料。",
                 )
             amounts = {
                 "cash": 0,
                 "bank": 0,
                 "debt": 0,
-                "source": "monthly_finance_only",
+                "source": "supplement_only",
             }
 
     write_pre_change_backup("更新資產快照")
-    if amounts["source"] == "monthly_finance_only":
-        monthly_finance = save_manual_monthly_finance(manual_month or "", manual_income or 0, manual_expense or 0)
+    if amounts["source"] == "supplement_only":
+        if has_any_monthly:
+            monthly_finance = save_manual_monthly_finance(
+                manual_month or "",
+                manual_income if has_any_monthly_finance else None,
+                manual_expense if has_any_monthly_finance else None,
+                manual_sinopac_transfer,
+            )
         accounts = db_store.read_accounts({})
         portfolio = read_portfolio(use_examples=False) or {}
     elif amounts["source"] == "existing_accounts":
         accounts = db_store.read_accounts({})
-        if has_all_monthly:
-            monthly_finance = save_manual_monthly_finance(manual_month or "", manual_income or 0, manual_expense or 0)
+        if has_any_monthly:
+            monthly_finance = save_manual_monthly_finance(
+                manual_month or "",
+                manual_income if has_any_monthly_finance else None,
+                manual_expense if has_any_monthly_finance else None,
+                manual_sinopac_transfer,
+            )
     else:
         accounts = db_store.read_accounts({})
         accounts["cashTWD"] = amounts["cash"] + amounts["bank"]
         accounts["creditCardDebt"] = amounts["debt"]
         accounts.setdefault("cashUSD", 0)
         accounts.setdefault("otherDebt", 0)
+    account_breakdown = accounts.get("accountBreakdown")
+    if not isinstance(account_breakdown, dict):
+        account_breakdown = {}
+    if manual_post_office is not None:
+        account_breakdown["postOfficeBalance"] = manual_post_office
+    if manual_sinopac is not None:
+        account_breakdown["sinopacBalance"] = manual_sinopac
+    if manual_post_office is not None or manual_sinopac is not None:
+        account_breakdown["updatedAt"] = datetime.now().isoformat(timespec="seconds")
+        accounts["accountBreakdown"] = account_breakdown
+        db_store.write_accounts(accounts)
+    elif amounts["source"] not in {"supplement_only", "existing_accounts"}:
         db_store.write_accounts(accounts)
     portfolio = rebuild_portfolio_outputs()
-    if has_all_monthly and monthly_finance is None:
-        monthly_finance = save_manual_monthly_finance(manual_month or "", manual_income or 0, manual_expense or 0)
+    if has_any_monthly and monthly_finance is None:
+        monthly_finance = save_manual_monthly_finance(
+            manual_month or "",
+            manual_income if has_any_monthly_finance else None,
+            manual_expense if has_any_monthly_finance else None,
+            manual_sinopac_transfer,
+        )
 
     return {
         "ok": True,
@@ -1748,6 +1830,7 @@ async def update_asset_snapshot(
         "bank": amounts["bank"],
         "creditCardDebt": amounts["debt"],
         "cashTWD": accounts.get("cashTWD", 0),
+        "accountBreakdown": accounts.get("accountBreakdown", {}),
         "totalAssets": portfolio.get("summary", {}).get("totalAssets", 0),
         "netWorth": portfolio.get("summary", {}).get("netWorth", 0),
         "monthlyFinance": monthly_finance,

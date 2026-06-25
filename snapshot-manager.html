@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>更新資產快照</h1>
-          <p>更新現金、銀行、信用卡負債，也可以手動記錄每月收入與支出。</p>
+          <p>更新現金、銀行、信用卡負債，也可以手動記錄每月收入、支出與轉入永豐。</p>
         </div>
         <a href="./index.html">← 回到首頁</a>
       </section>
@@ -24,6 +24,14 @@
         <label>
           銀行
           <input name="bank" type="number" step="1" min="0" />
+        </label>
+        <label>
+          郵局餘額
+          <input name="postOfficeBalance" type="number" step="1" min="0" placeholder="薪資入帳帳戶" />
+        </label>
+        <label>
+          永豐餘額
+          <input name="sinopacBalance" type="number" step="1" min="0" placeholder="投資扣款帳戶" />
         </label>
         <label>
           信用卡負債
@@ -44,6 +52,10 @@
         <label>
           月份支出
           <input name="monthlyExpense" type="number" step="1" min="0" placeholder="例如 25000" />
+        </label>
+        <label>
+          本月轉入永豐
+          <input name="monthlySinopacTransfer" type="number" step="1" min="0" placeholder="例如 35000" />
         </label>
         <label>
           MOZE CSV
@@ -109,10 +121,17 @@
           ["總資產", money.format(payload.totalAssets || 0)],
           ["淨資產", money.format(payload.netWorth || 0)],
         ];
+        if (payload.accountBreakdown && Object.keys(payload.accountBreakdown).length) {
+          rows.push(
+            ["郵局餘額", money.format(payload.accountBreakdown.postOfficeBalance || 0)],
+            ["永豐餘額", money.format(payload.accountBreakdown.sinopacBalance || 0)],
+          );
+        }
         if (payload.monthlyFinance) {
           rows.push(
             ["月份收入", money.format(payload.monthlyFinance.income || 0)],
             ["月份支出", money.format(payload.monthlyFinance.expense || 0)],
+            ["本月轉入永豐", money.format(payload.monthlyFinance.sinopacTransfer || 0)],
           );
         }
         resultGrid.innerHTML = rows
@@ -141,7 +160,7 @@
           const payload = await readApiPayload(response, "資產快照更新失敗，請重新整理或確認登入狀態。");
           if (!response.ok) throw new Error(payload.detail || "資產快照更新失敗，請重新整理或確認登入狀態。");
           renderResult(payload);
-          setStatus(payload.monthlyFinance ? "資產快照 / 月份統計已更新，回首頁即可看到最新數字。" : "資產快照已更新，回首頁即可看到最新數字。", "success");
+          setStatus(payload.monthlyFinance ? "資產快照 / 月份統計 / 永豐資料已更新，回首頁即可看到最新數字。" : "資產快照 / 永豐資料已更新，回首頁即可看到最新數字。", "success");
         } catch (error) {
           setStatus(error.message || "資產快照更新失敗，請稍後再試。", "error");
         } finally {
