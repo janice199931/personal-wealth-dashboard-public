@@ -19,7 +19,7 @@
         <strong>Wealth<br />Dashboard</strong>
       </div>
       <nav class="sidebar-nav">
-        <a class="active" href="#kpiGrid">
+        <a class="active" href="#dailyDecision">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.2 12 4l8 7.2"></path><path d="M6.5 10.5V20h5v-5h3v5h5v-9.5"></path></svg>
           總覽
         </a>
@@ -75,32 +75,53 @@
     </header>
 
     <main>
-      <section class="hero-dashboard" aria-label="個人財富駕駛艙">
-        <article class="hero-card">
-          <div>
-            <p class="eyebrow">Personal Wealth Dashboard</p>
-            <h1>Janice的小天地</h1>
+      <section class="hero-dashboard" id="dailyDecision" aria-label="今日決策">
+        <article class="hero-card decision-hero">
+          <div class="decision-copy">
+            <p class="eyebrow">Daily Decision</p>
+            <h1>今天該做什麼</h1>
+            <div id="heroOverview" class="hero-overview"></div>
           </div>
-          <div id="heroOverview" class="hero-overview"></div>
           <div id="heroMilestone" class="hero-milestone"></div>
         </article>
       </section>
 
-      <section class="kpi-grid" id="kpiGrid" aria-label="核心資產指標"></section>
+      <section class="section-block" aria-label="財務總覽">
+        <div class="section-heading">
+          <p class="eyebrow">Overview</p>
+          <h2>財務總覽</h2>
+        </div>
+        <div class="kpi-grid overview-kpi-grid" id="kpiGrid"></div>
+      </section>
 
-      <section class="dashboard action-dashboard" aria-label="今日財務重點">
-        <article class="panel full action-panel">
+      <section class="section-block" aria-label="四個金庫">
+        <div class="section-heading">
+          <p class="eyebrow">Vaults</p>
+          <h2>四個金庫</h2>
+        </div>
+        <div id="vaultGrid" class="vault-grid"></div>
+      </section>
+
+      <section class="section-block" aria-label="AI 財務摘要">
+        <article class="panel full ai-summary-panel">
           <div class="panel-title">
             <div>
-              <p class="eyebrow">Today</p>
-              <h2>今日該看什麼</h2>
+              <p class="eyebrow">AI Summary</p>
+              <h2>AI 今日摘要</h2>
             </div>
           </div>
-          <div id="todayActions" class="today-actions"></div>
+          <div id="aiSummary" class="ai-summary-list"></div>
         </article>
       </section>
 
       <section class="data-status-grid" id="dataStatusCards" aria-label="資料狀態" hidden></section>
+
+      <section class="section-block" aria-label="資產分析">
+        <div class="section-heading">
+          <p class="eyebrow">Analysis</p>
+          <h2>資產分析</h2>
+        </div>
+      </section>
 
       <section class="dashboard dashboard-primary" aria-label="資產配置與成長">
         <article class="panel allocation-panel">
@@ -139,6 +160,13 @@
           </div>
           <div id="milestones" class="milestone-list"></div>
         </article>
+      </section>
+
+      <section class="section-block investment-section" aria-label="投資資訊">
+        <div class="section-heading">
+          <p class="eyebrow">Investments</p>
+          <h2>投資資訊</h2>
+        </div>
       </section>
 
       <section class="investment-grid" aria-label="投資明細">

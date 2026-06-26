@@ -940,58 +940,111 @@ function formatEtaDate(date) {
   return `${rocYear(date.getFullYear())} 年 ${date.getMonth() + 1} 月`;
 }
 
+function postOfficeStatus(metrics) {
+  const suggested = Math.max(0, Math.round(Number(metrics.latestMonth?.expense) || 0));
+  if (!suggested) return { status: "watch", suggested, text: "待記錄" };
+  return {
+    status: metrics.postOfficeBalance >= suggested ? "good" : "warn",
+    suggested,
+    text: metrics.postOfficeBalance >= suggested ? "正常" : "偏低",
+  };
+}
+
+function investmentReserveStatus(metrics) {
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return { status: "warn", text: "偏低" };
+  if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return { status: "watch", text: "過高" };
+  return { status: "good", text: "正常" };
+}
+
+function financialHealthScore(metrics) {
+  let score = 100;
+  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
+    score -= Math.min(28, Math.round(((EMERGENCY_FUND_TARGET - metrics.emergencyFund) / EMERGENCY_FUND_TARGET) * 28));
+  }
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) {
+    score -= Math.min(18, Math.round(((INVESTMENT_RESERVE_MIN - metrics.investmentReserve) / INVESTMENT_RESERVE_MIN) * 18));
+  } else if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) {
+    score -= 6;
+  }
+  if (metrics.monthlyInvestmentRemaining > 0) {
+    score -= Math.min(14, Math.round((metrics.monthlyInvestmentRemaining / MONTHLY_INVESTMENT_TARGET) * 14));
+  }
+  if (metrics.monthNet < 0) score -= 12;
+  if (metrics.debt > 0) score -= Math.min(10, Math.round(percent(metrics.debt, Math.max(1, metrics.totalAssets)) / 5));
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function healthScoreText(score) {
+  if (score >= 85) return "健康";
+  if (score >= 70) return "穩定";
+  if (score >= 55) return "留意";
+  return "優先整理";
+}
+
+function decisionIcon(status) {
+  if (status === "good") return "🟢";
+  if (status === "watch") return "🟡";
+  return "🔴";
+}
+
+function decisionChecklist(metrics) {
+  const signal = data.leveragedPullbackSignal || { state: "idle" };
+  return [
+    metrics.monthlyInvestmentRemaining <= 0 ? "本月固定投入已完成" : `本月固定投入還差 ${money.format(metrics.monthlyInvestmentRemaining)}`,
+    metrics.emergencyFund >= EMERGENCY_FUND_TARGET && metrics.investmentReserve >= INVESTMENT_RESERVE_MIN
+      ? "現金水位正常"
+      : "現金水位需要補強",
+    signal.state === "ready" && signal.pullback >= 10
+      ? "市場回檔達加碼觀察區"
+      : metrics.hasLeveragedHolding && metrics.rebalanceTotal && Math.abs(metrics.leveragedDrift) > REBALANCE_BAND
+      ? "股票配置先作參考"
+      : "股票配置正常",
+  ];
+}
+
 function renderHero() {
   const metrics = getPortfolioMetrics();
-  const next = getNextMilestone();
-  const monthGrowth = percent(metrics.monthNet, Math.max(1, metrics.netWorth - metrics.monthNet), 2);
+  if (metrics.hasLeveragedEtfHolding) loadLeveragedPullbackSignal();
+  const conclusion = todayConclusion(metrics);
+  const checklist = decisionChecklist(metrics);
   document.getElementById("heroOverview").innerHTML = `
-    <span>Total Net Worth</span>
-    <strong>${money.format(metrics.netWorth)}</strong>
-    <small class="positive">▲ ${money.format(metrics.monthNet)}（+${monthGrowth}）本月增長</small>`;
+    <strong class="decision-result ${conclusion.status}">${decisionIcon(conclusion.status)} ${conclusion.text}</strong>
+    <div class="decision-checks">
+      ${checklist.map((item) => `<span>✓ ${item}</span>`).join("")}
+    </div>`;
 
   document.getElementById("heroMilestone").innerHTML = `
-    <div class="wealth-journey">
-      <span class="wealth-journey-label">距離${number.format(next.target / 10000)}萬</span>
-      <div class="wealth-journey-track" aria-label="財富旅程進度 ${next.progress}%">
-        <span class="wealth-journey-fill" style="width:${next.progress}%"></span>
-        <span class="wealth-journey-cat" style="left:${next.progress}%">
-          <svg viewBox="0 0 32 32" role="img" aria-label="目前財富位置">
-            <path class="journey-cat-face" d="M8 15c0-6 4-10 8-10s8 4 8 10c0 7-4 11-8 11s-8-4-8-11Z"></path>
-            <path class="journey-cat-ear" d="M9 11 8 5l5 4"></path>
-            <path class="journey-cat-ear" d="M23 11l1-6-5 4"></path>
-            <path class="journey-cat-eye" d="M12 15c1 1 3 1 4 0"></path>
-            <path class="journey-cat-eye" d="M17 15c1 1 3 1 4 0"></path>
-            <path class="journey-cat-mouth" d="M14 20c1 1 3 1 4 0"></path>
-          </svg>
-        </span>
-      </div>
-      <span class="wealth-journey-goal" aria-hidden="true">🏆</span>
-      <strong>${next.progress}%</strong>
+    <div class="decision-side">
+      <span>淨資產</span>
+      <strong>${money.format(metrics.netWorth)}</strong>
+      <small>本月增加 ${money.format(metrics.monthNet)}</small>
     </div>
-    <p>還差 ${money.format(next.remaining)} 到下一個財富里程碑</p>`;
+  `;
 }
 
 function renderKpis() {
   const metrics = getPortfolioMetrics();
+  const next = getNextMilestone();
   const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
-  const investmentGainTone = gainTone(metrics.investmentGainTwd);
+  const score = financialHealthScore(metrics);
   const rows = [
-    { label: "總資產", value: money.format(metrics.totalAssets) },
-    { label: "股票資產", value: money.format(metrics.stockAssets) },
     {
-      label: "緊急預備金",
-      value: money.format(metrics.cash),
+      label: "財務健康度",
+      value: `${score}分`,
+      note: healthScoreText(score),
+      progress: score,
     },
-    { label: "負債", value: money.format(metrics.debt) },
-    { label: "本月增加", value: money.format(metrics.monthNet) },
+    { label: "淨資產", value: money.format(metrics.netWorth), note: `本月 ${money.format(metrics.monthNet)}` },
     {
-      label: "本月投資",
+      label: "本月固定投入",
       value: money.format(monthlyInvestmentRounded),
+      note: metrics.monthlyInvestmentRemaining <= 0 ? "已完成" : `還差 ${money.format(metrics.monthlyInvestmentRemaining)}`,
     },
     {
-      label: `投資總損益(${compactPercent(metrics.investmentReturnRate)})`,
-      value: money.format(metrics.investmentGainTwd),
-      valueTone: investmentGainTone,
+      label: "財富目標進度",
+      value: `${next.progress}%`,
+      note: `距離 ${number.format(next.target / 10000)} 萬還差 ${money.format(next.remaining)}`,
+      progress: next.progress,
     },
   ];
 
@@ -1006,6 +1059,91 @@ function renderKpis() {
       ${row.note ? `<em>${row.note}</em>` : ""}
     </article>`)
     .join("");
+}
+
+function renderVaults() {
+  const target = document.getElementById("vaultGrid");
+  if (!target) return;
+  const metrics = getPortfolioMetrics();
+  const postOffice = postOfficeStatus(metrics);
+  const reserve = investmentReserveStatus(metrics);
+  const emergencyProgress = Math.min(100, Math.round(percent(metrics.emergencyFund, EMERGENCY_FUND_TARGET)));
+  const rows = [
+    {
+      icon: "📮",
+      title: "生活金庫（郵局）",
+      status: postOffice.status,
+      lines: [
+        ["目前餘額", money.format(metrics.postOfficeBalance)],
+        ["建議保留金額", postOffice.suggested ? money.format(postOffice.suggested) : "待記錄"],
+        ["狀態", postOffice.text],
+      ],
+    },
+    {
+      icon: "🏦",
+      title: "投資金庫（永豐）",
+      status: "good",
+      lines: [
+        ["目前餘額", money.format(metrics.sinopacBalance)],
+        ["本月轉入永豐", money.format(metrics.monthlySinopacTransfer)],
+        ["每月固定投入", money.format(MONTHLY_INVESTMENT_TARGET)],
+      ],
+    },
+    {
+      icon: "🛟",
+      title: "緊急預備金",
+      status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "good" : "warn",
+      progress: emergencyProgress,
+      lines: [
+        ["目標", money.format(EMERGENCY_FUND_TARGET)],
+        ["目前", money.format(metrics.emergencyFund)],
+        ["狀態", metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "正常" : "偏低"],
+      ],
+    },
+    {
+      icon: "💵",
+      title: "投資預備金",
+      status: reserve.status,
+      lines: [
+        ["目標", `${money.format(INVESTMENT_RESERVE_MIN)}～${money.format(INVESTMENT_RESERVE_MAX)}`],
+        ["目前", money.format(metrics.investmentReserve)],
+        ["狀態", reserve.text],
+      ],
+    },
+  ];
+
+  target.innerHTML = rows
+    .map((row) => `<article class="vault-card ${row.status}">
+      <div class="vault-title"><span>${row.icon}</span><strong>${row.title}</strong></div>
+      <div class="vault-lines">
+        ${row.lines.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
+      </div>
+      ${Number.isFinite(row.progress) ? `<span class="mini-progress"><i style="width:${row.progress}%"></i></span>` : ""}
+    </article>`)
+    .join("");
+}
+
+function renderAiSummary() {
+  const target = document.getElementById("aiSummary");
+  if (!target) return;
+  const metrics = getPortfolioMetrics();
+  const postOffice = postOfficeStatus(metrics);
+  const reserve = investmentReserveStatus(metrics);
+  const rowsForExpense = monthlyMetricRows();
+  const currentExpense = Number(metrics.latestMonth?.expense) || 0;
+  const previousExpense = Number(rowsForExpense[rowsForExpense.length - 2]?.expense) || 0;
+  const savingsRate = Number(metrics.latestMonth?.savingsRate);
+  const rows = [
+    currentExpense && previousExpense
+      ? `本月支出${currentExpense <= previousExpense ? "低於或接近" : "高於"}前一個月`
+      : "本月支出資料持續整理中",
+    Number.isFinite(savingsRate) ? `儲蓄率維持 ${savingsRate}%` : `本月淨增加 ${money.format(metrics.monthNet)}`,
+    `郵局生活金${postOffice.text}`,
+    `永豐投資金目前 ${money.format(metrics.sinopacBalance)}`,
+    `投資預備金${reserve.text}`,
+    nextActionSummary(metrics),
+  ];
+  target.innerHTML = rows.map((row) => `<p>• ${row}</p>`).join("");
 }
 
 function healthTone(status) {
@@ -1132,7 +1270,18 @@ function investableCashSummary(metrics) {
 }
 
 function todayConclusion(metrics) {
-  return cashWaterStatus(metrics);
+  const water = cashWaterStatus(metrics);
+  const signal = data.leveragedPullbackSignal || { state: "idle" };
+  if (water.status === "good" && signal.state === "ready" && signal.pullback >= 10) {
+    return {
+      status: signal.pullback >= 20 ? "warn" : "watch",
+      text: "符合加碼條件，可分批投入現金",
+    };
+  }
+  if (water.status === "good" && metrics.monthlyInvestmentRemaining <= 0) {
+    return { status: "good", text: "今天不用做任何事" };
+  }
+  return water;
 }
 
 function nextActionSummary(metrics) {
@@ -1219,10 +1368,14 @@ function loadLeveragedPullbackSignal() {
         priceDate: latest.date,
       };
       renderTodayActions();
+      renderHero();
+      renderAiSummary();
     })
     .catch(() => {
       data.leveragedPullbackSignal = { state: "error", checkedKey: today };
       renderTodayActions();
+      renderHero();
+      renderAiSummary();
     });
 }
 
@@ -1874,6 +2027,8 @@ function renderLedger() {
 function render() {
   renderHero();
   renderKpis();
+  renderVaults();
+  renderAiSummary();
   renderTodayActions();
   renderAssetPie();
   drawNetWorthChart();
@@ -1888,6 +2043,8 @@ function render() {
 function renderCoreDashboard() {
   renderHero();
   renderKpis();
+  renderVaults();
+  renderAiSummary();
   renderTodayActions();
   renderDataUpdates();
   renderDataStatusCards();
