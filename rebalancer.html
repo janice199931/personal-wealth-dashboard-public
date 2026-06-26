@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入首頁 00685L 與流動資金，檢查目前比例是否接近 70% / 30%。</p>
+          <p>自動帶入首頁 00685L 與可投資現金，先保留緊急預備金，再檢查比例是否接近 70% / 30%。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -24,8 +24,12 @@
           <input name="leveraged" type="number" step="1" min="0" placeholder="例如 700000" required />
         </label>
         <label>
-          現金目前金額
+          可投資現金
           <input name="cash" type="number" step="1" min="0" placeholder="例如 300000" required />
+        </label>
+        <label>
+          已保留緊急預備金
+          <input name="protectedCash" type="number" step="1" min="0" value="200000" readonly />
         </label>
         <label>
           正2目標比例
@@ -76,6 +80,7 @@
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
       const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
       const STORAGE_KEY = "wealthDashboardRebalanceDraft";
+      const EMERGENCY_FUND_TARGET = 200000;
 
       function numberValue(name) {
         return Number(form.elements[name].value) || 0;
@@ -111,19 +116,41 @@
         }
       }
 
-      function applyPortfolio(portfolio) {
+      function accountBreakdown(accounts) {
+        const breakdown = accounts?.accountBreakdown && typeof accounts.accountBreakdown === "object"
+          ? accounts.accountBreakdown
+          : {};
+        const totalCash = Math.round(Number(accounts?.cashTWD ?? 0) || 0);
+        const sinopac = Math.round(Number(breakdown.sinopacBalance ?? 0) || 0);
+        const protectedCash = Math.min(totalCash, sinopac ? Math.min(sinopac, EMERGENCY_FUND_TARGET) : EMERGENCY_FUND_TARGET);
+        return {
+          totalCash,
+          sinopac,
+          protectedCash,
+          investableCash: Math.max(0, totalCash - protectedCash),
+        };
+      }
+
+      function applyPortfolio(portfolio, accounts = null) {
         const allocation = portfolio?.allocation || {};
         const summary = portfolio?.summary || {};
         const leveragedHolding = (portfolio?.holdings || []).find((holding) => String(holding.symbol || "").toUpperCase() === "00685L");
         const leveragedValue = leveragedHolding ? Number(leveragedHolding.marketValueTWD ?? leveragedHolding.marketValue ?? 0) : 0;
-        const cash = Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0);
+        const cashInfo = accounts
+          ? accountBreakdown(accounts)
+          : {
+              totalCash: Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0),
+              protectedCash: Math.min(Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0), EMERGENCY_FUND_TARGET),
+              investableCash: Math.max(0, Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0) - EMERGENCY_FUND_TARGET),
+            };
         form.elements.leveraged.value = Math.round(leveragedValue || 0);
-        form.elements.cash.value = cash;
+        form.elements.cash.value = cashInfo.investableCash;
+        form.elements.protectedCash.value = cashInfo.protectedCash;
         calculate();
         setStatus(
           leveragedHolding
-            ? "已帶入首頁 00685L 現值與流動資金，可直接檢查或手動微調。"
-            : "首頁目前找不到 00685L，已帶入流動資金；正2金額可先手動輸入。",
+            ? "已帶入首頁 00685L 現值與可投資現金；緊急預備金已先保留。"
+            : "首頁目前找不到 00685L，已帶入可投資現金；正2金額可先手動輸入。",
           leveragedHolding ? "success" : "working",
         );
       }
@@ -132,11 +159,11 @@
         reloadButton.disabled = true;
         setStatus("正在讀取首頁資料...", "working");
         try {
-          const response = await fetch("/api/portfolio", { cache: "no-store" });
+          const response = await fetch("/api/dashboard-core?fast=1", { cache: "no-store" });
           const payload = await readApiPayload(response, "首頁資料讀取失敗，請重新整理或確認登入狀態。");
           if (!response.ok) throw new Error(payload.detail || "首頁資料讀取失敗，請重新整理或確認登入狀態。");
           if (!payload.portfolio) throw new Error("目前沒有可帶入的首頁資料。");
-          applyPortfolio(payload.portfolio);
+          applyPortfolio(payload.portfolio, payload.accounts || null);
         } catch (error) {
           setStatus(error.message || "首頁資料讀取失敗，可先手動輸入。", "error");
           loadDraft();
@@ -149,6 +176,7 @@
       function calculate() {
         const leveraged = numberValue("leveraged");
         const cash = numberValue("cash");
+        const protectedCash = numberValue("protectedCash");
         const leveragedTarget = numberValue("leveragedTarget");
         const cashTarget = numberValue("cashTarget");
         const band = numberValue("band");
@@ -188,10 +216,11 @@
 
         resultGrid.innerHTML = [
           resultBox("目前 00685L 比例", `${pct.format(leveragedRatio)}%`),
-          resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
+          resultBox("可投資現金比例", `${pct.format(cashRatio)}%`),
           resultBox("建議調整金額", needsRebalance ? money.format(Math.abs(diff)) : money.format(0)),
           resultBox("00685L 目標金額", money.format(Math.round(targetLeveragedAmount))),
-          resultBox("現金目標金額", money.format(Math.round(targetCashAmount))),
+          resultBox("可投資現金目標", money.format(Math.round(targetCashAmount))),
+          resultBox("已保留緊急預備金", money.format(protectedCash)),
           resultBox("總檢查金額", money.format(total)),
         ].join("");
         leveragedBar.style.width = `${Math.min(100, Math.max(0, leveragedRatio))}%`;

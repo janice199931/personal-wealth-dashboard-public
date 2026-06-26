@@ -798,7 +798,9 @@ function getPortfolioMetrics() {
   const monthlySinopacTransfer = Number(currentMonthFinance?.sinopacTransfer) || 0;
   const investableSinopacCash = Math.max(0, Math.round(sinopacBalance - EMERGENCY_FUND_TARGET));
   const leveragedValue = data.rebalancer.leveragedValue || 0;
-  const rebalanceTotal = leveragedValue + cash;
+  const protectedEmergencyCash = Math.min(cash, sinopacBalance ? Math.min(sinopacBalance, EMERGENCY_FUND_TARGET) : EMERGENCY_FUND_TARGET);
+  const rebalanceCash = Math.max(0, Math.round(cash - protectedEmergencyCash));
+  const rebalanceTotal = leveragedValue + rebalanceCash;
   const leveragedRatio = rebalanceTotal ? (leveragedValue / rebalanceTotal) * 100 : 0;
   const leveragedDrift = leveragedRatio - LEVERAGED_TARGET_RATIO;
   const twCostTwd = Number(tw.cost) || 0;
@@ -840,6 +842,8 @@ function getPortfolioMetrics() {
     monthlySinopacTransfer,
     monthlySinopacTransferRemaining: Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlySinopacTransfer)),
     investableSinopacCash,
+    protectedEmergencyCash,
+    rebalanceCash,
     investmentCostTwd,
     investmentGainTwd,
     investmentReturnRate: percent(investmentGainTwd, investmentCostTwd, 2),
@@ -990,7 +994,7 @@ function rebalanceMessage(metrics) {
     return {
       status: "watch",
       title: "再平衡比例",
-      text: "目前可檢查金額為 0，更新資料後再判斷。",
+      text: "目前可投資現金為 0，先守住緊急預備金。",
     };
   }
   const drift = Math.abs(metrics.leveragedDrift);
@@ -1005,7 +1009,7 @@ function rebalanceMessage(metrics) {
     status: "warn",
     title: "再平衡比例",
     text: metrics.leveragedDrift > 0
-      ? `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏高，下次投入先偏向現金。`
+      ? `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏高，下次投入先保留可投資現金。`
       : `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏低，下次投入可偏向 00685L。`,
   };
 }
@@ -1013,17 +1017,17 @@ function rebalanceMessage(metrics) {
 function nextContributionMessage(metrics) {
   if (metrics.monthlyInvestmentRemaining <= 0) return "本月投資目標已達成，下一筆投入可依 70/30 檢查比例微調。";
   if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，資料完整後再判斷正2/現金比例。`;
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，資料完整後再判斷正2/可投資現金比例。`;
   }
   if (metrics.leveragedRatio > LEVERAGED_TARGET_RATIO + REBALANCE_BAND) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，建議先留在現金，讓比例靠近 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO}。`;
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，建議先保留可投資現金，讓比例靠近 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO}。`;
   }
   if (metrics.leveragedRatio < LEVERAGED_TARGET_RATIO - REBALANCE_BAND) {
     return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，下次可優先投入 00685L。`;
   }
   const leveragedAmount = Math.round(metrics.monthlyInvestmentRemaining * (LEVERAGED_TARGET_RATIO / 100));
   const cashAmount = metrics.monthlyInvestmentRemaining - leveragedAmount;
-  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考 00685L ${money.format(leveragedAmount)} / 現金 ${money.format(cashAmount)}。`;
+  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考 00685L ${money.format(leveragedAmount)} / 可投資現金 ${money.format(cashAmount)}。`;
 }
 
 function monthlyInvestmentSummary(metrics) {
@@ -1035,13 +1039,13 @@ function monthlyInvestmentSummary(metrics) {
 }
 
 function rebalanceActionSummary(metrics) {
-  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷 00685L / 現金比例。";
+  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷 00685L / 可投資現金比例。";
   const ratioText = `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%`;
   if (Math.abs(metrics.leveragedDrift) <= REBALANCE_BAND) {
     return `${ratioText}，比例接近目標，下一筆可照 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO} 分配。`;
   }
   return metrics.leveragedDrift > 0
-    ? `${ratioText}，比例偏高，下一筆先留現金。`
+    ? `${ratioText}，比例偏高，下一筆先留可投資現金。`
     : `${ratioText}，比例偏低，下一筆優先買 00685L。`;
 }
 
