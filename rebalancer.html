@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入首頁 00685L 與可投資現金，先保留緊急預備金，再檢查比例是否接近 70% / 30%。</p>
+          <p>自動帶入首頁台股投資與可投資現金，先保留緊急預備金，再檢查比例是否接近 70% / 30%。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -20,7 +20,7 @@
 
       <form id="rebalanceForm">
         <label>
-          00685L 正2目前金額
+          台股投資目前金額
           <input name="leveraged" type="number" step="1" min="0" placeholder="例如 700000" required />
         </label>
         <label>
@@ -32,11 +32,11 @@
           <input name="protectedCash" type="number" step="1" min="0" value="200000" readonly />
         </label>
         <label>
-          正2目標比例
+          台股目標比例
           <input name="leveragedTarget" type="number" step="1" min="0" max="100" value="70" required />
         </label>
         <label>
-          現金目標比例
+          可投資現金目標比例
           <input name="cashTarget" type="number" step="1" min="0" max="100" value="30" required />
         </label>
         <label class="full">
@@ -97,8 +97,8 @@
 
       function renderEmpty() {
         resultGrid.innerHTML = [
-          resultBox("目前 00685L 比例", "0%"),
-          resultBox("目前現金比例", "0%"),
+          resultBox("目前台股比例", "0%"),
+          resultBox("目前可投資現金比例", "0%"),
           resultBox("建議調整金額", money.format(0)),
         ].join("");
         leveragedBar.style.width = "70%";
@@ -134,8 +134,7 @@
       function applyPortfolio(portfolio, accounts = null) {
         const allocation = portfolio?.allocation || {};
         const summary = portfolio?.summary || {};
-        const leveragedHolding = (portfolio?.holdings || []).find((holding) => String(holding.symbol || "").toUpperCase() === "00685L");
-        const leveragedValue = leveragedHolding ? Number(leveragedHolding.marketValueTWD ?? leveragedHolding.marketValue ?? 0) : 0;
+        const leveragedValue = Math.round(Number(allocation.taiwanStocks ?? 0) || 0);
         const cashInfo = accounts
           ? accountBreakdown(accounts)
           : {
@@ -148,10 +147,10 @@
         form.elements.protectedCash.value = cashInfo.protectedCash;
         calculate();
         setStatus(
-          leveragedHolding
-            ? "已帶入首頁 00685L 現值與可投資現金；緊急預備金已先保留。"
-            : "首頁目前找不到 00685L，已帶入可投資現金；正2金額可先手動輸入。",
-          leveragedHolding ? "success" : "working",
+          leveragedValue
+            ? "已帶入首頁全部台股投資與可投資現金；緊急預備金已先保留。"
+            : "首頁目前找不到台股投資，已帶入可投資現金；台股金額可先手動輸入。",
+          leveragedValue ? "success" : "working",
         );
       }
 
@@ -202,23 +201,23 @@
         const diff = Math.round(targetLeveragedAmount - leveraged);
         const drift = leveragedRatio - leveragedTarget;
         const needsRebalance = Math.abs(drift) > band;
-        const action = diff > 0 ? "可用現金加碼 00685L" : "可賣出部分 00685L 轉回現金";
+        const action = diff > 0 ? "可用可投資現金加碼台股" : "可賣出部分台股轉回現金";
         const nextBuy = Math.round(35000 * (leveragedTarget / 100));
         const nextCash = 35000 - nextBuy;
         const nextContribution = drift > band
-          ? "目前 00685L 比例偏高，下一筆投入建議先放現金，等比例回到目標附近再加碼 00685L。"
+          ? "目前台股比例偏高，下一筆投入建議先放可投資現金，等比例回到目標附近再加碼台股。"
           : drift < -band
-            ? "目前 00685L 比例偏低，下一筆投入可以優先買 00685L。"
-            : `目前比例接近目標，下一筆可參考 00685L ${money.format(nextBuy)} / 現金 ${money.format(nextCash)}。`;
+            ? "目前台股比例偏低，下一筆投入可以優先買台股。"
+            : `目前比例接近目標，下一筆可參考台股 ${money.format(nextBuy)} / 可投資現金 ${money.format(nextCash)}。`;
         const advice = needsRebalance
-          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近 00685L ${leveragedTarget}% / 現金 ${cashTarget}%。`
+          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近台股 ${leveragedTarget}% / 可投資現金 ${cashTarget}%。`
           : `目前偏移約 ${pct.format(Math.abs(drift))}%，仍在 ${band}% 容許範圍內，可先維持。`;
 
         resultGrid.innerHTML = [
-          resultBox("目前 00685L 比例", `${pct.format(leveragedRatio)}%`),
+          resultBox("目前台股比例", `${pct.format(leveragedRatio)}%`),
           resultBox("可投資現金比例", `${pct.format(cashRatio)}%`),
           resultBox("建議調整金額", needsRebalance ? money.format(Math.abs(diff)) : money.format(0)),
-          resultBox("00685L 目標金額", money.format(Math.round(targetLeveragedAmount))),
+          resultBox("台股目標金額", money.format(Math.round(targetLeveragedAmount))),
           resultBox("可投資現金目標", money.format(Math.round(targetCashAmount))),
           resultBox("已保留緊急預備金", money.format(protectedCash)),
           resultBox("總檢查金額", money.format(total)),

@@ -522,8 +522,9 @@ function applyPortfolioData(portfolio, history = []) {
     { label: "負債", value: portfolio.allocation?.debt ?? 0, color: "#b8acd3" },
   ];
   data.rebalancer = {
-    leveragedValue: Number(leveragedHolding?.marketValueTWD ?? leveragedHolding?.marketValue ?? 0) || 0,
-    hasLeveragedHolding: Boolean(leveragedHolding),
+    leveragedValue: Number(portfolio.allocation?.taiwanStocks ?? twMarket.marketValue ?? 0) || 0,
+    hasLeveragedHolding: Number(portfolio.allocation?.taiwanStocks ?? twMarket.marketValue ?? 0) > 0,
+    hasLeveragedEtfHolding: Boolean(leveragedHolding),
   };
 
   if (history.length) {
@@ -797,7 +798,7 @@ function getPortfolioMetrics() {
   const postOfficeBalance = Number(data.accountBreakdown.postOfficeBalance) || 0;
   const monthlySinopacTransfer = Number(currentMonthFinance?.sinopacTransfer) || 0;
   const investableSinopacCash = Math.max(0, Math.round(sinopacBalance - EMERGENCY_FUND_TARGET));
-  const leveragedValue = data.rebalancer.leveragedValue || 0;
+  const leveragedValue = taiwanStocks || data.rebalancer.leveragedValue || 0;
   const protectedEmergencyCash = Math.min(cash, sinopacBalance ? Math.min(sinopacBalance, EMERGENCY_FUND_TARGET) : EMERGENCY_FUND_TARGET);
   const rebalanceCash = Math.max(0, Math.round(cash - protectedEmergencyCash));
   const rebalanceTotal = leveragedValue + rebalanceCash;
@@ -852,6 +853,7 @@ function getPortfolioMetrics() {
     leveragedRatio,
     leveragedDrift,
     hasLeveragedHolding: data.rebalancer.hasLeveragedHolding,
+    hasLeveragedEtfHolding: data.rebalancer.hasLeveragedEtfHolding,
   };
 }
 
@@ -986,8 +988,8 @@ function rebalanceMessage(metrics) {
   if (!metrics.hasLeveragedHolding) {
     return {
       status: "watch",
-      title: "00685L 資料",
-      text: "首頁目前找不到 00685L，請先確認持股或更新股價。",
+      title: "台股資料",
+      text: "首頁目前找不到台股持股，請先確認交易紀錄或更新股價。",
     };
   }
   if (!metrics.rebalanceTotal) {
@@ -1002,32 +1004,32 @@ function rebalanceMessage(metrics) {
     return {
       status: "good",
       title: "再平衡比例",
-      text: `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，仍在 ${REBALANCE_BAND}% 容許範圍內。`,
+      text: `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%，仍在 ${REBALANCE_BAND}% 容許範圍內。`,
     };
   }
   return {
     status: "warn",
     title: "再平衡比例",
     text: metrics.leveragedDrift > 0
-      ? `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏高，下次投入先保留可投資現金。`
-      : `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏低，下次投入可偏向 00685L。`,
+      ? `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏高，下次投入先保留可投資現金。`
+      : `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏低，下次投入可偏向台股。`,
   };
 }
 
 function nextContributionMessage(metrics) {
   if (metrics.monthlyInvestmentRemaining <= 0) return "本月投資目標已達成，下一筆投入可依 70/30 檢查比例微調。";
   if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，資料完整後再判斷正2/可投資現金比例。`;
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，資料完整後再判斷台股/可投資現金比例。`;
   }
   if (metrics.leveragedRatio > LEVERAGED_TARGET_RATIO + REBALANCE_BAND) {
     return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，建議先保留可投資現金，讓比例靠近 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO}。`;
   }
   if (metrics.leveragedRatio < LEVERAGED_TARGET_RATIO - REBALANCE_BAND) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，下次可優先投入 00685L。`;
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，下次可優先投入台股。`;
   }
   const leveragedAmount = Math.round(metrics.monthlyInvestmentRemaining * (LEVERAGED_TARGET_RATIO / 100));
   const cashAmount = metrics.monthlyInvestmentRemaining - leveragedAmount;
-  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考 00685L ${money.format(leveragedAmount)} / 可投資現金 ${money.format(cashAmount)}。`;
+  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考台股 ${money.format(leveragedAmount)} / 可投資現金 ${money.format(cashAmount)}。`;
 }
 
 function monthlyInvestmentSummary(metrics) {
@@ -1039,14 +1041,14 @@ function monthlyInvestmentSummary(metrics) {
 }
 
 function rebalanceActionSummary(metrics) {
-  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷 00685L / 可投資現金比例。";
-  const ratioText = `00685L 約 ${metrics.leveragedRatio.toFixed(1)}%`;
+  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷台股 / 可投資現金比例。";
+  const ratioText = `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%`;
   if (Math.abs(metrics.leveragedDrift) <= REBALANCE_BAND) {
     return `${ratioText}，比例接近目標，下一筆可照 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO} 分配。`;
   }
   return metrics.leveragedDrift > 0
     ? `${ratioText}，比例偏高，下一筆先留可投資現金。`
-    : `${ratioText}，比例偏低，下一筆優先買 00685L。`;
+    : `${ratioText}，比例偏低，下一筆優先買台股。`;
 }
 
 function monthlyTransferSummary(metrics) {
@@ -1124,7 +1126,7 @@ function availableContributionBudget(metrics) {
 
 function leveragedPriceSignalText(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
-  if (!metrics.hasLeveragedHolding) return "目前找不到 00685L 持股，請先確認交易紀錄或更新股價。";
+  if (!metrics.hasLeveragedEtfHolding) return "目前找不到 00685L 持股，這項加碼燈號先略過。";
   if (signal.state === "idle" || signal.state === "loading") return "正在讀取 00685L 近 20 個交易日價格。";
   if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先用本月投資額度與 70/30 比例判斷。";
   const base = `回落 ${signal.pullback.toFixed(1)}%。`;
@@ -1206,7 +1208,7 @@ function renderTodayActions() {
   const target = document.getElementById("todayActions");
   if (!target) return;
   const metrics = getPortfolioMetrics();
-  if (metrics.hasLeveragedHolding) loadLeveragedPullbackSignal();
+  if (metrics.hasLeveragedEtfHolding) loadLeveragedPullbackSignal();
   const conclusion = todayConclusion(metrics);
   const rows = [
     {
