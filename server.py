@@ -174,6 +174,30 @@ async def require_password(request: Request, call_next):
     return unauthorized_response()
 
 
+def app_version_payload() -> dict[str, Any]:
+    version = os.getenv("RENDER_GIT_COMMIT", "")[:7] or os.getenv("APP_VERSION", "")
+    if not version:
+        try:
+            version = str(int(max((ROOT / name).stat().st_mtime for name in ["index.html", "styles.css", "app.js"])))
+        except Exception:
+            version = "local"
+    return {
+        "ok": True,
+        "version": version,
+        "label": os.getenv("APP_VERSION_LABEL", "2026-06-26 stability"),
+    }
+
+
+def asset_version() -> str:
+    return app_version_payload()["version"]
+
+
+def html_page(filename: str) -> Response:
+    content = (ROOT / filename).read_text(encoding="utf-8")
+    content = content.replace("__ASSET_VERSION__", asset_version())
+    return Response(content=content, media_type="text/html; charset=utf-8")
+
+
 def read_demo_json(primary_path: Path, example_path: Path, default: Any) -> Any:
     if primary_path.exists():
         return read_json(primary_path, default)
@@ -947,11 +971,7 @@ def health() -> dict[str, str]:
 
 @app.get("/api/app-version")
 def app_version() -> dict[str, Any]:
-    return {
-        "ok": True,
-        "version": os.getenv("RENDER_GIT_COMMIT", "")[:7] or "local",
-        "label": os.getenv("APP_VERSION_LABEL", "2026-06-25 stability"),
-    }
+    return app_version_payload()
 
 
 @app.api_route("/login.html", methods=["GET", "HEAD"])
@@ -2058,9 +2078,15 @@ def update_prices_status() -> dict:
     return {"ok": True, "method": "POST", "message": "股價更新 API 已就緒。"}
 
 
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/index.html", methods=["GET", "HEAD"])
+def index_page() -> Response:
+    return html_page("index.html")
+
+
 @app.api_route("/settings.html", methods=["GET", "HEAD"])
-def settings_page() -> FileResponse:
-    return FileResponse(ROOT / "settings.html")
+def settings_page() -> Response:
+    return html_page("settings.html")
 
 
 @app.api_route("/settings", methods=["GET", "HEAD"])
@@ -2069,28 +2095,28 @@ def settings_redirect() -> RedirectResponse:
 
 
 @app.api_route("/transaction-manager.html", methods=["GET", "HEAD"])
-def transaction_manager_page() -> FileResponse:
-    return FileResponse(ROOT / "transaction-manager.html")
+def transaction_manager_page() -> Response:
+    return html_page("transaction-manager.html")
 
 
 @app.api_route("/dividend-manager.html", methods=["GET", "HEAD"])
-def dividend_manager_page() -> FileResponse:
-    return FileResponse(ROOT / "dividend-manager.html")
+def dividend_manager_page() -> Response:
+    return html_page("dividend-manager.html")
 
 
 @app.api_route("/snapshot-manager.html", methods=["GET", "HEAD"])
-def snapshot_manager_page() -> FileResponse:
-    return FileResponse(ROOT / "snapshot-manager.html")
+def snapshot_manager_page() -> Response:
+    return html_page("snapshot-manager.html")
 
 
 @app.api_route("/rebalancer.html", methods=["GET", "HEAD"])
-def rebalancer_page() -> FileResponse:
-    return FileResponse(ROOT / "rebalancer.html")
+def rebalancer_page() -> Response:
+    return html_page("rebalancer.html")
 
 
 @app.api_route("/holdings-audit.html", methods=["GET", "HEAD"])
-def holdings_audit_page() -> FileResponse:
-    return FileResponse(ROOT / "holdings-audit.html")
+def holdings_audit_page() -> Response:
+    return html_page("holdings-audit.html")
 
 
 app.mount("/", StaticFiles(directory=ROOT, html=True), name="static")

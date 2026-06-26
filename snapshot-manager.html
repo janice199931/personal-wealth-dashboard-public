@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>更新資產</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260614-monthly-finance" />
+    <link rel="stylesheet" href="./form-pages.css?v=__ASSET_VERSION__" />
   </head>
   <body>
     <main>
@@ -127,6 +127,11 @@
         statusText.className = `status${tone ? ` ${tone}` : ""}`;
       }
 
+      function savedStatus(prefix, savedAt) {
+        const savedTime = formatSavedAt(savedAt);
+        return savedTime ? `${prefix}。已保存，最後同步：${savedTime}` : `${prefix}。已保存`;
+      }
+
       function renderResult(payload) {
         const rows = [
           ["現金 + 銀行", money.format(payload.cashTWD || 0)],
@@ -172,8 +177,7 @@
           const payload = await readApiPayload(response, "資產更新失敗，請重新整理或確認登入狀態。");
           if (!response.ok) throw new Error(payload.detail || "資產更新失敗，請重新整理或確認登入狀態。");
           renderResult(payload);
-          const savedTime = formatSavedAt(payload.savedAt);
-          setStatus(`${payload.monthlyFinance ? "資產 / 月份統計 / 永豐資料已更新" : "資產 / 永豐資料已更新"}，回首頁即可看到最新數字。${savedTime ? `最後成功保存：${savedTime}` : ""}`, "success");
+          setStatus(savedStatus(`${payload.monthlyFinance ? "資產 / 月份統計 / 永豐資料已更新" : "資產 / 永豐資料已更新"}，回首頁即可看到最新數字`, payload.savedAt), "success");
         } catch (error) {
           setStatus(`${error.message || "資產更新失敗，請稍後再試。"} 你剛輸入的內容已保留，不用重打。`, "error");
         } finally {

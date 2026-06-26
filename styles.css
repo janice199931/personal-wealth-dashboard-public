@@ -357,6 +357,24 @@ h2 {
   opacity: 0.62;
 }
 
+.version-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  max-width: 180px;
+  padding: 0 10px;
+  border: 1px solid rgba(147, 122, 108, 0.14);
+  border-radius: 999px;
+  color: rgba(122, 94, 86, 0.72);
+  background: rgba(255, 253, 250, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .update-strip {
   min-width: min(520px, 48vw);
   padding: 8px 12px;

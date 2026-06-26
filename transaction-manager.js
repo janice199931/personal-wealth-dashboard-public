@@ -298,6 +298,11 @@ function setStatus(message, tone = "") {
   statusText.className = `status${tone ? ` ${tone}` : ""}`;
 }
 
+function savedStatus(prefix, savedAt) {
+  const savedTime = formatSavedAt(savedAt);
+  return savedTime ? `${prefix}。已保存，最後同步：${savedTime}` : `${prefix}。已保存`;
+}
+
 function setFormMode(id = null) {
   editingId = id;
   submitButton.textContent = editingId ? "更新交易" : "新增交易";
@@ -630,8 +635,7 @@ async function deleteTransaction(id) {
   setTransactions(payload.transactions || []);
   await verifySavedTransaction(payload, "delete", id);
   if (editingId === id) resetForm();
-  const savedTime = formatSavedAt(payload.savedAt);
-  setStatus(`已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`, "success");
+  setStatus(savedStatus(`已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, payload.savedAt), "success");
 }
 
 form.addEventListener("submit", async (event) => {
@@ -645,8 +649,8 @@ form.addEventListener("submit", async (event) => {
     await verifySavedTransaction(payload, mode);
     setStatus(
       mode === "update"
-        ? `已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆${formatSavedAt(payload.savedAt) ? `。最後成功保存：${formatSavedAt(payload.savedAt)}` : ""}`
-        : `已新增，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆${formatSavedAt(payload.savedAt) ? `。最後成功保存：${formatSavedAt(payload.savedAt)}` : ""}`,
+        ? savedStatus(`已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, payload.savedAt)
+        : savedStatus(`已新增，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, payload.savedAt),
       "success",
     );
     resetForm();

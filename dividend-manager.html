@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>股息追蹤</title>
-    <link rel="stylesheet" href="./form-pages.css?v=20260622-symbol-list" />
+    <link rel="stylesheet" href="./form-pages.css?v=__ASSET_VERSION__" />
   </head>
   <body>
     <main>
@@ -417,6 +417,11 @@
         statusText.className = `status${tone ? ` ${tone}` : ""}`;
       }
 
+      function savedStatus(prefix, savedAt) {
+        const savedTime = formatSavedAt(savedAt);
+        return savedTime ? `${prefix}。已保存，最後同步：${savedTime}` : `${prefix}。已保存`;
+      }
+
       function setFormMode(id = null) {
         editingId = id;
         submitButton.textContent = editingId ? "更新股息" : "新增股息";
@@ -597,8 +602,7 @@
         if (!response.ok) throw new Error(friendlyApiError(payload, "股息刪除失敗，請稍後再試。"));
         setDividends(payload.dividends || []);
         if (editingId === id) resetForm();
-        const savedTime = formatSavedAt(payload.savedAt);
-        setStatus(`已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`, "success");
+        setStatus(savedStatus(`已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, payload.savedAt), "success");
       }
 
       form.addEventListener("submit", async (event) => {
@@ -608,11 +612,10 @@
         try {
           const payload = await saveDividend();
           setDividends(payload.dividends || []);
-          const savedTime = formatSavedAt(payload.savedAt);
           setStatus(
             editingId
-              ? `已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`
-              : `已新增，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆${savedTime ? `。最後成功保存：${savedTime}` : ""}`,
+              ? savedStatus(`已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, payload.savedAt)
+              : savedStatus(`已新增，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, payload.savedAt),
             "success",
           );
           resetForm();

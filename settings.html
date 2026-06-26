@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>設定｜Janice的小天地</title>
-    <link rel="stylesheet" href="./styles.css?v=20260624-stability" />
+    <link rel="stylesheet" href="./styles.css?v=__ASSET_VERSION__" />
   </head>
   <body>
     <aside class="sidebar" aria-label="主選單">
@@ -127,10 +127,20 @@
         return ok ? "正常" : "異常";
       }
 
+      function healthAdvice(payload, pricePayload = null) {
+        const formalDataOk = payload.status?.currentDb === "supabase" && !payload.status?.fallbackActive;
+        if (!payload.authOk) return { tone: "error", text: "登入狀態異常，請重新登入後再操作。" };
+        if (!payload.readOk) return { tone: "error", text: "Supabase 目前讀取異常，先不要新增或修改資料。" };
+        if (!payload.writeOk) return { tone: "error", text: "Supabase 目前無法寫入，先不要新增交易、股息或更新資產。" };
+        if (!formalDataOk) return { tone: "error", text: "目前不是正式資料狀態，先不要新增或修改重要資料。" };
+        if (!pricePayload?.ok || !payload.priceApiOk) return { tone: "success", text: "資料保存正常，可以輸入資料；股價更新暫時不穩，晚點再更新即可。" };
+        return { tone: "success", text: "網站狀態正常，可以放心輸入資料。" };
+      }
+
       function renderDataHealth(payload, pricePayload = null) {
         const backup = payload.lastAutoBackup || payload.backup || {};
         const formalDataOk = payload.status?.currentDb === "supabase" && !payload.status?.fallbackActive;
-        const canSave = Boolean(payload.authOk && payload.readOk && payload.writeOk && formalDataOk);
+        const advice = healthAdvice(payload, pricePayload);
         const items = [
           ["登入狀態", healthLabel(payload.authOk)],
           ["Supabase 可讀", healthLabel(payload.readOk)],
@@ -142,10 +152,8 @@
           ["最近股價更新", formatHealthValue(payload.lastPriceUpdate)],
         ];
         const conclusion = document.getElementById("dataHealthConclusion");
-        conclusion.className = `health-conclusion ${canSave ? "success" : "error"}`;
-        conclusion.textContent = canSave
-          ? "網站狀態正常，可以放心輸入資料。"
-          : "目前資料狀態需要確認，先不要新增或修改重要資料。";
+        conclusion.className = `health-conclusion ${advice.tone}`;
+        conclusion.textContent = advice.text;
         document.getElementById("dataHealthGrid").innerHTML = items
           .map(([label, value]) => `<article class="diagnostics-card">
             <span>${label}</span>
@@ -156,7 +164,7 @@
         if (!pricePayload?.ok) issues.push("股價更新 API 目前檢查失敗。");
         document.getElementById("dataHealthNote").textContent = issues.length
           ? issues.join(" ")
-          : "目前網站狀態良好，可以正常使用。";
+          : "沒有發現需要處理的問題。";
       }
 
       async function readJsonSafely(response) {

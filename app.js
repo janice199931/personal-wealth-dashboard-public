@@ -1818,6 +1818,26 @@ function render() {
   renderLedger();
 }
 
+function renderCoreDashboard() {
+  renderHero();
+  renderKpis();
+  renderTodayActions();
+  renderDataUpdates();
+  renderDataStatusCards();
+}
+
+function renderVisualDashboard() {
+  renderAssetPie();
+  drawNetWorthChart();
+  setupChartHover();
+  renderMilestones();
+}
+
+function renderDetailDashboard() {
+  renderInvestmentCards();
+  renderLedger();
+}
+
 async function refreshDataStatus() {
   try {
     const response = await fetchWithTimeout("/api/db/status", { cache: "no-store" });
@@ -1876,7 +1896,11 @@ async function loadExternalData() {
     applyCurrentMonthFinance(cachedCore.currentMonthFinance || null);
     if (cachedCore.transactions) applyTransactionData(cachedCore.transactions);
     if (cachedCore.dividends) applyDividendData(cachedCore.dividends);
-    render();
+    renderCoreDashboard();
+    window.requestAnimationFrame(() => {
+      renderVisualDashboard();
+      renderDetailDashboard();
+    });
   }
 
   let core = await fetchJson("/api/dashboard-core?fast=1", "", null);
@@ -1894,16 +1918,17 @@ async function loadExternalData() {
     applyPortfolioData(core.portfolio, core.history || []);
     applyAccountData(core.accounts || {});
     applyCurrentMonthFinance(core.currentMonthFinance || null);
-    render();
+    renderCoreDashboard();
+    window.requestAnimationFrame(renderVisualDashboard);
     if (core.transactions) {
       applyTransactionData(core.transactions);
       transactionsLoaded = true;
-      render();
+      renderCoreDashboard();
     }
     if (core.dividends) {
       applyDividendData(core.dividends);
       dividendsLoaded = true;
-      render();
+      renderCoreDashboard();
     }
   } else {
     const [portfolio, history] = await Promise.all([
@@ -1912,7 +1937,8 @@ async function loadExternalData() {
     ]);
     if (portfolio) {
       applyPortfolioData(portfolio, history);
-      render();
+      renderCoreDashboard();
+      window.requestAnimationFrame(renderVisualDashboard);
     }
   }
 
@@ -1922,7 +1948,7 @@ async function loadExternalData() {
     const transactions = await fetchJson("/api/transactions", "./data/example-transactions.json", [], "transactions");
     if (transactions) {
       applyTransactionData(transactions);
-      render();
+      renderCoreDashboard();
     }
   }
 
@@ -1930,7 +1956,7 @@ async function loadExternalData() {
     const dividends = await fetchJson("/api/dividends", "./data/example-dividends.json", [], "dividends");
     if (dividends) {
       applyDividendData(dividends);
-      render();
+      renderCoreDashboard();
     }
   }
 
@@ -1939,19 +1965,24 @@ async function loadExternalData() {
   if (core?.portfolio) {
     rememberDashboardCore({ ...core, transactions: data.transactions, dividends: data.dividends, fast: false });
   }
-  render();
+  renderVisualDashboard();
+  renderDetailDashboard();
 }
 
 async function loadAppVersion() {
   const target = document.getElementById("appVersionText");
-  if (!target || window.location.protocol === "file:") return;
+  const topbarTarget = document.getElementById("topbarVersionText");
+  if ((!target && !topbarTarget) || window.location.protocol === "file:") return;
   try {
     const response = await fetchWithTimeout("/api/app-version", { cache: "no-store" }, 5000);
     if (!response.ok) return;
     const payload = await response.json();
-    target.textContent = `目前版本：${payload.label || "正式版"}${payload.version ? ` / ${payload.version}` : ""}`;
+    const versionText = `${payload.label || "正式版"}${payload.version ? ` / ${payload.version}` : ""}`;
+    if (target) target.textContent = `目前版本：${versionText}`;
+    if (topbarTarget) topbarTarget.textContent = `版本 ${payload.version || "正式版"}`;
   } catch {
-    target.textContent = "目前版本：正式版";
+    if (target) target.textContent = "目前版本：正式版";
+    if (topbarTarget) topbarTarget.textContent = "版本確認中";
   }
 }
 
