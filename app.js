@@ -1033,7 +1033,7 @@ function monthlyTransferSummary(metrics) {
 }
 
 function investableCashSummary(metrics) {
-  if (!metrics.sinopacBalance) return "請先在更新資產快照填永豐餘額，才會知道今天能不能加碼。";
+  if (!metrics.sinopacBalance) return "請先在更新資產填永豐餘額，才會知道今天能不能加碼。";
   if (metrics.sinopacBalance < EMERGENCY_FUND_TARGET) {
     return `永豐 ${money.format(metrics.sinopacBalance)}，低於緊急預備金 ${money.format(EMERGENCY_FUND_TARGET)}，先不要加碼。`;
   }

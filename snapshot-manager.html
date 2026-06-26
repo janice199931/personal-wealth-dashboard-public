@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>更新資產快照</title>
+    <title>更新資產</title>
     <link rel="stylesheet" href="./form-pages.css?v=20260614-monthly-finance" />
   </head>
   <body>
     <main>
       <section class="card hero-card">
         <div>
-          <h1>更新資產快照</h1>
+          <h1>更新資產</h1>
           <p>更新現金、銀行、信用卡負債，也可以手動記錄每月收入、支出與轉入永豐。</p>
         </div>
         <a href="./index.html">← 回到首頁</a>
@@ -66,8 +66,8 @@
           <input name="image" type="file" accept="image/*" />
         </label>
         <div class="actions full">
-          <span class="status" id="statusText">可更新資產快照，也可只填月份收入與支出。</span>
-          <button id="submitButton" type="submit">更新資產快照</button>
+          <span class="status" id="statusText">可更新資產，也可只填月份收入與支出。</span>
+          <button id="submitButton" type="submit">更新資產</button>
         </div>
       </form>
 
@@ -169,13 +169,13 @@
           const data = new FormData(form);
           data.set("month", `${financeYear.value}-${financeMonth.value}`);
           const response = await fetch("/api/update-asset-snapshot", { method: "POST", body: data });
-          const payload = await readApiPayload(response, "資產快照更新失敗，請重新整理或確認登入狀態。");
-          if (!response.ok) throw new Error(payload.detail || "資產快照更新失敗，請重新整理或確認登入狀態。");
+          const payload = await readApiPayload(response, "資產更新失敗，請重新整理或確認登入狀態。");
+          if (!response.ok) throw new Error(payload.detail || "資產更新失敗，請重新整理或確認登入狀態。");
           renderResult(payload);
           const savedTime = formatSavedAt(payload.savedAt);
-          setStatus(`${payload.monthlyFinance ? "資產快照 / 月份統計 / 永豐資料已更新" : "資產快照 / 永豐資料已更新"}，回首頁即可看到最新數字。${savedTime ? `最後成功保存：${savedTime}` : ""}`, "success");
+          setStatus(`${payload.monthlyFinance ? "資產 / 月份統計 / 永豐資料已更新" : "資產 / 永豐資料已更新"}，回首頁即可看到最新數字。${savedTime ? `最後成功保存：${savedTime}` : ""}`, "success");
         } catch (error) {
-          setStatus(`${error.message || "資產快照更新失敗，請稍後再試。"} 你剛輸入的內容已保留，不用重打。`, "error");
+          setStatus(`${error.message || "資產更新失敗，請稍後再試。"} 你剛輸入的內容已保留，不用重打。`, "error");
         } finally {
           submitButton.disabled = false;
         }

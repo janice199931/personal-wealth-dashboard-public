@@ -850,7 +850,7 @@ def detect_data_anomalies(
     cash = to_float(summary.get("cash"))
     debt = to_float(summary.get("debt"))
     if total_assets < 0 or net_worth < 0:
-        anomalies.append("總資產或淨資產小於 0，請確認資產快照。")
+        anomalies.append("總資產或淨資產小於 0，請確認資產。")
     if abs((stock_assets + cash) - total_assets) > max(1000, total_assets * 0.02):
         anomalies.append("總資產與股票資產加現金沒有對上，請確認資產組合。")
     if debt > total_assets and total_assets > 0:
@@ -1849,7 +1849,7 @@ async def update_asset_snapshot(
                 "source": "supplement_only",
             }
 
-    write_pre_change_backup("更新資產快照")
+    write_pre_change_backup("更新資產")
     if amounts["source"] == "supplement_only":
         if has_any_monthly:
             monthly_finance = save_manual_monthly_finance(
@@ -1906,9 +1906,9 @@ async def update_asset_snapshot(
         raise HTTPException(status_code=503, detail="永豐餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if amounts["source"] not in {"supplement_only", "existing_accounts"}:
         if round(float(verified_accounts.get("cashTWD", -1) or 0)) != round(float(amounts["cash"] + amounts["bank"])):
-            raise HTTPException(status_code=503, detail="資產快照已送出，但重新讀取後現金/銀行合計沒有對上，請重新整理確認。")
+            raise HTTPException(status_code=503, detail="資產已送出，但重新讀取後現金/銀行合計沒有對上，請重新整理確認。")
         if round(float(verified_accounts.get("creditCardDebt", -1) or 0)) != round(float(amounts["debt"])):
-            raise HTTPException(status_code=503, detail="資產快照已送出，但重新讀取後信用卡負債沒有對上，請重新整理確認。")
+            raise HTTPException(status_code=503, detail="資產已送出，但重新讀取後信用卡負債沒有對上，請重新整理確認。")
     if has_any_monthly:
         verified_finance = db_store.read_finance_data({})
         verified_month = None
