@@ -74,12 +74,14 @@ const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
+const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
 const PRICE_UPDATE_TIMEOUT_MS = 65000;
 const AUTO_PRICE_UPDATE_TIMEOUT_MS = 18000;
 const DASHBOARD_CORE_TIMEOUTS = [8000, 12000];
 let dataStatus = null;
 let priceUpdateInProgress = false;
 let priceAutoRefreshTimer = null;
+let financeDataLoaded = Boolean(window.financeData?.years?.length);
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController();
@@ -124,6 +126,25 @@ function rememberDashboardCore(core) {
     window.localStorage.setItem(DASHBOARD_CORE_CACHE_KEY, JSON.stringify(nextCore));
   } catch {
     // Last-good data is only a safety net; live Supabase data remains the source of truth.
+  }
+}
+
+function readLastFinanceData() {
+  if (!window.localStorage) return null;
+  try {
+    return JSON.parse(window.localStorage.getItem(FINANCE_DATA_CACHE_KEY) || "null");
+  } catch {
+    window.localStorage.removeItem(FINANCE_DATA_CACHE_KEY);
+    return null;
+  }
+}
+
+function rememberFinanceData(financeData) {
+  if (!window.localStorage || !financeData?.years?.length) return;
+  try {
+    window.localStorage.setItem(FINANCE_DATA_CACHE_KEY, JSON.stringify(financeData));
+  } catch {
+    // Cached finance data only keeps the dashboard from looking empty during slow loads.
   }
 }
 
@@ -1774,6 +1795,10 @@ function renderLedger() {
   const target = document.getElementById("yearAccordion");
   if (!target) return;
   if (!window.financeData?.years?.length) {
+    if (!financeDataLoaded) {
+      target.innerHTML = '<div class="loading-row">正在載入年度/月度對帳...</div>';
+      return;
+    }
     target.innerHTML = '<div class="empty-state">目前沒有可顯示的年度/月度對帳資料。</div>';
     return;
   }
@@ -1889,6 +1914,12 @@ async function loadExternalData() {
     .then(renderDataStatusCards)
     .catch(() => {});
 
+  const cachedFinanceData = readLastFinanceData();
+  if (cachedFinanceData?.years?.length && !window.financeData?.years?.length) {
+    window.financeData = cachedFinanceData;
+    financeDataLoaded = true;
+  }
+
   const cachedCore = readLastDashboardCore();
   if (cachedCore?.portfolio) {
     applyPortfolioData(cachedCore.portfolio, cachedCore.history || []);
@@ -1961,7 +1992,11 @@ async function loadExternalData() {
   }
 
   const financeData = await financeDataPromise;
-  if (financeData?.years?.length) window.financeData = financeData;
+  financeDataLoaded = true;
+  if (financeData?.years?.length) {
+    window.financeData = financeData;
+    rememberFinanceData(financeData);
+  }
   if (core?.portfolio) {
     rememberDashboardCore({ ...core, transactions: data.transactions, dividends: data.dividends, fast: false });
   }
