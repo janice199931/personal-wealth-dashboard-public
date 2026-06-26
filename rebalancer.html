@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入首頁台股投資與可投資現金，先保留緊急預備金，再檢查比例是否接近 70% / 30%。</p>
+          <p>自動帶入首頁台股投資與可投資現金，先保留緊急預備金；比例只作參考，不要求現金固定 30%。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -32,19 +32,19 @@
           <input name="protectedCash" type="number" step="1" min="0" value="200000" readonly />
         </label>
         <label>
-          台股目標比例
+          台股參考比例
           <input name="leveragedTarget" type="number" step="1" min="0" max="100" value="70" required />
         </label>
         <label>
-          可投資現金目標比例
+          可投資現金參考比例
           <input name="cashTarget" type="number" step="1" min="0" max="100" value="30" required />
         </label>
         <label class="full">
           容許偏移
           <select name="band">
-            <option value="3">超過 3% 才提醒再平衡</option>
-            <option value="5" selected>超過 5% 才提醒再平衡</option>
-            <option value="10">超過 10% 才提醒再平衡</option>
+            <option value="3">超過 3% 才提示參考調整</option>
+            <option value="5" selected>超過 5% 才提示參考調整</option>
+            <option value="10">超過 10% 才提示參考調整</option>
           </select>
         </label>
         <div class="actions full">
@@ -210,7 +210,7 @@
             ? "目前台股比例偏低，下一筆投入可以優先買台股。"
             : `目前比例接近目標，下一筆可參考台股 ${money.format(nextBuy)} / 可投資現金 ${money.format(nextCash)}。`;
         const advice = needsRebalance
-          ? `${action} ${money.format(Math.abs(diff))}，調整後會接近台股 ${leveragedTarget}% / 可投資現金 ${cashTarget}%。`
+          ? `${action} ${money.format(Math.abs(diff))}，這只是比例參考；仍以資金水位優先。`
           : `目前偏移約 ${pct.format(Math.abs(drift))}%，仍在 ${band}% 容許範圍內，可先維持。`;
 
         resultGrid.innerHTML = [
@@ -225,7 +225,7 @@
         leveragedBar.style.width = `${Math.min(100, Math.max(0, leveragedRatio))}%`;
         cashBar.style.width = `${Math.min(100, Math.max(0, cashRatio))}%`;
         adviceBox.classList.toggle("editing", needsRebalance);
-        adviceBox.innerHTML = `<span><strong>${needsRebalance ? "建議再平衡" : "目前可維持"}</strong> ${advice}</span>`;
+        adviceBox.innerHTML = `<span><strong>${needsRebalance ? "參考調整" : "目前可維持"}</strong> ${advice}</span>`;
         nextContributionBox.innerHTML = `
           <span>下一筆投入建議</span>
           <strong>${nextContribution}</strong>

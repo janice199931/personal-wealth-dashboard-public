@@ -11,15 +11,23 @@
       <section class="card hero-card">
         <div>
           <h1>更新資產</h1>
-          <p>更新現金、各銀行餘額、信用卡負債，也可以手動記錄每月收入、支出與轉入永豐。</p>
+          <p>更新資金水位、各銀行餘額、信用卡負債，也可以手動記錄每月收入、支出與轉入永豐。</p>
         </div>
         <a href="./index.html">← 回到首頁</a>
       </section>
 
       <form id="snapshotForm">
         <label>
-          現金
-          <input name="cash" type="number" step="1" min="0" />
+          緊急預備金
+          <input name="emergencyFund" type="number" step="1" min="0" placeholder="目標 200000" />
+        </label>
+        <label>
+          投資預備金
+          <input name="investmentReserve" type="number" step="1" min="0" placeholder="目標 100000～150000" />
+        </label>
+        <label>
+          可自由運用現金
+          <input name="availableCash" type="number" step="1" min="0" />
         </label>
         <label>
           其他銀行餘額
@@ -143,6 +151,9 @@
             ["郵局餘額", money.format(payload.accountBreakdown.postOfficeBalance || 0)],
             ["永豐餘額", money.format(payload.accountBreakdown.sinopacBalance || 0)],
             ["其他銀行餘額", money.format(payload.accountBreakdown.otherBankBalance || payload.bank || 0)],
+            ["緊急預備金", money.format(payload.accountBreakdown.emergencyFund || 0)],
+            ["投資預備金", money.format(payload.accountBreakdown.investmentReserve || 0)],
+            ["可自由運用現金", money.format(payload.accountBreakdown.availableCash || 0)],
           );
         }
         if (payload.monthlyFinance) {
@@ -179,7 +190,7 @@
           if (!response.ok) throw new Error(payload.detail || "資產更新失敗，請重新整理或確認登入狀態。");
           renderResult(payload);
           const preservedNote = "未填欄位已維持原資料";
-          setStatus(savedStatus(`${payload.monthlyFinance ? "資產 / 月份統計 / 永豐資料已更新" : "資產 / 永豐資料已更新"}，${preservedNote}，回首頁即可看到最新數字`, payload.savedAt), "success");
+          setStatus(savedStatus(`${payload.monthlyFinance ? "資產 / 月份統計 / 資金水位已更新" : "資產 / 資金水位已更新"}，${preservedNote}，回首頁即可看到最新數字`, payload.savedAt), "success");
         } catch (error) {
           setStatus(`${error.message || "資產更新失敗，請稍後再試。"} 你剛輸入的內容已保留，不用重打。`, "error");
         } finally {

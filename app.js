@@ -42,6 +42,7 @@ const data = {
   rebalancer: {
     leveragedValue: 0,
     hasLeveragedHolding: false,
+    hasLeveragedEtfHolding: false,
   },
 };
 
@@ -69,6 +70,8 @@ const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const PRICE_AUTO_REFRESH_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 200000;
+const INVESTMENT_RESERVE_MIN = 100000;
+const INVESTMENT_RESERVE_MAX = 150000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
@@ -545,6 +548,26 @@ function applyCurrentMonthFinance(month = null) {
   data.currentMonthFinance = month && typeof month === "object" ? month : null;
 }
 
+function cashBuckets(totalCash = 0) {
+  const breakdown = data.accountBreakdown || {};
+  const hasManualBuckets = ["emergencyFund", "investmentReserve", "availableCash"]
+    .some((key) => breakdown[key] !== undefined && breakdown[key] !== null && breakdown[key] !== "");
+  if (hasManualBuckets) {
+    const emergencyFund = Math.max(0, Math.round(Number(breakdown.emergencyFund) || 0));
+    const investmentReserve = Math.max(0, Math.round(Number(breakdown.investmentReserve) || 0));
+    const availableCash = Math.max(0, Math.round(Number(breakdown.availableCash) || 0));
+    return { emergencyFund, investmentReserve, availableCash };
+  }
+
+  const sinopac = Math.max(0, Math.round(Number(breakdown.sinopacBalance) || 0));
+  const emergencyBase = sinopac || totalCash;
+  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, emergencyBase);
+  const reserveBase = Math.max(0, (sinopac || totalCash) - emergencyFund);
+  const investmentReserve = reserveBase;
+  const availableCash = Math.max(0, Math.round(totalCash - emergencyFund - investmentReserve));
+  return { emergencyFund, investmentReserve, availableCash };
+}
+
 function fitCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -796,11 +819,15 @@ function getPortfolioMetrics() {
   const monthlyInvestmentRemaining = Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlyInvestment));
   const sinopacBalance = Number(data.accountBreakdown.sinopacBalance) || 0;
   const postOfficeBalance = Number(data.accountBreakdown.postOfficeBalance) || 0;
+  const buckets = cashBuckets(cash);
+  const emergencyFund = buckets.emergencyFund;
+  const investmentReserve = buckets.investmentReserve;
+  const availableCash = buckets.availableCash;
   const monthlySinopacTransfer = Number(currentMonthFinance?.sinopacTransfer) || 0;
-  const investableSinopacCash = Math.max(0, Math.round(sinopacBalance - EMERGENCY_FUND_TARGET));
+  const investableSinopacCash = Math.max(0, investmentReserve + availableCash);
   const leveragedValue = taiwanStocks || data.rebalancer.leveragedValue || 0;
-  const protectedEmergencyCash = Math.min(cash, sinopacBalance ? Math.min(sinopacBalance, EMERGENCY_FUND_TARGET) : EMERGENCY_FUND_TARGET);
-  const rebalanceCash = Math.max(0, Math.round(cash - protectedEmergencyCash));
+  const protectedEmergencyCash = emergencyFund;
+  const rebalanceCash = Math.max(0, investmentReserve + availableCash);
   const rebalanceTotal = leveragedValue + rebalanceCash;
   const leveragedRatio = rebalanceTotal ? (leveragedValue / rebalanceTotal) * 100 : 0;
   const leveragedDrift = leveragedRatio - LEVERAGED_TARGET_RATIO;
@@ -843,6 +870,9 @@ function getPortfolioMetrics() {
     monthlySinopacTransfer,
     monthlySinopacTransferRemaining: Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlySinopacTransfer)),
     investableSinopacCash,
+    emergencyFund,
+    investmentReserve,
+    availableCash,
     protectedEmergencyCash,
     rebalanceCash,
     investmentCostTwd,
@@ -995,7 +1025,7 @@ function rebalanceMessage(metrics) {
   if (!metrics.rebalanceTotal) {
     return {
       status: "watch",
-      title: "再平衡比例",
+      title: "資金水位",
       text: "目前可投資現金為 0，先守住緊急預備金。",
     };
   }
@@ -1003,33 +1033,65 @@ function rebalanceMessage(metrics) {
   if (drift <= REBALANCE_BAND) {
     return {
       status: "good",
-      title: "再平衡比例",
-      text: `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%，仍在 ${REBALANCE_BAND}% 容許範圍內。`,
+      title: "資金水位",
+      text: "現金水位健康，維持每月固定投入即可。",
     };
   }
   return {
     status: "warn",
-    title: "再平衡比例",
+    title: "資金水位",
     text: metrics.leveragedDrift > 0
-      ? `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏高，下次投入先保留可投資現金。`
-      : `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%，比例偏低，下次投入可偏向台股。`,
+      ? "台股比例偏高，下次投入先保留投資預備金。"
+      : "台股比例偏低，仍先依資金水位決定是否投入。",
   };
 }
 
 function nextContributionMessage(metrics) {
-  if (metrics.monthlyInvestmentRemaining <= 0) return "本月投資目標已達成，下一筆投入可依 70/30 檢查比例微調。";
+  if (metrics.monthlyInvestmentRemaining <= 0) return "本月投資目標已達成，下一筆先看投資預備金水位。";
   if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，資料完整後再判斷台股/可投資現金比例。`;
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，先維持固定投入。`;
   }
   if (metrics.leveragedRatio > LEVERAGED_TARGET_RATIO + REBALANCE_BAND) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，建議先保留可投資現金，讓比例靠近 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO}。`;
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，台股偏高時先保留投資預備金。`;
   }
   if (metrics.leveragedRatio < LEVERAGED_TARGET_RATIO - REBALANCE_BAND) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，下次可優先投入台股。`;
+    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可照固定投入買台股。`;
   }
-  const leveragedAmount = Math.round(metrics.monthlyInvestmentRemaining * (LEVERAGED_TARGET_RATIO / 100));
-  const cashAmount = metrics.monthlyInvestmentRemaining - leveragedAmount;
-  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可參考台股 ${money.format(leveragedAmount)} / 可投資現金 ${money.format(cashAmount)}。`;
+  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，維持每月固定投入。`;
+}
+
+function cashWaterStatus(metrics) {
+  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
+    return {
+      status: "warn",
+      text: "優先補足緊急預備金，今天先不要加碼",
+    };
+  }
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) {
+    return {
+      status: "watch",
+      text: "緊急預備金已達標，接下來補投資預備金",
+    };
+  }
+  if (metrics.investmentReserve <= INVESTMENT_RESERVE_MAX) {
+    return {
+      status: "good",
+      text: "現金水位健康，可維持每月固定投入",
+    };
+  }
+  return {
+    status: "watch",
+    text: `投資預備金偏高，可考慮將超過 ${money.format(INVESTMENT_RESERVE_MAX)} 的部分分批投入`,
+  };
+}
+
+function fundWaterSummary(metrics) {
+  return [
+    `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
+    `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(INVESTMENT_RESERVE_MIN)}～${money.format(INVESTMENT_RESERVE_MAX)}`,
+    `每月固定投入：${money.format(MONTHLY_INVESTMENT_TARGET)}`,
+    `本月已投入：${money.format(Math.round(metrics.monthlyInvestment))}`,
+  ].join("<br>");
 }
 
 function monthlyInvestmentSummary(metrics) {
@@ -1041,14 +1103,11 @@ function monthlyInvestmentSummary(metrics) {
 }
 
 function rebalanceActionSummary(metrics) {
-  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷台股 / 可投資現金比例。";
-  const ratioText = `台股投資約 ${metrics.leveragedRatio.toFixed(1)}%`;
-  if (Math.abs(metrics.leveragedDrift) <= REBALANCE_BAND) {
-    return `${ratioText}，比例接近目標，下一筆可照 ${LEVERAGED_TARGET_RATIO}/${CASH_TARGET_RATIO} 分配。`;
-  }
-  return metrics.leveragedDrift > 0
-    ? `${ratioText}，比例偏高，下一筆先留可投資現金。`
-    : `${ratioText}，比例偏低，下一筆優先買台股。`;
+  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷資金水位。";
+  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) return "先補緊急預備金。";
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "接下來補投資預備金。";
+  if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return "投資預備金偏高，可分批投入超出部分。";
+  return "現金水位健康，維持每月固定投入。";
 }
 
 function monthlyTransferSummary(metrics) {
@@ -1060,95 +1119,70 @@ function monthlyTransferSummary(metrics) {
 }
 
 function investableCashSummary(metrics) {
-  if (!metrics.sinopacBalance) return "未填永豐餘額，先補資料。";
-  if (metrics.sinopacBalance < EMERGENCY_FUND_TARGET) {
-    return `永豐 ${money.format(metrics.sinopacBalance)}，低於 ${money.format(EMERGENCY_FUND_TARGET)}。`;
+  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
+    return `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.emergencyFund)}。`;
   }
-  if (metrics.investableSinopacCash <= 0) {
-    return `剛好守住 ${money.format(EMERGENCY_FUND_TARGET)}，先不動用。`;
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) {
+    return `投資預備金還差 ${money.format(INVESTMENT_RESERVE_MIN - metrics.investmentReserve)} 到健康水位。`;
   }
-  return `可用 ${money.format(metrics.investableSinopacCash)}。`;
+  if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) {
+    return `超過上限 ${money.format(metrics.investmentReserve - INVESTMENT_RESERVE_MAX)}，可分批投入。`;
+  }
+  return `投資預備金 ${money.format(metrics.investmentReserve)}，水位健康。`;
 }
 
 function todayConclusion(metrics) {
-  if (!metrics.sinopacBalance) {
-    return {
-      status: "warn",
-      text: "先填永豐餘額，今天能不能加碼才會準。",
-    };
-  }
-  if (metrics.sinopacBalance < EMERGENCY_FUND_TARGET) {
-    return {
-      status: "warn",
-      text: `先不要買，永豐低於緊急預備金 ${money.format(EMERGENCY_FUND_TARGET)}。`,
-    };
-  }
-  if (metrics.monthlySinopacTransferRemaining > 0) {
-    return {
-      status: "watch",
-      text: `先轉 ${money.format(metrics.monthlySinopacTransferRemaining)} 到永豐，再看買點。`,
-    };
-  }
-  if (metrics.investableSinopacCash <= 0) {
-    return {
-      status: "warn",
-      text: "永豐剛好達緊急預備金，今天先不要加碼。",
-    };
-  }
-  if (metrics.monthlyInvestmentRemaining <= 0) {
-    return {
-      status: "good",
-      text: "本月已達標，今天不用急著買。",
-    };
-  }
-  return {
-    status: "good",
-    text: `可加碼 ${money.format(Math.min(metrics.investableSinopacCash, metrics.monthlyInvestmentRemaining))}。`,
-  };
+  return cashWaterStatus(metrics);
 }
 
 function nextActionSummary(metrics) {
-  if (!metrics.sinopacBalance) return "去更新資產填永豐餘額。";
-  if (metrics.investableSinopacCash <= 0) return "今天不買，先守住緊急預備金。";
-  if (metrics.monthlySinopacTransferRemaining > 0) {
-    return `先轉 ${money.format(metrics.monthlySinopacTransferRemaining)} 到永豐。`;
-  }
-  if (metrics.monthlyInvestmentRemaining <= 0) return "本月已達標，下一筆不用急。";
-  return nextContributionMessage(metrics);
+  const water = cashWaterStatus(metrics);
+  if (water.status === "warn") return "今天不買，先補緊急預備金。";
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "先把投資預備金補到 10 萬。";
+  if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return `超過 ${money.format(INVESTMENT_RESERVE_MAX)} 的部分可分 2-3 筆投入。`;
+  if (metrics.monthlyInvestmentRemaining <= 0) return "本月固定投入已完成，先觀察。";
+  return `維持每月固定投入，本月還差 ${money.format(metrics.monthlyInvestmentRemaining)}。`;
 }
 
 function availableContributionBudget(metrics) {
   return Math.max(0, Math.min(
-    Number(metrics.investableSinopacCash) || 0,
+    Number(metrics.investmentReserve) || 0,
     Number(metrics.monthlyInvestmentRemaining) || 0,
   ));
+}
+
+function reserveDeploymentAmount(metrics, ratio) {
+  return Math.max(0, Math.round((Number(metrics.investmentReserve) || 0) * ratio));
 }
 
 function leveragedPriceSignalText(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
   if (!metrics.hasLeveragedEtfHolding) return "目前找不到 00685L 持股，這項加碼燈號先略過。";
   if (signal.state === "idle" || signal.state === "loading") return "正在讀取 00685L 近 20 個交易日價格。";
-  if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先用本月投資額度與 70/30 比例判斷。";
+  if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先維持每月固定投入。";
   const base = `回落 ${signal.pullback.toFixed(1)}%。`;
-  if (!metrics.sinopacBalance || metrics.investableSinopacCash <= 0) {
-    return `${base} 分級：禁止加碼，先守住永豐緊急預備金。`;
+  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
+    return `${base} 先補緊急預備金，不加碼。`;
   }
-  if (metrics.monthlyInvestmentRemaining <= 0) {
-    return `${base} 分級：只觀察，本月投資目標已達標。`;
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) {
+    return `${base} 先補投資預備金，不額外加碼。`;
   }
-  const budget = availableContributionBudget(metrics);
-  if (signal.pullback < 5) return `${base} 一般投入，不額外加碼。`;
-  if (signal.pullback < 10) return `${base} 觀察，先保留額度 ${money.format(budget)}。`;
-  if (signal.pullback < 15) {
-    return `${base} 小額加碼，最多 ${money.format(Math.min(10000, budget))}。`;
+  if (signal.pullback >= 30) {
+    return `${base} 回檔 30%，投入投資預備金剩餘 30%，約 ${money.format(reserveDeploymentAmount(metrics, 0.3))}。`;
   }
-  return `${base} 分批加碼，本月最多 ${money.format(budget)}。`;
+  if (signal.pullback >= 20) {
+    return `${base} 回檔 20%，再動用投資預備金 40%，約 ${money.format(reserveDeploymentAmount(metrics, 0.4))}。`;
+  }
+  if (signal.pullback >= 10) {
+    return `${base} 回檔 10%，可動用投資預備金 30%，約 ${money.format(reserveDeploymentAmount(metrics, 0.3))}。`;
+  }
+  return `${base} 一般震盪，只做每月固定投入。`;
 }
 
 function leveragedPriceSignalStatus() {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
   if (signal.state !== "ready") return "watch";
-  if (signal.pullback >= 15) return "warn";
+  if (signal.pullback >= 20) return "warn";
   if (signal.pullback >= 10) return "watch";
   return "good";
 }
@@ -1217,16 +1251,16 @@ function renderTodayActions() {
       text: conclusion.text,
     },
     {
-      status: metrics.monthlySinopacTransferRemaining <= 0 ? "good" : "watch",
-      title: "轉入永豐",
-      text: monthlyTransferSummary(metrics),
+      status: cashWaterStatus(metrics).status,
+      title: "資金水位",
+      text: fundWaterSummary(metrics),
     },
     {
-      status: metrics.sinopacBalance && metrics.investableSinopacCash > 0 ? "good" : "warn",
-      title: "可動用金額",
+      status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET && metrics.investmentReserve >= INVESTMENT_RESERVE_MIN ? "good" : "watch",
+      title: "投資預備金",
       text: investableCashSummary(metrics),
     },
-    { status: leveragedPriceSignalStatus(), title: "00685L 狀態", text: leveragedPriceSignalText(metrics) },
+    { status: leveragedPriceSignalStatus(), title: "加碼規則", text: leveragedPriceSignalText(metrics) },
     {
       status: metrics.monthlyInvestmentRemaining <= 0 ? "good" : "watch",
       title: "本月進度",

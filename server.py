@@ -664,16 +664,31 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
     breakdown = accounts.get("accountBreakdown") if isinstance(accounts.get("accountBreakdown"), dict) else {}
     post_office = round(float(breakdown.get("postOfficeBalance", 0) or 0))
     sinopac = round(float(breakdown.get("sinopacBalance", 0) or 0))
+    has_fund_buckets = any(key in breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
+    emergency_fund = round(float(breakdown.get("emergencyFund", 0) or 0))
+    investment_reserve = round(float(breakdown.get("investmentReserve", 0) or 0))
+    available_cash = round(float(breakdown.get("availableCash", 0) or 0))
     cash_balance = breakdown.get("cashBalance")
     other_bank = breakdown.get("otherBankBalance")
+    if has_fund_buckets:
+        cash_balance = emergency_fund + investment_reserve + available_cash
     if cash_balance is None and other_bank is None:
         other_bank = max(0, round(float(accounts.get("cashTWD", 0) or 0)) - post_office - sinopac)
         cash_balance = 0
+    if not has_fund_buckets:
+        total_cash = round(float(accounts.get("cashTWD", 0) or 0))
+        emergency_base = sinopac or total_cash
+        emergency_fund = min(200000, emergency_base)
+        investment_reserve = max(0, (sinopac or total_cash) - emergency_fund)
+        available_cash = max(0, total_cash - emergency_fund - investment_reserve)
     return {
         "cash": round(float(cash_balance or 0)),
         "bank": round(float(other_bank or 0)),
         "postOfficeBalance": post_office,
         "sinopacBalance": sinopac,
+        "emergencyFund": emergency_fund,
+        "investmentReserve": investment_reserve,
+        "availableCash": available_cash,
     }
 
 
@@ -1755,6 +1770,9 @@ async def update_asset_snapshot(
     csv: Optional[UploadFile] = File(None),
     image: Optional[UploadFile] = File(None),
     cash: Optional[str] = Form(None),
+    emergencyFund: Optional[str] = Form(None),
+    investmentReserve: Optional[str] = Form(None),
+    availableCash: Optional[str] = Form(None),
     bank: Optional[str] = Form(None),
     otherBankBalance: Optional[str] = Form(None),
     postOfficeBalance: Optional[str] = Form(None),
@@ -1778,6 +1796,9 @@ async def update_asset_snapshot(
         return None
 
     cash = cash or form_text("cash")
+    emergencyFund = emergencyFund or form_text("emergencyFund", "emergency_fund")
+    investmentReserve = investmentReserve or form_text("investmentReserve", "investment_reserve")
+    availableCash = availableCash or form_text("availableCash", "available_cash")
     bank = bank or otherBankBalance or form_text("otherBankBalance", "other_bank_balance", "bank")
     postOfficeBalance = postOfficeBalance or form_text("postOfficeBalance", "post_office_balance", "postOffice")
     sinopacBalance = sinopacBalance or form_text("sinopacBalance", "sinopac_balance", "sinopac")
@@ -1792,6 +1813,9 @@ async def update_asset_snapshot(
     )
 
     manual_cash = parse_manual_amount(cash, "現金")
+    manual_emergency_fund = parse_manual_amount(emergencyFund, "緊急預備金")
+    manual_investment_reserve = parse_manual_amount(investmentReserve, "投資預備金")
+    manual_available_cash = parse_manual_amount(availableCash, "可自由運用現金")
     manual_bank = parse_manual_amount(bank, "其他銀行餘額")
     manual_post_office = parse_manual_amount(postOfficeBalance, "郵局餘額")
     manual_sinopac = parse_manual_amount(sinopacBalance, "永豐餘額")
@@ -1802,6 +1826,9 @@ async def update_asset_snapshot(
     manual_month = parse_month_key(month)
     manual_values = {
         "現金": manual_cash,
+        "緊急預備金": manual_emergency_fund,
+        "投資預備金": manual_investment_reserve,
+        "可自由運用現金": manual_available_cash,
         "其他銀行餘額": manual_bank,
         "信用卡負債": manual_debt,
     }
@@ -1819,7 +1846,15 @@ async def update_asset_snapshot(
         raise HTTPException(status_code=400, detail="月份收入與支出請同時填寫。")
 
     monthly_finance = None
-    has_account_breakdown = any(value is not None for value in [manual_post_office, manual_sinopac, manual_bank])
+    has_fund_buckets = any(value is not None for value in [manual_emergency_fund, manual_investment_reserve, manual_available_cash])
+    has_account_breakdown = any(value is not None for value in [
+        manual_post_office,
+        manual_sinopac,
+        manual_bank,
+        manual_emergency_fund,
+        manual_investment_reserve,
+        manual_available_cash,
+    ])
 
     with tempfile.TemporaryDirectory(prefix="wealth-snapshot-") as tmp:
         tmp_path = Path(tmp)
@@ -1844,8 +1879,17 @@ async def update_asset_snapshot(
         if has_any_manual:
             existing_accounts = db_store.read_accounts({})
             existing_parts = account_components(existing_accounts)
+            next_emergency = manual_emergency_fund if manual_emergency_fund is not None else existing_parts["emergencyFund"]
+            next_reserve = manual_investment_reserve if manual_investment_reserve is not None else existing_parts["investmentReserve"]
+            next_available = manual_available_cash if manual_available_cash is not None else existing_parts["availableCash"]
+            next_cash = next_emergency + next_reserve + next_available if has_fund_buckets else (
+                manual_cash if manual_cash is not None else existing_parts["cash"]
+            )
             amounts = {
-                "cash": manual_cash if manual_cash is not None else existing_parts["cash"],
+                "cash": next_cash,
+                "emergencyFund": next_emergency,
+                "investmentReserve": next_reserve,
+                "availableCash": next_available,
                 "bank": manual_bank if manual_bank is not None else existing_parts["bank"],
                 "postOfficeBalance": manual_post_office if manual_post_office is not None else existing_parts["postOfficeBalance"],
                 "sinopacBalance": manual_sinopac if manual_sinopac is not None else existing_parts["sinopacBalance"],
@@ -1877,7 +1921,7 @@ async def update_asset_snapshot(
             if not has_any_monthly and not has_account_breakdown:
                 raise HTTPException(
                     status_code=400,
-                    detail="請至少上傳 MOZE CSV、帳戶總覽截圖，填寫現金、銀行、信用卡負債，或填寫月份統計 / 永豐資料。",
+                    detail="請至少上傳 MOZE CSV、帳戶總覽截圖，填寫資金水位、銀行、信用卡負債，或填寫月份統計。",
                 )
             amounts = {
                 "cash": 0,
@@ -1910,9 +1954,13 @@ async def update_asset_snapshot(
         accounts = db_store.read_accounts({})
         accounts["cashTWD"] = (
             amounts["cash"]
-            + amounts["bank"]
-            + round(float(amounts.get("postOfficeBalance", 0) or 0))
-            + round(float(amounts.get("sinopacBalance", 0) or 0))
+            if has_fund_buckets
+            else (
+                amounts["cash"]
+                + amounts["bank"]
+                + round(float(amounts.get("postOfficeBalance", 0) or 0))
+                + round(float(amounts.get("sinopacBalance", 0) or 0))
+            )
         )
         accounts["creditCardDebt"] = amounts["debt"]
         accounts.setdefault("cashUSD", 0)
@@ -1920,21 +1968,35 @@ async def update_asset_snapshot(
     account_breakdown = accounts.get("accountBreakdown")
     if not isinstance(account_breakdown, dict):
         account_breakdown = {}
-    if manual_cash is not None or amounts["source"] == "manual":
+    if manual_cash is not None or has_fund_buckets or amounts["source"] == "manual":
         account_breakdown["cashBalance"] = round(float(amounts.get("cash", manual_cash or 0) or 0))
+    if manual_emergency_fund is not None or has_fund_buckets or amounts["source"] == "manual":
+        account_breakdown["emergencyFund"] = round(float(amounts.get("emergencyFund", manual_emergency_fund or 0) or 0))
+    if manual_investment_reserve is not None or has_fund_buckets or amounts["source"] == "manual":
+        account_breakdown["investmentReserve"] = round(float(amounts.get("investmentReserve", manual_investment_reserve or 0) or 0))
+    if manual_available_cash is not None or has_fund_buckets or amounts["source"] == "manual":
+        account_breakdown["availableCash"] = round(float(amounts.get("availableCash", manual_available_cash or 0) or 0))
     if manual_bank is not None or amounts["source"] == "manual":
         account_breakdown["otherBankBalance"] = round(float(amounts.get("bank", manual_bank or 0) or 0))
     if manual_post_office is not None or amounts["source"] == "manual":
         account_breakdown["postOfficeBalance"] = round(float(amounts.get("postOfficeBalance", manual_post_office or 0) or 0))
     if manual_sinopac is not None or amounts["source"] == "manual":
         account_breakdown["sinopacBalance"] = round(float(amounts.get("sinopacBalance", manual_sinopac or 0) or 0))
-    if manual_cash is not None or manual_post_office is not None or manual_sinopac is not None or manual_bank is not None or amounts["source"] == "manual":
+    if (
+        manual_cash is not None
+        or has_fund_buckets
+        or manual_post_office is not None
+        or manual_sinopac is not None
+        or manual_bank is not None
+        or amounts["source"] == "manual"
+    ):
         parts = account_components(accounts)
         next_cash = round(float(account_breakdown.get("cashBalance", parts["cash"]) or 0))
         next_bank = round(float(account_breakdown.get("otherBankBalance", parts["bank"]) or 0))
         next_post_office = round(float(account_breakdown.get("postOfficeBalance", parts["postOfficeBalance"]) or 0))
         next_sinopac = round(float(account_breakdown.get("sinopacBalance", parts["sinopacBalance"]) or 0))
-        accounts["cashTWD"] = next_cash + next_bank + next_post_office + next_sinopac
+        next_has_fund_buckets = any(key in account_breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
+        accounts["cashTWD"] = next_cash if next_has_fund_buckets else next_cash + next_bank + next_post_office + next_sinopac
         account_breakdown["updatedAt"] = datetime.now().isoformat(timespec="seconds")
         accounts["accountBreakdown"] = account_breakdown
         db_store.write_accounts(accounts)
@@ -1958,14 +2020,24 @@ async def update_asset_snapshot(
         raise HTTPException(status_code=503, detail="永豐餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if manual_cash is not None and float(verified_breakdown.get("cashBalance", -1) or 0) != float(manual_cash):
         raise HTTPException(status_code=503, detail="現金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    if manual_emergency_fund is not None and float(verified_breakdown.get("emergencyFund", -1) or 0) != float(manual_emergency_fund):
+        raise HTTPException(status_code=503, detail="緊急預備金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    if manual_investment_reserve is not None and float(verified_breakdown.get("investmentReserve", -1) or 0) != float(manual_investment_reserve):
+        raise HTTPException(status_code=503, detail="投資預備金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    if manual_available_cash is not None and float(verified_breakdown.get("availableCash", -1) or 0) != float(manual_available_cash):
+        raise HTTPException(status_code=503, detail="可自由運用現金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if manual_bank is not None and float(verified_breakdown.get("otherBankBalance", -1) or 0) != float(manual_bank):
         raise HTTPException(status_code=503, detail="其他銀行餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if amounts["source"] not in {"supplement_only", "existing_accounts"}:
         expected_cash_twd = (
             round(float(amounts["cash"]))
-            + round(float(verified_breakdown.get("otherBankBalance", amounts["bank"]) or 0))
-            + round(float(verified_breakdown.get("postOfficeBalance", 0) or 0))
-            + round(float(verified_breakdown.get("sinopacBalance", 0) or 0))
+            if any(key in verified_breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
+            else (
+                round(float(amounts["cash"]))
+                + round(float(verified_breakdown.get("otherBankBalance", amounts["bank"]) or 0))
+                + round(float(verified_breakdown.get("postOfficeBalance", 0) or 0))
+                + round(float(verified_breakdown.get("sinopacBalance", 0) or 0))
+            )
         )
         if round(float(verified_accounts.get("cashTWD", -1) or 0)) != expected_cash_twd:
             raise HTTPException(status_code=503, detail="資產已送出，但重新讀取後流動資金合計沒有對上，請重新整理確認。")
