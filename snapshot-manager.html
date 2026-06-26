@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>更新資產</h1>
-          <p>更新現金、銀行、信用卡負債，也可以手動記錄每月收入、支出與轉入永豐。</p>
+          <p>更新現金、各銀行餘額、信用卡負債，也可以手動記錄每月收入、支出與轉入永豐。</p>
         </div>
         <a href="./index.html">← 回到首頁</a>
       </section>
@@ -22,8 +22,8 @@
           <input name="cash" type="number" step="1" min="0" />
         </label>
         <label>
-          銀行
-          <input name="bank" type="number" step="1" min="0" />
+          其他銀行餘額
+          <input name="otherBankBalance" type="number" step="1" min="0" placeholder="不含郵局與永豐" />
         </label>
         <label>
           郵局餘額
@@ -66,7 +66,7 @@
           <input name="image" type="file" accept="image/*" />
         </label>
         <div class="actions full">
-          <span class="status" id="statusText">可更新資產，也可只填月份收入與支出。</span>
+          <span class="status" id="statusText">可只填有異動的欄位；空白欄位會維持原資料，不會歸零。</span>
           <button id="submitButton" type="submit">更新資產</button>
         </div>
       </form>
@@ -134,7 +134,7 @@
 
       function renderResult(payload) {
         const rows = [
-          ["現金 + 銀行", money.format(payload.cashTWD || 0)],
+          ["流動資金合計", money.format(payload.cashTWD || 0)],
           ["總資產", money.format(payload.totalAssets || 0)],
           ["淨資產", money.format(payload.netWorth || 0)],
         ];
@@ -142,6 +142,7 @@
           rows.push(
             ["郵局餘額", money.format(payload.accountBreakdown.postOfficeBalance || 0)],
             ["永豐餘額", money.format(payload.accountBreakdown.sinopacBalance || 0)],
+            ["其他銀行餘額", money.format(payload.accountBreakdown.otherBankBalance || payload.bank || 0)],
           );
         }
         if (payload.monthlyFinance) {
@@ -177,7 +178,8 @@
           const payload = await readApiPayload(response, "資產更新失敗，請重新整理或確認登入狀態。");
           if (!response.ok) throw new Error(payload.detail || "資產更新失敗，請重新整理或確認登入狀態。");
           renderResult(payload);
-          setStatus(savedStatus(`${payload.monthlyFinance ? "資產 / 月份統計 / 永豐資料已更新" : "資產 / 永豐資料已更新"}，回首頁即可看到最新數字`, payload.savedAt), "success");
+          const preservedNote = "未填欄位已維持原資料";
+          setStatus(savedStatus(`${payload.monthlyFinance ? "資產 / 月份統計 / 永豐資料已更新" : "資產 / 永豐資料已更新"}，${preservedNote}，回首頁即可看到最新數字`, payload.savedAt), "success");
         } catch (error) {
           setStatus(`${error.message || "資產更新失敗，請稍後再試。"} 你剛輸入的內容已保留，不用重打。`, "error");
         } finally {

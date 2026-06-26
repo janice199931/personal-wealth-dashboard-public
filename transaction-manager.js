@@ -496,6 +496,32 @@ function currentTransaction() {
   };
 }
 
+function estimatedTradeAmount(transaction) {
+  const gross = Number(transaction.shares || 0) * Number(transaction.price || 0);
+  const fee = Number(transaction.fee || 0);
+  return transaction.action === "SELL" ? gross - fee : gross + fee;
+}
+
+function confirmTransactionSave(transaction) {
+  const actionLabel = transaction.action === "SELL" ? "賣出" : "買進";
+  const purposeText = purposeLabel(transaction.purpose);
+  const amount = estimatedTradeAmount(transaction);
+  const message = [
+    editingId ? "確認更新這筆交易？" : "確認新增這筆交易？",
+    "",
+    `日期：${formatDisplayDate(transaction.date)}`,
+    `股票：${transaction.market}:${transaction.symbol} ${transaction.name}`,
+    `動作：${actionLabel}`,
+    `股數：${formatNumber(transaction.shares)}`,
+    `成交價格：${formatNumber(transaction.price)}`,
+    `手續費：${formatNumber(transaction.fee)}`,
+    `估算金額：${formatNumber(amount)}`,
+    `投入來源：${purposeText}`,
+    transaction.note ? `備註：${transaction.note}` : "",
+  ].filter(Boolean).join("\n");
+  return window.confirm(message);
+}
+
 function canPreviewTransaction() {
   return [
     form.elements.date.value,
@@ -592,13 +618,13 @@ async function loadTransactions() {
   setStatus(`已載入 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, "success");
 }
 
-async function saveTransaction() {
+async function saveTransaction(transaction) {
   const url = editingId ? `/api/transactions/${encodeURIComponent(editingId)}` : "/api/transactions";
   const method = editingId ? "PUT" : "POST";
   const response = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(currentTransaction()),
+    body: JSON.stringify(transaction),
   });
   const payload = await readApiPayload(response, "交易儲存失敗，請稍後再試。");
   if (!response.ok) throw new Error(friendlyApiError(payload, "交易儲存失敗，請稍後再試。"));
@@ -640,11 +666,20 @@ async function deleteTransaction(id) {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  let transaction = null;
+  try {
+    transaction = currentTransaction();
+  } catch (error) {
+    setStatus(error.message || "請確認交易欄位。", "error");
+    return;
+  }
+  if (!confirmTransactionSave(transaction)) return;
+
   submitButton.disabled = true;
   setStatus(editingId ? "更新中..." : "儲存中...", "working");
 
   try {
-    const payload = await saveTransaction();
+    const payload = await saveTransaction(transaction);
     const mode = editingId ? "update" : "create";
     await verifySavedTransaction(payload, mode);
     setStatus(
