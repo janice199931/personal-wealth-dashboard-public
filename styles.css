@@ -1146,7 +1146,6 @@ main {
 }
 
 .action-dashboard {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 10px;
 }
 
@@ -1173,18 +1172,19 @@ main {
 
 .today-actions {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
 .today-action {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-  min-height: 74px;
-  padding: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 96px;
+  padding: 10px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 14px;
   background: rgba(255, 253, 250, 0.66);
 }
 
@@ -1192,10 +1192,12 @@ main {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
+  min-width: 42px;
+  min-height: 26px;
+  padding: 0 8px;
   border-radius: 999px;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   background: #9B8FD0;
 }
@@ -1214,15 +1216,16 @@ main {
 
 .today-action strong {
   display: block;
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 1.25;
 }
 
 .today-action p {
-  margin: 4px 0 0;
+  margin: 3px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  line-height: 1.5;
+  line-height: 1.42;
 }
 
 .panel.wide {
@@ -1728,6 +1731,10 @@ canvas {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .today-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .milestone-panel {
     grid-column: 1 / -1;
   }
@@ -1841,6 +1848,16 @@ canvas {
 
   .dashboard {
     grid-template-columns: 1fr;
+  }
+
+  .today-actions {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .today-action {
+    min-height: auto;
+    padding: 10px 12px;
   }
 
   .hero-card {
