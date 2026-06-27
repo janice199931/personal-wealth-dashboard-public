@@ -370,6 +370,12 @@ function plainPercent(value, digits = 2) {
   return `${numeric.toFixed(digits)}%`;
 }
 
+function returnRateText(value, digits = 1) {
+  const numeric = Number.parseFloat(String(value ?? "").replace("%", ""));
+  if (!Number.isFinite(numeric)) return `${(0).toFixed(digits)}%`;
+  return `${numeric.toFixed(digits)}%`;
+}
+
 function fixedDecimal(value, digits = 2) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric.toFixed(digits) : (0).toFixed(digits);
@@ -1125,8 +1131,7 @@ function renderVaults() {
   const reserveProgress = safeProgress(metrics.investmentReserve, INVESTMENT_RESERVE_MIN);
   const rows = [
     {
-      icon: "🏠",
-      title: "生活金庫（郵局）",
+      title: "🏠 生活金庫（郵局）",
       status: postOffice.status,
       lines: [
         ["目前餘額", money.format(metrics.postOfficeBalance)],
@@ -1135,8 +1140,7 @@ function renderVaults() {
       ],
     },
     {
-      icon: "📈",
-      title: "投資金庫（永豐）",
+      title: "📈 投資金庫（永豐）",
       status: "good",
       lines: [
         ["目前餘額", money.format(metrics.sinopacBalance)],
@@ -1145,8 +1149,7 @@ function renderVaults() {
       ],
     },
     {
-      icon: "🚨",
-      title: "緊急預備金",
+      title: "🚨 緊急預備金",
       status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "good" : "warn",
       progress: emergencyProgress,
       lines: [
@@ -1156,8 +1159,7 @@ function renderVaults() {
       ],
     },
     {
-      icon: "💰",
-      title: "投資預備金",
+      title: "💰 投資預備金",
       status: reserve.status,
       progress: reserveProgress,
       lines: [
@@ -1170,7 +1172,7 @@ function renderVaults() {
 
   target.innerHTML = rows
     .map((row) => `<article class="vault-card ${row.status}">
-      <div class="vault-title"><span>${row.icon}</span><strong>${row.title}</strong></div>
+      <div class="vault-title"><strong>${row.title}</strong></div>
       <div class="vault-lines">
         ${row.lines.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
       </div>
@@ -1938,6 +1940,8 @@ function renderInvestmentCards() {
         gain: tw.gain,
         returnRate: tw.returnRate,
       }];
+  const twReturnRate = returnRateText(tw.returnRate);
+  const usReturnRate = returnRateText(metrics.usReturnRate);
   twTarget.innerHTML = `
     <div class="investment-hero">
       <span>市值</span>
@@ -1947,7 +1951,7 @@ function renderInvestmentCards() {
       <div><span>市值</span><strong>${money.format(tw.marketValue)}</strong></div>
       <div><span>成本</span><strong>${money.format(tw.cost)}</strong></div>
       <div><span>損益</span><strong class="${twGainTone}">${money.format(tw.gain)}</strong></div>
-      <div><span>報酬率</span><strong class="${twGainTone}">${tw.returnRate}</strong></div>
+      <div><span>報酬率</span><strong class="${twGainTone}">${twReturnRate}</strong></div>
     </div>
     <div class="holding-list stock-table">
       <div class="holding-row holding-head">
@@ -1967,7 +1971,7 @@ function renderInvestmentCards() {
           <span>${fixedDecimal(holding.price, 2)}</span>
           <span>${fixedDecimal(holding.cost, 2)}</span>
           <span class="${tone}">${money.format(holding.gain)}</span>
-          <span class="${tone}">${holding.returnRate}</span>
+          <span class="${tone}">${returnRateText(holding.returnRate)}</span>
         </div>`;
         })
         .join("")}
@@ -1983,7 +1987,7 @@ function renderInvestmentCards() {
       <div><span>市值</span><strong>${formatUsdSummary(metrics.usMarketValue)}</strong><small>${formatTwdApprox(metrics.usMarketValueTwd)}</small></div>
       <div><span>成本</span><strong>${formatUsdSummary(metrics.usCost)}</strong><small>${formatTwdApprox(metrics.usCostTwd)}</small></div>
       <div><span>損益</span><strong class="${usGainTone}">${formatUsdSummary(metrics.usGain)}</strong><small class="${usGainTone}">${formatTwdApprox(metrics.usGainTwd)}</small></div>
-      <div><span>報酬率</span><strong class="${usGainTone}">${metrics.usReturnRate}</strong></div>
+      <div><span>報酬率</span><strong class="${usGainTone}">${usReturnRate}</strong></div>
     </div>
     <div class="holding-list stock-table us-holdings">
       <div class="holding-row holding-head">
@@ -2003,7 +2007,7 @@ function renderInvestmentCards() {
           <span>${holding.price}<small>${formatPlainTwdApproxFromUsd(holding.priceValue)}</small></span>
           <span>${holding.cost}<small>${formatPlainTwdApproxFromUsd(holding.costValue)}</small></span>
           <span class="${tone}">${holding.gain}<small>${formatPlainTwdApproxFromUsd(holding.gainValue, true)}</small></span>
-          <span class="${tone}">${holding.returnRate}</span>
+          <span class="${tone}">${returnRateText(holding.returnRate)}</span>
         </div>`;
         })
         .join("")}
