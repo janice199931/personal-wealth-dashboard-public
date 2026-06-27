@@ -69,8 +69,8 @@ let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const PRICE_AUTO_REFRESH_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
-const EMERGENCY_FUND_TARGET = 200000;
-const INVESTMENT_RESERVE_MIN = 100000;
+const EMERGENCY_FUND_TARGET = 100000;
+const INVESTMENT_RESERVE_MIN = 150000;
 const INVESTMENT_RESERVE_MAX = 150000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
 const LEVERAGED_TARGET_RATIO = 70;
@@ -1137,7 +1137,7 @@ function renderVaults() {
   const postOffice = postOfficeStatus(metrics);
   const reserve = investmentReserveStatus(metrics);
   const emergencyProgress = safeProgress(metrics.emergencyFund, EMERGENCY_FUND_TARGET);
-  const reserveProgress = safeProgress(metrics.investmentReserve, INVESTMENT_RESERVE_MIN);
+  const reserveProgress = safeProgress(metrics.investmentReserve, INVESTMENT_RESERVE_MAX);
   const rows = [
     {
       title: "🏠 生活金庫（郵局）",
@@ -1172,7 +1172,7 @@ function renderVaults() {
       status: reserve.status,
       progress: reserveProgress,
       lines: [
-        ["目標", `${money.format(INVESTMENT_RESERVE_MIN)}～${money.format(INVESTMENT_RESERVE_MAX)}`],
+        ["目標", money.format(INVESTMENT_RESERVE_MAX)],
         ["目前", money.format(metrics.investmentReserve)],
         ["狀態", reserve.text],
       ],
@@ -1299,7 +1299,7 @@ function cashWaterStatus(metrics) {
 function fundWaterSummary(metrics) {
   return [
     `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
-    `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(INVESTMENT_RESERVE_MIN)}～${money.format(INVESTMENT_RESERVE_MAX)}`,
+    `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(INVESTMENT_RESERVE_MAX)}`,
     `每月固定投入：${money.format(MONTHLY_INVESTMENT_TARGET)}`,
     `本月已投入：${money.format(Math.round(metrics.monthlyInvestment))}`,
   ].join("<br>");
@@ -1360,7 +1360,7 @@ function todayConclusion(metrics) {
 function nextActionSummary(metrics) {
   const water = cashWaterStatus(metrics);
   if (water.status === "warn") return "今天不買，先補緊急預備金。";
-  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "先把投資預備金補到 10 萬。";
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "先把投資預備金補到 15 萬。";
   if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return `超過 ${money.format(INVESTMENT_RESERVE_MAX)} 的部分可分 2-3 筆投入。`;
   if (metrics.monthlyInvestmentRemaining <= 0) return "本月固定投入已完成，先觀察。";
   return `維持每月固定投入，本月還差 ${money.format(metrics.monthlyInvestmentRemaining)}。`;
