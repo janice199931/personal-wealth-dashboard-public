@@ -993,20 +993,28 @@ function investmentReserveStatus(metrics) {
 
 function financialHealthScore(metrics) {
   let score = 100;
-  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
-    score -= Math.min(28, Math.round(((EMERGENCY_FUND_TARGET - metrics.emergencyFund) / EMERGENCY_FUND_TARGET) * 28));
+  const emergencyFund = Number(metrics.emergencyFund) || 0;
+  const investmentReserve = Number(metrics.investmentReserve) || 0;
+  const monthlyInvestmentRemaining = Number(metrics.monthlyInvestmentRemaining) || 0;
+  const monthNet = Number(metrics.monthNet) || 0;
+  const debt = Number(metrics.debt) || 0;
+  const totalAssets = Math.max(1, Number(metrics.totalAssets) || 0);
+
+  if (emergencyFund < EMERGENCY_FUND_TARGET) {
+    score -= Math.min(28, Math.round(((EMERGENCY_FUND_TARGET - emergencyFund) / EMERGENCY_FUND_TARGET) * 28));
   }
-  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) {
-    score -= Math.min(18, Math.round(((INVESTMENT_RESERVE_MIN - metrics.investmentReserve) / INVESTMENT_RESERVE_MIN) * 18));
-  } else if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) {
+  if (investmentReserve < INVESTMENT_RESERVE_MIN) {
+    score -= Math.min(18, Math.round(((INVESTMENT_RESERVE_MIN - investmentReserve) / INVESTMENT_RESERVE_MIN) * 18));
+  } else if (investmentReserve > INVESTMENT_RESERVE_MAX) {
     score -= 6;
   }
-  if (metrics.monthlyInvestmentRemaining > 0) {
-    score -= Math.min(14, Math.round((metrics.monthlyInvestmentRemaining / MONTHLY_INVESTMENT_TARGET) * 14));
+  if (monthlyInvestmentRemaining > 0) {
+    score -= Math.min(14, Math.round((monthlyInvestmentRemaining / MONTHLY_INVESTMENT_TARGET) * 14));
   }
-  if (metrics.monthNet < 0) score -= 12;
-  if (metrics.debt > 0) score -= Math.min(10, Math.round(percent(metrics.debt, Math.max(1, metrics.totalAssets)) / 5));
-  return Math.max(0, Math.min(100, Math.round(score)));
+  if (monthNet < 0) score -= 12;
+  if (debt > 0) score -= Math.min(10, Math.round(((debt / totalAssets) * 100) / 5));
+  const safeScore = Math.round(score);
+  return Number.isFinite(safeScore) ? Math.max(0, Math.min(100, safeScore)) : 0;
 }
 
 function healthScoreText(score) {
@@ -1073,7 +1081,8 @@ function renderKpis() {
   const metrics = getPortfolioMetrics();
   const next = getNextMilestone();
   const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
-  const score = financialHealthScore(metrics);
+  const calculatedScore = financialHealthScore(metrics);
+  const score = Number.isFinite(Number(calculatedScore)) && Number(calculatedScore) > 0 ? Number(calculatedScore) : 0;
   const rows = [
     {
       label: "財務健康度",
