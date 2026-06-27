@@ -85,6 +85,7 @@ let dataStatus = null;
 let priceUpdateInProgress = false;
 let priceAutoRefreshTimer = null;
 let financeDataLoaded = Boolean(window.financeData?.years?.length);
+let dashboardDataLoaded = Boolean(window.portfolioData);
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController();
@@ -328,7 +329,20 @@ function monthlyMetricRows() {
 }
 
 function percent(value, total, digits = 1) {
-  return total ? `${((value / total) * 100).toFixed(digits)}%` : "0.0%";
+  const numericValue = Number(value);
+  const numericTotal = Number(total);
+  if (!Number.isFinite(numericValue) || !Number.isFinite(numericTotal) || numericTotal <= 0) {
+    return `${(0).toFixed(digits)}%`;
+  }
+  const result = (numericValue / numericTotal) * 100;
+  return Number.isFinite(result) ? `${result.toFixed(digits)}%` : `${(0).toFixed(digits)}%`;
+}
+
+function safeProgress(value, total) {
+  const numericValue = Number(value);
+  const numericTotal = Number(total);
+  if (!Number.isFinite(numericValue) || !Number.isFinite(numericTotal) || numericTotal <= 0) return 0;
+  return Math.min(100, Math.max(0, (numericValue / numericTotal) * 100));
 }
 
 function compactPercent(value) {
@@ -338,12 +352,27 @@ function compactPercent(value) {
 }
 
 function signedMoney(value, formatter = money) {
-  const formatted = formatter.format(Math.abs(value));
-  return `${value >= 0 ? "+" : "-"}${formatted}`;
+  const numeric = Number(value);
+  const safeValue = Number.isFinite(numeric) ? numeric : 0;
+  const formatted = formatter.format(Math.abs(safeValue));
+  return `${safeValue >= 0 ? "+" : "-"}${formatted}`;
 }
 
 function signedPercent(value) {
-  return `${value >= 0 ? "+" : ""}${Number(value).toFixed(1)}%`;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "+0.0%";
+  return `${numeric >= 0 ? "+" : ""}${numeric.toFixed(1)}%`;
+}
+
+function plainPercent(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return `${(0).toFixed(digits)}%`;
+  return `${numeric.toFixed(digits)}%`;
+}
+
+function fixedDecimal(value, digits = 2) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric.toFixed(digits) : (0).toFixed(digits);
 }
 
 function gainTone(value) {
@@ -478,7 +507,7 @@ function applyPortfolioData(portfolio, history = []) {
     marketValue: twMarket.marketValue ?? 0,
     shares: twHoldings[0] ? formatSharesValue(twHoldings[0].shares) : data.investments.tw.shares,
     gain: twMarket.unrealizedGain ?? 0,
-    returnRate: `${Number(twMarket.returnRate ?? 0).toFixed(2)}%`,
+    returnRate: plainPercent(twMarket.returnRate, 2),
     cost: twMarket.cost ?? 0,
     updatedAt: twMarket.updatedAt || data.investments.tw.updatedAt,
     holdings: twHoldings.map((holding) => ({
@@ -489,7 +518,7 @@ function applyPortfolioData(portfolio, history = []) {
       cost: Number(holding.averageCost),
       marketValue: Number(holding.marketValueTWD),
       gain: Number(holding.unrealizedGainTWD),
-      returnRate: `${Number(holding.returnRate).toFixed(2)}%`,
+      returnRate: plainPercent(holding.returnRate, 2),
     })),
   };
 
@@ -1023,6 +1052,18 @@ function renderHero() {
 }
 
 function renderKpis() {
+  const target = document.getElementById("kpiGrid");
+  if (!target) return;
+  if (!dashboardDataLoaded) {
+    target.innerHTML = Array.from({ length: 4 })
+      .map(() => `<article class="kpi-card skeleton-card animate-pulse">
+        <span class="skeleton-line short"></span>
+        <strong class="skeleton-line wide"></strong>
+        <em class="skeleton-line medium"></em>
+      </article>`)
+      .join("");
+    return;
+  }
   const metrics = getPortfolioMetrics();
   const next = getNextMilestone();
   const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
@@ -1048,7 +1089,7 @@ function renderKpis() {
     },
   ];
 
-  document.getElementById("kpiGrid").innerHTML = rows
+  target.innerHTML = rows
     .map((row) => `<article class="kpi-card">
       <span>${row.label}</span>
       <strong class="${row.valueTone || ""}">${row.value}</strong>
@@ -1064,13 +1105,27 @@ function renderKpis() {
 function renderVaults() {
   const target = document.getElementById("vaultGrid");
   if (!target) return;
+  if (!dashboardDataLoaded) {
+    target.innerHTML = Array.from({ length: 4 })
+      .map(() => `<article class="vault-card skeleton-card animate-pulse">
+        <div class="vault-title"><span class="skeleton-icon"></span><strong class="skeleton-line medium"></strong></div>
+        <div class="vault-lines">
+          <div><span class="skeleton-line short"></span><strong class="skeleton-line medium"></strong></div>
+          <div><span class="skeleton-line short"></span><strong class="skeleton-line wide"></strong></div>
+          <div><span class="skeleton-line short"></span><strong class="skeleton-line medium"></strong></div>
+        </div>
+      </article>`)
+      .join("");
+    return;
+  }
   const metrics = getPortfolioMetrics();
   const postOffice = postOfficeStatus(metrics);
   const reserve = investmentReserveStatus(metrics);
-  const emergencyProgress = Math.min(100, Math.round(percent(metrics.emergencyFund, EMERGENCY_FUND_TARGET)));
+  const emergencyProgress = safeProgress(metrics.emergencyFund, EMERGENCY_FUND_TARGET);
+  const reserveProgress = safeProgress(metrics.investmentReserve, INVESTMENT_RESERVE_MIN);
   const rows = [
     {
-      icon: "📮",
+      icon: "🏠",
       title: "生活金庫（郵局）",
       status: postOffice.status,
       lines: [
@@ -1080,7 +1135,7 @@ function renderVaults() {
       ],
     },
     {
-      icon: "🏦",
+      icon: "📈",
       title: "投資金庫（永豐）",
       status: "good",
       lines: [
@@ -1090,7 +1145,7 @@ function renderVaults() {
       ],
     },
     {
-      icon: "🛟",
+      icon: "🚨",
       title: "緊急預備金",
       status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "good" : "warn",
       progress: emergencyProgress,
@@ -1101,9 +1156,10 @@ function renderVaults() {
       ],
     },
     {
-      icon: "💵",
+      icon: "💰",
       title: "投資預備金",
       status: reserve.status,
+      progress: reserveProgress,
       lines: [
         ["目標", `${money.format(INVESTMENT_RESERVE_MIN)}～${money.format(INVESTMENT_RESERVE_MAX)}`],
         ["目前", money.format(metrics.investmentReserve)],
@@ -1118,7 +1174,10 @@ function renderVaults() {
       <div class="vault-lines">
         ${row.lines.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
       </div>
-      ${Number.isFinite(row.progress) ? `<span class="mini-progress"><i style="width:${row.progress}%"></i></span>` : ""}
+      ${Number.isFinite(row.progress) ? `<div class="vault-progress">
+        <span class="mini-progress"><i style="width:${row.progress}%"></i></span>
+        <strong>${row.progress.toFixed(1)}%</strong>
+      </div>` : ""}
     </article>`)
     .join("");
 }
@@ -1126,24 +1185,27 @@ function renderVaults() {
 function renderAiSummary() {
   const target = document.getElementById("aiSummary");
   if (!target) return;
+  if (!dashboardDataLoaded) {
+    target.innerHTML = `<div class="ai-summary-skeleton skeleton-card animate-pulse">
+      <span class="skeleton-line wide"></span>
+      <span class="skeleton-line full"></span>
+      <span class="skeleton-line medium"></span>
+    </div>`;
+    return;
+  }
   const metrics = getPortfolioMetrics();
-  const postOffice = postOfficeStatus(metrics);
-  const reserve = investmentReserveStatus(metrics);
-  const rowsForExpense = monthlyMetricRows();
-  const currentExpense = Number(metrics.latestMonth?.expense) || 0;
-  const previousExpense = Number(rowsForExpense[rowsForExpense.length - 2]?.expense) || 0;
-  const savingsRate = Number(metrics.latestMonth?.savingsRate);
-  const rows = [
-    currentExpense && previousExpense
-      ? `本月支出${currentExpense <= previousExpense ? "低於或接近" : "高於"}前一個月`
-      : "本月支出資料持續整理中",
-    Number.isFinite(savingsRate) ? `儲蓄率維持 ${savingsRate}%` : `本月淨增加 ${money.format(metrics.monthNet)}`,
-    `郵局生活金${postOffice.text}`,
-    `永豐投資金目前 ${money.format(metrics.sinopacBalance)}`,
-    `投資預備金${reserve.text}`,
-    nextActionSummary(metrics),
-  ];
-  target.innerHTML = rows.map((row) => `<p>• ${row}</p>`).join("");
+  const emergencyGap = Math.max(0, EMERGENCY_FUND_TARGET - Math.round(metrics.emergencyFund));
+  const invested = Math.round(metrics.monthlyInvestment);
+  const progress = safeProgress(invested, MONTHLY_INVESTMENT_TARGET);
+  let summary = "";
+  if (emergencyGap > 0) {
+    summary = `優先補足緊急預備金！目前尚差 ${money.format(emergencyGap)} 元。今天建議：子彈先留著，今天先不加碼股票。`;
+  } else if (invested >= MONTHLY_INVESTMENT_TARGET) {
+    summary = `🎉 太棒了！本月已投入 ${money.format(invested)} 元，投資進度已達標。今天不用做任何事，好好享受生活！`;
+  } else {
+    summary = `📈 財富穩定累積中。本月投資進度：${progress.toFixed(1)}%。依計畫前進即可。`;
+  }
+  target.innerHTML = `<p class="ai-summary-main">${summary}</p>`;
 }
 
 function healthTone(status) {
@@ -1495,6 +1557,10 @@ function updateMigrateButtonVisibility(status) {
 
 function renderInitialLoading() {
   renderPriceUpdateNotice("正在載入正式資料...");
+  renderKpis();
+  renderVaults();
+  renderAiSummary();
+  renderInvestmentCards();
   const ledger = document.getElementById("yearAccordion");
   if (ledger) ledger.innerHTML = '<div class="loading-row">正在載入年度/月度對帳...</div>';
 }
@@ -1842,6 +1908,22 @@ async function readApiPayload(response, fallbackMessage = "資料讀取失敗，
 }
 
 function renderInvestmentCards() {
+  const twTarget = document.getElementById("twInvestment");
+  const usTarget = document.getElementById("usInvestment");
+  if (!twTarget || !usTarget) return;
+  if (!dashboardDataLoaded) {
+    const skeleton = `
+      <div class="investment-hero skeleton-card animate-pulse">
+        <span class="skeleton-line short"></span>
+        <strong class="skeleton-line wide"></strong>
+      </div>
+      <div class="investment-stats skeleton-card animate-pulse">
+        ${Array.from({ length: 4 }).map(() => `<div><span class="skeleton-line short"></span><strong class="skeleton-line medium"></strong></div>`).join("")}
+      </div>`;
+    twTarget.innerHTML = skeleton;
+    usTarget.innerHTML = skeleton;
+    return;
+  }
   const { tw, us } = data.investments;
   const metrics = getPortfolioMetrics();
   const twGainTone = gainTone(tw.gain);
@@ -1856,7 +1938,7 @@ function renderInvestmentCards() {
         gain: tw.gain,
         returnRate: tw.returnRate,
       }];
-  document.getElementById("twInvestment").innerHTML = `
+  twTarget.innerHTML = `
     <div class="investment-hero">
       <span>市值</span>
       <strong>${money.format(tw.marketValue)}</strong>
@@ -1882,8 +1964,8 @@ function renderInvestmentCards() {
           return `<div class="holding-row">
           <strong>${holding.title}</strong>
           <span>${holding.shares}</span>
-          <span>${Number(holding.price).toFixed(2)}</span>
-          <span>${Number(holding.cost).toFixed(2)}</span>
+          <span>${fixedDecimal(holding.price, 2)}</span>
+          <span>${fixedDecimal(holding.cost, 2)}</span>
           <span class="${tone}">${money.format(holding.gain)}</span>
           <span class="${tone}">${holding.returnRate}</span>
         </div>`;
@@ -1892,7 +1974,7 @@ function renderInvestmentCards() {
     </div>
     <p class="note-text">更新時間：${formatUpdateTime(tw.updatedAt)}</p>`;
 
-  document.getElementById("usInvestment").innerHTML = `
+  usTarget.innerHTML = `
     <div class="investment-hero">
       <span>市值</span>
       <strong>${formatUsdDisplay(metrics.usMarketValue)}</strong>
@@ -2077,6 +2159,7 @@ async function refreshDataStatus() {
 async function loadExternalData() {
   if (window.portfolioData) {
     applyPortfolioData(window.portfolioData, window.netWorthHistory ?? []);
+    dashboardDataLoaded = true;
   }
 
   async function fetchJson(primaryPath, examplePath, fallbackValue, payloadKey = "") {
@@ -2124,6 +2207,7 @@ async function loadExternalData() {
     applyPortfolioData(cachedCore.portfolio, cachedCore.history || []);
     applyAccountData(cachedCore.accounts || {});
     applyCurrentMonthFinance(cachedCore.currentMonthFinance || null);
+    dashboardDataLoaded = true;
     if (cachedCore.transactions) applyTransactionData(cachedCore.transactions);
     if (cachedCore.dividends) applyDividendData(cachedCore.dividends);
     renderCoreDashboard();
@@ -2148,6 +2232,7 @@ async function loadExternalData() {
     applyPortfolioData(core.portfolio, core.history || []);
     applyAccountData(core.accounts || {});
     applyCurrentMonthFinance(core.currentMonthFinance || null);
+    dashboardDataLoaded = true;
     renderCoreDashboard();
     window.requestAnimationFrame(renderVisualDashboard);
     if (core.transactions) {
@@ -2167,6 +2252,7 @@ async function loadExternalData() {
     ]);
     if (portfolio) {
       applyPortfolioData(portfolio, history);
+      dashboardDataLoaded = true;
       renderCoreDashboard();
       window.requestAnimationFrame(renderVisualDashboard);
     }

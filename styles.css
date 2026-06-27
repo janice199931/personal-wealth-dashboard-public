@@ -739,15 +739,15 @@ main {
 .vault-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 14px;
 }
 
 .vault-card {
-  min-height: 172px;
-  padding: 16px;
+  min-height: 188px;
+  padding: 18px;
   display: grid;
   align-content: space-between;
-  gap: 14px;
+  gap: 16px;
   background:
     linear-gradient(135deg, rgba(255, 253, 250, 0.96), rgba(255, 238, 237, 0.62)),
     rgba(255, 253, 250, 0.84);
@@ -760,12 +760,12 @@ main {
 .vault-title {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   color: #6f554a;
 }
 
 .vault-title span {
-  font-size: 20px;
+  font-size: 22px;
 }
 
 .vault-title strong {
@@ -775,7 +775,7 @@ main {
 
 .vault-lines {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .vault-lines div {
@@ -795,6 +795,92 @@ main {
   color: var(--ink);
   font-size: 14px;
   text-align: right;
+}
+
+.vault-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.vault-progress .mini-progress {
+  height: 8px;
+  background: #f3f4f6;
+}
+
+.vault-progress .mini-progress i {
+  background: linear-gradient(90deg, #fb7185, #f43f5e);
+}
+
+.vault-progress > strong {
+  color: #b86866;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.skeleton-card {
+  pointer-events: none;
+}
+
+.skeleton-line,
+.skeleton-icon {
+  display: block;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e5e7eb 0%, #f3f4f6 45%, #e5e7eb 100%);
+  background-size: 220% 100%;
+}
+
+.animate-pulse .skeleton-line,
+.animate-pulse .skeleton-icon {
+  animation: skeletonPulse 1.25s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 13px;
+}
+
+.skeleton-line.short {
+  width: 42%;
+}
+
+.skeleton-line.medium {
+  width: 62%;
+}
+
+.skeleton-line.wide {
+  width: 78%;
+}
+
+.skeleton-line.full {
+  width: 100%;
+}
+
+.skeleton-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+
+.ai-summary-skeleton {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+@keyframes skeletonPulse {
+  0% {
+    background-position: 160% 0;
+    opacity: 0.62;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    background-position: -60% 0;
+    opacity: 0.62;
+  }
 }
 
 .vault-card.good {
@@ -1339,6 +1425,14 @@ main {
   font-size: 14px;
   font-weight: 850;
   line-height: 1.45;
+}
+
+.ai-summary-list .ai-summary-main {
+  grid-column: 1 / -1;
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  font-size: 16px;
 }
 
 .allocation-panel,
