@@ -19,14 +19,14 @@
       <form id="snapshotForm">
         <label>
           緊急預備金
-          <input name="emergencyFund" type="number" step="1" min="0" placeholder="目標 200000" />
+          <input name="emergencyFund" type="number" step="1" min="0" placeholder="100000" />
         </label>
         <label>
           投資預備金
-          <input name="investmentReserve" type="number" step="1" min="0" placeholder="目標 100000～150000" />
+          <input name="investmentReserve" type="number" step="1" min="0" placeholder="150000" />
         </label>
         <label>
-          可自由運用現金
+          現金
           <input name="availableCash" type="number" step="1" min="0" />
         </label>
         <label>
@@ -153,7 +153,7 @@
             ["其他銀行餘額", money.format(payload.accountBreakdown.otherBankBalance || payload.bank || 0)],
             ["緊急預備金", money.format(payload.accountBreakdown.emergencyFund || 0)],
             ["投資預備金", money.format(payload.accountBreakdown.investmentReserve || 0)],
-            ["可自由運用現金", money.format(payload.accountBreakdown.availableCash || 0)],
+            ["現金", money.format(payload.accountBreakdown.availableCash || 0)],
           );
         }
         if (payload.monthlyFinance) {

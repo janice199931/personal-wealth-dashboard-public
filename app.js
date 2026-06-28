@@ -574,9 +574,13 @@ function applyPortfolioData(portfolio, history = []) {
 }
 
 function applyAccountData(accounts = {}) {
-  data.accountBreakdown = accounts.accountBreakdown && typeof accounts.accountBreakdown === "object"
+  const accountBreakdown = accounts.accountBreakdown && typeof accounts.accountBreakdown === "object"
     ? accounts.accountBreakdown
     : {};
+  data.accountBreakdown = { ...accountBreakdown };
+  if (data.accountBreakdown.creditCardDebt === undefined && accounts.creditCardDebt !== undefined) {
+    data.accountBreakdown.creditCardDebt = accounts.creditCardDebt;
+  }
 }
 
 function applyCurrentMonthFinance(month = null) {
@@ -854,10 +858,14 @@ function getPortfolioMetrics() {
   const monthlyInvestmentRemaining = Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlyInvestment));
   const sinopacBalance = Number(data.accountBreakdown.sinopacBalance) || 0;
   const postOfficeBalance = Number(data.accountBreakdown.postOfficeBalance) || 0;
+  const creditCardDebt = data.accountBreakdown.creditCardDebt !== undefined
+    ? Number(data.accountBreakdown.creditCardDebt) || 0
+    : debt;
   const buckets = cashBuckets(cash);
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
   const availableCash = buckets.availableCash;
+  const livingVaultBalance = Math.max(0, postOfficeBalance + availableCash - creditCardDebt);
   const monthlySinopacTransfer = Number(currentMonthFinance?.sinopacTransfer) || 0;
   const investableSinopacCash = Math.max(0, investmentReserve + availableCash);
   const leveragedValue = taiwanStocks || data.rebalancer.leveragedValue || 0;
@@ -902,6 +910,8 @@ function getPortfolioMetrics() {
     monthlyInvestmentRemaining,
     sinopacBalance,
     postOfficeBalance,
+    creditCardDebt,
+    livingVaultBalance,
     monthlySinopacTransfer,
     monthlySinopacTransferRemaining: Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlySinopacTransfer)),
     investableSinopacCash,
@@ -979,9 +989,9 @@ function postOfficeStatus(metrics) {
   const suggested = Math.max(0, Math.round(Number(metrics.latestMonth?.expense) || 0));
   if (!suggested) return { status: "watch", suggested, text: "待記錄" };
   return {
-    status: metrics.postOfficeBalance >= suggested ? "good" : "warn",
+    status: metrics.livingVaultBalance >= suggested ? "good" : "warn",
     suggested,
-    text: metrics.postOfficeBalance >= suggested ? "正常" : "偏低",
+    text: metrics.livingVaultBalance >= suggested ? "正常" : "偏低",
   };
 }
 
@@ -1138,12 +1148,19 @@ function renderVaults() {
   const reserve = investmentReserveStatus(metrics);
   const emergencyProgress = safeProgress(metrics.emergencyFund, EMERGENCY_FUND_TARGET);
   const reserveProgress = safeProgress(metrics.investmentReserve, INVESTMENT_RESERVE_MAX);
+  const monthlyInvestmentProgress = safeProgress(metrics.monthlyInvestment, MONTHLY_INVESTMENT_TARGET);
+  const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
+  const monthlyInvestmentStatus = monthlyInvestmentRounded >= MONTHLY_INVESTMENT_TARGET ? "已達標" : "未達標";
   const rows = [
     {
       title: "🏠 生活金庫（郵局）",
       status: postOffice.status,
       lines: [
-        ["目前餘額", money.format(metrics.postOfficeBalance)],
+        [
+          "目前餘額",
+          money.format(metrics.livingVaultBalance),
+          `郵局: ${money.format(metrics.postOfficeBalance)} + 現金: ${money.format(metrics.availableCash)} - 信用卡: ${money.format(metrics.creditCardDebt)}`,
+        ],
         ["建議保留金額", postOffice.suggested ? money.format(postOffice.suggested) : "待記錄"],
         ["狀態", postOffice.text],
       ],
@@ -1151,10 +1168,10 @@ function renderVaults() {
     {
       title: "📈 投資金庫（永豐）",
       status: "good",
+      progress: monthlyInvestmentProgress,
       lines: [
         ["目前餘額", money.format(metrics.sinopacBalance)],
-        ["本月轉入永豐", money.format(metrics.monthlySinopacTransfer)],
-        ["每月固定投入", money.format(MONTHLY_INVESTMENT_TARGET)],
+        ["本月投入進度", `${money.format(monthlyInvestmentRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)} (${monthlyInvestmentStatus})`],
       ],
     },
     {
@@ -1183,7 +1200,11 @@ function renderVaults() {
     .map((row) => `<article class="vault-card ${row.status}">
       <div class="vault-title"><strong>${row.title}</strong></div>
       <div class="vault-lines">
-        ${row.lines.map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("")}
+        ${row.lines.map(([label, value, detail]) => `<div>
+          <span>${label}</span>
+          <strong>${value}</strong>
+          ${detail ? `<small class="vault-detail">${detail}</small>` : ""}
+        </div>`).join("")}
       </div>
       ${Number.isFinite(row.progress) ? `<div class="vault-progress">
         <span class="mini-progress"><i style="width:${row.progress}%"></i></span>

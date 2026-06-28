@@ -782,6 +782,7 @@ main {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -795,6 +796,15 @@ main {
   color: var(--ink);
   font-size: 14px;
   text-align: right;
+}
+
+.vault-detail {
+  flex: 1 0 100%;
+  color: rgba(111, 85, 74, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: left;
 }
 
 .vault-progress {
