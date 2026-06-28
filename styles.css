@@ -814,17 +814,6 @@ main {
   align-items: center;
 }
 
-.vault-progress .mini-progress {
-  height: 8px;
-  border-radius: 999px;
-  background: #fdf0f0;
-}
-
-.vault-progress .mini-progress i {
-  border-radius: inherit;
-  background: linear-gradient(90deg, #e8a0a5, #d26979);
-}
-
 .vault-progress > strong {
   color: #b86866;
   font-size: 12px;
