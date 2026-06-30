@@ -1737,8 +1737,12 @@ function renderDataUpdates() {
   setSidebarUpdatedAt(data.updatedAt);
   const warning = localStorage.getItem("wealthDashboardUpdateWarning");
   if (warning) {
-    renderUpdateWarning(warning === "1" ? undefined : warning);
-    return;
+    if (isQuietUpdateWarning(warning)) {
+      localStorage.removeItem("wealthDashboardUpdateWarning");
+    } else {
+      renderUpdateWarning(warning === "1" ? undefined : warning);
+      return;
+    }
   }
   const lastSave = dataStatus?.metadata?.lastSuccessfulSave || dataStatus?.lastSuccessfulSave;
   const transactionCount = data.transactions?.length ?? dataStatus?.counts?.transactions;
@@ -1753,7 +1757,17 @@ function renderDataUpdates() {
     .join("");
 }
 
+function isQuietUpdateWarning(message = "") {
+  const text = String(message).trim().toLowerCase();
+  return ["load failed", "failed to fetch", "networkerror", "cancelled", "canceled"].some((keyword) => text.includes(keyword));
+}
+
 function renderUpdateWarning(message = "部分資料更新失敗，請查看更新結果") {
+  if (isQuietUpdateWarning(message)) {
+    localStorage.removeItem("wealthDashboardUpdateWarning");
+    renderDataUpdates();
+    return;
+  }
   document.getElementById("dataUpdates").innerHTML = `
     <div class="update-row"><span>提醒</span><strong>${escapeHtml(message)}</strong></div>
   `;
