@@ -381,6 +381,11 @@ small {
   margin: 0;
 }
 
+.strategy-advice small {
+  display: block;
+  margin-top: 4px;
+}
+
 .rule-card {
   min-height: 210px;
   margin-bottom: 0;

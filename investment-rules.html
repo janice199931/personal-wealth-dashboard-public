@@ -95,6 +95,16 @@
       const strategyGrid = document.getElementById("strategyGrid");
       const strategyAdvice = document.getElementById("strategyAdvice");
       const refreshStrategyButton = document.getElementById("refreshStrategyButton");
+      const STRATEGY_CACHE_KEY = "wealthDashboardStrategySnapshot";
+      const SIGNAL_CACHE_KEY = "wealthDashboardLeveragedSignal";
+
+      function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+        return fetch(url, { ...options, signal: controller.signal }).finally(() => {
+          window.clearTimeout(timer);
+        });
+      }
 
       function todayKey() {
         return new Intl.DateTimeFormat("en-CA", {
@@ -120,6 +130,25 @@
 
       function resultBox(label, value, note = "") {
         return `<article class="result-box"><span>${label}</span><strong>${value}</strong>${note ? `<small>${note}</small>` : ""}</article>`;
+      }
+
+      function readCache(key) {
+        if (!window.localStorage) return null;
+        try {
+          return JSON.parse(localStorage.getItem(key) || "null");
+        } catch {
+          localStorage.removeItem(key);
+          return null;
+        }
+      }
+
+      function writeCache(key, value) {
+        if (!window.localStorage) return;
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch {
+          // Cache is only a last-good display; live Supabase data remains the source of truth.
+        }
       }
 
       async function readJson(response, fallbackMessage) {
@@ -153,9 +182,10 @@
       }
 
       async function fetchLeveragedSignal() {
+        const cached = readCache(SIGNAL_CACHE_KEY);
         try {
           const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${todayKey()}&stockNo=00685L&response=json`;
-          const response = await fetch(url, { cache: "no-store" });
+          const response = await fetchWithTimeout(url, { cache: "no-store" }, 8000);
           if (!response.ok) throw new Error("price unavailable");
           const payload = await response.json();
           const rows = (payload.data || [])
@@ -170,8 +200,11 @@
           const latest = rows[rows.length - 1];
           const high = Math.max(...rows.map((row) => row.high));
           const pullback = high ? ((high - latest.price) / high) * 100 : 0;
-          return { ok: true, price: latest.price, high, pullback, date: latest.date };
+          const signal = { ok: true, price: latest.price, high, pullback, date: latest.date, cached: false, savedAt: new Date().toISOString() };
+          writeCache(SIGNAL_CACHE_KEY, signal);
+          return signal;
         } catch {
+          if (cached?.ok) return { ...cached, cached: true };
           return { ok: false, price: 0, high: 0, pullback: 0, date: "" };
         }
       }
@@ -209,6 +242,13 @@
             text: "00685L 價格暫時讀不到，先不做額外加碼。",
           };
         }
+        if (signal.cached) {
+          return {
+            tone: "",
+            title: "維持原計畫",
+            text: "目前顯示上次成功價格，只作參考；今天不因舊價格觸發加碼。",
+          };
+        }
         if (signal.pullback >= 30) {
           return { tone: "editing", title: "回檔 30% 條件", text: `可投入剩餘 30%，約 ${money.format(deployment(metrics, 0.3))}。` };
         }
@@ -227,31 +267,51 @@
 
       function renderStrategy(metrics, signal) {
         const conclusion = strategyConclusion(metrics, signal);
+        const signalNote = signal.ok
+          ? `${signal.cached ? "上次成功資料｜" : ""}現價 ${signal.price} / 20 日高點 ${signal.high}`
+          : "先維持固定投入";
         strategyGrid.innerHTML = [
           resultBox("緊急預備金", money.format(metrics.emergencyFund), `${pct.format((metrics.emergencyFund / EMERGENCY_FUND_TARGET) * 100)}% / 目標 ${money.format(EMERGENCY_FUND_TARGET)}`),
           resultBox("投資預備金", money.format(metrics.investmentReserve), `${pct.format((metrics.investmentReserve / INVESTMENT_RESERVE_TARGET) * 100)}% / 目標 ${money.format(INVESTMENT_RESERVE_TARGET)}`),
           resultBox("本月轉入永豐", money.format(metrics.monthlyTransfer), `${pct.format((metrics.monthlyTransfer / MONTHLY_TRANSFER_TARGET) * 100)}% / 目標 ${money.format(MONTHLY_TRANSFER_TARGET)}`),
-          resultBox("00685L 回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signal.ok ? `現價 ${signal.price} / 20 日高點 ${signal.high}` : "先維持固定投入"),
+          resultBox("00685L 回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signalNote),
         ].join("");
         strategyAdvice.classList.toggle("editing", conclusion.tone === "editing");
         strategyAdvice.innerHTML = `<span><strong>${conclusion.title}</strong> ${conclusion.text}</span>`;
+      }
+
+      function renderCachedStrategy() {
+        const cached = readCache(STRATEGY_CACHE_KEY);
+        if (!cached?.metrics || !cached?.signal) return false;
+        renderStrategy(cached.metrics, { ...cached.signal, cached: true });
+        strategyAdvice.insertAdjacentHTML("beforeend", " <small>目前先顯示上次成功讀取的策略狀態。</small>");
+        return true;
       }
 
       async function loadStrategy() {
         refreshStrategyButton.disabled = true;
         refreshStrategyButton.textContent = "讀取中...";
         strategyAdvice.innerHTML = "<strong>正在讀取首頁資料...</strong>";
+        renderCachedStrategy();
         try {
           const [coreResponse, signal] = await Promise.all([
-            fetch("/api/dashboard-core?fast=1", { cache: "no-store" }),
+            fetchWithTimeout("/api/dashboard-core?fast=1", { cache: "no-store" }, 10000),
             fetchLeveragedSignal(),
           ]);
+          if (coreResponse.status === 401) {
+            window.location.href = "/login.html";
+            return;
+          }
           const payload = await readJson(coreResponse, "首頁資料讀取失敗。");
           if (!coreResponse.ok) throw new Error(payload.detail || "首頁資料讀取失敗。");
-          renderStrategy(accountMetrics(payload), signal);
+          const metrics = accountMetrics(payload);
+          renderStrategy(metrics, signal);
+          writeCache(STRATEGY_CACHE_KEY, { metrics, signal, savedAt: new Date().toISOString() });
         } catch (error) {
-          strategyGrid.innerHTML = resultBox("資料狀態", "讀取失敗", error.message || "請稍後再試");
-          strategyAdvice.innerHTML = "<span><strong>先維持原計畫</strong> 目前讀不到資料，不做額外加碼。</span>";
+          if (!renderCachedStrategy()) {
+            strategyGrid.innerHTML = resultBox("資料狀態", "讀取失敗", error.message || "請稍後再試");
+            strategyAdvice.innerHTML = "<span><strong>先維持原計畫</strong> 目前讀不到資料，不做額外加碼。</span>";
+          }
         } finally {
           refreshStrategyButton.disabled = false;
           refreshStrategyButton.textContent = "重新讀取";
