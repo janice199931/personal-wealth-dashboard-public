@@ -853,6 +853,11 @@ function getPortfolioMetrics() {
   const previousNet = Number(previousMonth.net);
   const monthNet = Number.isFinite(latestNet) ? latestNet : latestIncome - latestExpense;
   const previousMonthNet = Number.isFinite(previousNet) ? previousNet : previousIncome - previousExpense;
+  const latestSavingsRate = Number.isFinite(Number(latestMonth.savingsRate))
+    ? Number(latestMonth.savingsRate)
+    : latestIncome
+      ? Math.round(((latestIncome - latestExpense) / latestIncome) * 1000) / 10
+      : 0;
   const cashDays = Math.round((cash / Math.max(1, latestExpense)) * 30);
   const usMarketValue = us.holdings.reduce(
     (sum, holding) => sum + parseShares(holding.shares) * parseAmount(holding.price),
@@ -900,6 +905,9 @@ function getPortfolioMetrics() {
     totalAssets,
     netWorth,
     latestMonth,
+    latestIncome,
+    latestExpense,
+    latestSavingsRate,
     monthNet,
     monthNetChange: monthNet - previousMonthNet,
     cashDays,
@@ -1102,7 +1110,6 @@ function renderKpis() {
   }
   const metrics = getPortfolioMetrics();
   const next = getNextMilestone();
-  const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
   const calculatedScore = financialHealthScore(metrics);
   const score = Number.isFinite(Number(calculatedScore)) && Number(calculatedScore) > 0 ? Number(calculatedScore) : 0;
   const rows = [
@@ -1114,9 +1121,9 @@ function renderKpis() {
     },
     { label: "淨資產", value: money.format(metrics.netWorth), note: `本月 ${money.format(metrics.monthNet)}` },
     {
-      label: "本月固定投入",
-      value: money.format(monthlyInvestmentRounded),
-      note: metrics.monthlyInvestmentRemaining <= 0 ? "已完成" : `還差 ${money.format(metrics.monthlyInvestmentRemaining)}`,
+      label: "本月儲蓄率",
+      value: `${fixedDecimal(metrics.latestSavingsRate, 1)}%`,
+      note: `收入 ${money.format(metrics.latestIncome)} / 支出 ${money.format(metrics.latestExpense)}`,
     },
     {
       label: "財富目標進度",
