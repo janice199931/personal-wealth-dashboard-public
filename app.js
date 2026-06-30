@@ -1110,6 +1110,9 @@ function renderKpis() {
   }
   const metrics = getPortfolioMetrics();
   const next = getNextMilestone();
+  const strategyTarget = 35000;
+  const strategyCash = Math.round(metrics.sinopacInvestableBalance);
+  const strategyReady = strategyCash >= strategyTarget;
   const calculatedScore = financialHealthScore(metrics);
   const score = Number.isFinite(Number(calculatedScore)) && Number(calculatedScore) > 0 ? Number(calculatedScore) : 0;
   const rows = [
@@ -1121,9 +1124,12 @@ function renderKpis() {
     },
     { label: "淨資產", value: money.format(metrics.netWorth), note: `本月 ${money.format(metrics.monthNet)}` },
     {
-      label: "本月儲蓄率",
-      value: `${fixedDecimal(metrics.latestSavingsRate, 1)}%`,
-      note: `收入 ${money.format(metrics.latestIncome)} / 支出 ${money.format(metrics.latestExpense)}`,
+      label: "加碼戰備狀態",
+      value: money.format(strategyCash),
+      note: strategyReady
+        ? `🟢 水位達標！大盤若回檔 5%，建議打出 ${money.format(10500)} 買進 00685L`
+        : "🎯 加碼子彈蓄力中...",
+      progress: safeProgress(strategyCash, strategyTarget),
     },
     {
       label: "財富目標進度",
