@@ -1017,7 +1017,7 @@ def login_page(request: Request) -> Response:
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>登入｜Janice的小天地</title>
+    <title>登入｜哲哲❤️臻臻的小天地</title>
     <style>
       * {{ box-sizing: border-box; }}
       body {{
@@ -1041,7 +1041,7 @@ def login_page(request: Request) -> Response:
         background: rgba(255, 253, 250, 0.92);
         box-shadow: 0 18px 42px rgba(158, 103, 88, 0.12);
       }}
-      h1 {{ margin: 0 0 8px; font-size: 32px; line-height: 1.1; }}
+      h1 {{ margin: 0 0 8px; font-size: 32px; line-height: 1.1; white-space: nowrap; }}
       p {{ margin: 0 0 22px; color: #8d746c; font-weight: 750; line-height: 1.6; }}
       label {{ display: grid; gap: 8px; margin-bottom: 14px; color: #d17f87; font-size: 13px; font-weight: 900; }}
       input {{
@@ -1079,7 +1079,7 @@ def login_page(request: Request) -> Response:
   </head>
   <body>
     <main>
-      <h1>Janice的小天地</h1>
+      <h1>哲哲❤️臻臻的小天地</h1>
       <p>登入一次後，這台瀏覽器會記住 30 天。</p>
       {error_html}
       <form method="post" action="/api/login">
