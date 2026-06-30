@@ -19,6 +19,22 @@
         </div>
       </section>
 
+      <section class="card strategy-status-card">
+        <div class="section-heading">
+          <div>
+            <span>Live Strategy</span>
+            <h2>目前策略狀態</h2>
+          </div>
+          <button id="refreshStrategyButton" type="button" class="secondary">重新讀取</button>
+        </div>
+        <div class="result-grid strategy-grid" id="strategyGrid">
+          <article class="result-box"><span>資料狀態</span><strong>讀取中</strong></article>
+        </div>
+        <div class="mode-banner strategy-advice" id="strategyAdvice">
+          <strong>正在讀取首頁資料...</strong>
+        </div>
+      </section>
+
       <section class="rules-grid">
         <article class="card rule-card">
           <span>Monthly Plan</span>
@@ -70,5 +86,180 @@
         </article>
       </section>
     </main>
+    <script>
+      const EMERGENCY_FUND_TARGET = 100000;
+      const INVESTMENT_RESERVE_TARGET = 150000;
+      const MONTHLY_TRANSFER_TARGET = 35000;
+      const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
+      const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
+      const strategyGrid = document.getElementById("strategyGrid");
+      const strategyAdvice = document.getElementById("strategyAdvice");
+      const refreshStrategyButton = document.getElementById("refreshStrategyButton");
+
+      function todayKey() {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Taipei",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date()).replaceAll("-", "");
+      }
+
+      function currentMonthKey() {
+        return new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Taipei",
+          year: "numeric",
+          month: "2-digit",
+        }).format(new Date());
+      }
+
+      function numberValue(value) {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : 0;
+      }
+
+      function resultBox(label, value, note = "") {
+        return `<article class="result-box"><span>${label}</span><strong>${value}</strong>${note ? `<small>${note}</small>` : ""}</article>`;
+      }
+
+      async function readJson(response, fallbackMessage) {
+        const text = await response.text();
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          return { detail: fallbackMessage };
+        }
+      }
+
+      function financeMonth(payload) {
+        const targetMonth = currentMonthKey();
+        if (payload.currentMonthFinance?.month === targetMonth) return payload.currentMonthFinance;
+        return null;
+      }
+
+      function accountMetrics(payload) {
+        const accounts = payload.accounts || {};
+        const breakdown = accounts.accountBreakdown && typeof accounts.accountBreakdown === "object"
+          ? accounts.accountBreakdown
+          : {};
+        const totalCash = numberValue(accounts.cashTWD);
+        const sinopac = numberValue(breakdown.sinopacBalance);
+        const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, sinopac || totalCash);
+        const investmentReserve = Math.max(0, (sinopac || totalCash) - emergencyFund);
+        const availableForExtra = Math.max(0, sinopac - emergencyFund - investmentReserve);
+        const month = financeMonth(payload);
+        const monthlyTransfer = numberValue(month?.sinopacTransfer);
+        return { totalCash, sinopac, emergencyFund, investmentReserve, availableForExtra, monthlyTransfer };
+      }
+
+      async function fetchLeveragedSignal() {
+        try {
+          const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${todayKey()}&stockNo=00685L&response=json`;
+          const response = await fetch(url, { cache: "no-store" });
+          if (!response.ok) throw new Error("price unavailable");
+          const payload = await response.json();
+          const rows = (payload.data || [])
+            .map((row) => ({
+              high: numberValue(String(row[4]).replace(/,/g, "")),
+              price: numberValue(String(row[6]).replace(/,/g, "")),
+              date: row[0],
+            }))
+            .filter((row) => row.high > 0 && row.price > 0)
+            .slice(-20);
+          if (!rows.length) throw new Error("empty price rows");
+          const latest = rows[rows.length - 1];
+          const high = Math.max(...rows.map((row) => row.high));
+          const pullback = high ? ((high - latest.price) / high) * 100 : 0;
+          return { ok: true, price: latest.price, high, pullback, date: latest.date };
+        } catch {
+          return { ok: false, price: 0, high: 0, pullback: 0, date: "" };
+        }
+      }
+
+      function deployment(metrics, ratio) {
+        return Math.round(Math.max(0, metrics.investmentReserve) * ratio);
+      }
+
+      function strategyConclusion(metrics, signal) {
+        if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
+          return {
+            tone: "editing",
+            title: "先不要加碼",
+            text: `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.emergencyFund)}，先補安全水位。`,
+          };
+        }
+        if (metrics.monthlyTransfer < MONTHLY_TRANSFER_TARGET) {
+          return {
+            tone: "",
+            title: "先完成本月固定轉入",
+            text: `本月轉入永豐還差 ${money.format(MONTHLY_TRANSFER_TARGET - metrics.monthlyTransfer)}，完成後再看加碼條件。`,
+          };
+        }
+        if (metrics.investmentReserve < INVESTMENT_RESERVE_TARGET) {
+          return {
+            tone: "",
+            title: "先補投資預備金",
+            text: `投資預備金還差 ${money.format(INVESTMENT_RESERVE_TARGET - metrics.investmentReserve)}，00685L 訊號先作觀察。`,
+          };
+        }
+        if (!signal.ok) {
+          return {
+            tone: "",
+            title: "維持原計畫",
+            text: "00685L 價格暫時讀不到，先不做額外加碼。",
+          };
+        }
+        if (signal.pullback >= 30) {
+          return { tone: "editing", title: "回檔 30% 條件", text: `可投入剩餘 30%，約 ${money.format(deployment(metrics, 0.3))}。` };
+        }
+        if (signal.pullback >= 20) {
+          return { tone: "editing", title: "回檔 20% 條件", text: `可再動用 40%，約 ${money.format(deployment(metrics, 0.4))}。` };
+        }
+        if (signal.pullback >= 10) {
+          return { tone: "editing", title: "回檔 10% 條件", text: `可動用 30%，約 ${money.format(deployment(metrics, 0.3))}。` };
+        }
+        return {
+          tone: "",
+          title: "今天不用額外加碼",
+          text: `00685L 近 20 日回檔 ${pct.format(signal.pullback)}%，未達 10% 加碼條件。`,
+        };
+      }
+
+      function renderStrategy(metrics, signal) {
+        const conclusion = strategyConclusion(metrics, signal);
+        strategyGrid.innerHTML = [
+          resultBox("緊急預備金", money.format(metrics.emergencyFund), `${pct.format((metrics.emergencyFund / EMERGENCY_FUND_TARGET) * 100)}% / 目標 ${money.format(EMERGENCY_FUND_TARGET)}`),
+          resultBox("投資預備金", money.format(metrics.investmentReserve), `${pct.format((metrics.investmentReserve / INVESTMENT_RESERVE_TARGET) * 100)}% / 目標 ${money.format(INVESTMENT_RESERVE_TARGET)}`),
+          resultBox("本月轉入永豐", money.format(metrics.monthlyTransfer), `${pct.format((metrics.monthlyTransfer / MONTHLY_TRANSFER_TARGET) * 100)}% / 目標 ${money.format(MONTHLY_TRANSFER_TARGET)}`),
+          resultBox("00685L 回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signal.ok ? `現價 ${signal.price} / 20 日高點 ${signal.high}` : "先維持固定投入"),
+        ].join("");
+        strategyAdvice.classList.toggle("editing", conclusion.tone === "editing");
+        strategyAdvice.innerHTML = `<span><strong>${conclusion.title}</strong> ${conclusion.text}</span>`;
+      }
+
+      async function loadStrategy() {
+        refreshStrategyButton.disabled = true;
+        refreshStrategyButton.textContent = "讀取中...";
+        strategyAdvice.innerHTML = "<strong>正在讀取首頁資料...</strong>";
+        try {
+          const [coreResponse, signal] = await Promise.all([
+            fetch("/api/dashboard-core?fast=1", { cache: "no-store" }),
+            fetchLeveragedSignal(),
+          ]);
+          const payload = await readJson(coreResponse, "首頁資料讀取失敗。");
+          if (!coreResponse.ok) throw new Error(payload.detail || "首頁資料讀取失敗。");
+          renderStrategy(accountMetrics(payload), signal);
+        } catch (error) {
+          strategyGrid.innerHTML = resultBox("資料狀態", "讀取失敗", error.message || "請稍後再試");
+          strategyAdvice.innerHTML = "<span><strong>先維持原計畫</strong> 目前讀不到資料，不做額外加碼。</span>";
+        } finally {
+          refreshStrategyButton.disabled = false;
+          refreshStrategyButton.textContent = "重新讀取";
+        }
+      }
+
+      refreshStrategyButton.addEventListener("click", loadStrategy);
+      loadStrategy();
+    </script>
   </body>
 </html>

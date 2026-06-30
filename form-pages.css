@@ -359,6 +359,28 @@ small {
   gap: 14px;
 }
 
+.strategy-status-card {
+  margin-bottom: 18px;
+}
+
+.strategy-grid {
+  margin-bottom: 14px;
+}
+
+.strategy-grid .result-box strong {
+  font-size: 22px;
+}
+
+.strategy-grid .result-box small {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.strategy-advice {
+  margin: 0;
+}
+
 .rule-card {
   min-height: 210px;
   margin-bottom: 0;
