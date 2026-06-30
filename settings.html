@@ -128,6 +128,13 @@
       }
 
       function healthAdvice(payload, pricePayload = null) {
+        if (payload.summary?.title) {
+          const priceOk = pricePayload?.ok || payload.priceApiOk;
+          if (!priceOk && payload.summary.tone === "success") {
+            return { tone: "success", text: "資料保存正常，可以輸入資料；股價更新暫時不穩，晚點再更新即可。" };
+          }
+          return { tone: payload.summary.tone || "success", text: payload.summary.title };
+        }
         const formalDataOk = payload.status?.currentDb === "supabase" && !payload.status?.fallbackActive;
         if (!payload.authOk) return { tone: "error", text: "登入狀態異常，請重新登入後再操作。" };
         if (!payload.readOk) return { tone: "error", text: "Supabase 目前讀取異常，先不要新增或修改資料。" };
@@ -164,7 +171,7 @@
         if (!pricePayload?.ok) issues.push("股價更新 API 目前檢查失敗。");
         document.getElementById("dataHealthNote").textContent = issues.length
           ? issues.join(" ")
-          : "沒有發現需要處理的問題。";
+          : payload.summary?.action || "沒有發現需要處理的問題。";
       }
 
       async function readJsonSafely(response) {
@@ -202,12 +209,15 @@
         const target = document.getElementById("dataHealthGrid");
         target.innerHTML = '<article class="diagnostics-card"><span>Status</span><strong>檢查中</strong></article>';
         try {
-          const [response, priceResponse] = await Promise.all([
+          const [healthResult, priceResult] = await Promise.allSettled([
             fetch("/api/data-health", { cache: "no-store" }),
             fetch("/api/update-prices", { method: "POST", headers: { "x-price-check": "1" }, cache: "no-store" }),
           ]);
+          if (healthResult.status !== "fulfilled") throw new Error("資料健康檢查失敗");
+          const response = healthResult.value;
+          const priceResponse = priceResult.status === "fulfilled" ? priceResult.value : null;
           const payload = await readJsonSafely(response);
-          const pricePayload = await readJsonSafely(priceResponse);
+          const pricePayload = priceResponse ? await readJsonSafely(priceResponse) : { ok: false, detail: "股價檢查暫時失敗" };
           if (!response.ok) throw new Error(payload.detail || "資料健康檢查失敗");
           renderDataHealth(payload, pricePayload);
         } catch (error) {

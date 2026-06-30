@@ -87,6 +87,11 @@ let priceAutoRefreshTimer = null;
 let financeDataLoaded = Boolean(window.financeData?.years?.length);
 let dashboardDataLoaded = Boolean(window.portfolioData);
 
+function safeNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
 function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController();
   let timer;
@@ -150,6 +155,26 @@ function rememberFinanceData(financeData) {
   } catch {
     // Cached finance data only keeps the dashboard from looking empty during slow loads.
   }
+}
+
+function hydrateDashboardFromCache() {
+  const cachedCore = readLastDashboardCore();
+  if (!cachedCore?.portfolio) return false;
+  applyPortfolioData(cachedCore.portfolio, cachedCore.history || []);
+  applyAccountData(cachedCore.accounts || {});
+  applyCurrentMonthFinance(cachedCore.currentMonthFinance || null);
+  if (cachedCore.transactions) applyTransactionData(cachedCore.transactions);
+  if (cachedCore.dividends) applyDividendData(cachedCore.dividends);
+  dashboardDataLoaded = true;
+  return true;
+}
+
+function hydrateFinanceFromCache() {
+  const cachedFinanceData = readLastFinanceData();
+  if (!cachedFinanceData?.years?.length || window.financeData?.years?.length) return false;
+  window.financeData = cachedFinanceData;
+  financeDataLoaded = true;
+  return true;
 }
 
 function escapeHtml(value) {
@@ -301,16 +326,16 @@ async function refreshTaiwanStockPrice() {
 }
 
 function parseAmount(value) {
-  if (typeof value === "number") return value;
-  return Number(String(value).replace(/[^\d.-]/g, ""));
+  if (typeof value === "number") return safeNumber(value);
+  return safeNumber(String(value).replace(/[^\d.-]/g, ""));
 }
 
 function parseShares(value) {
-  return Number(String(value).replace(/[^\d.]/g, ""));
+  return safeNumber(String(value).replace(/[^\d.]/g, ""));
 }
 
 function assetValue(label) {
-  return data.assetPie.find((row) => row.label === label)?.value ?? 0;
+  return safeNumber(data.assetPie.find((row) => row.label === label)?.value);
 }
 
 function monthlyFallback() {
@@ -845,16 +870,16 @@ function getPortfolioMetrics() {
   const latestMonth = monthlyRows[monthlyRows.length - 1] ?? monthlyFallback();
   const currentMonthFinance = currentFinanceMonth();
   const previousMonth = monthlyRows[monthlyRows.length - 2] ?? monthlyFallback();
-  const latestIncome = Number(latestMonth.income) || 0;
-  const latestExpense = Number(latestMonth.expense) || 0;
-  const previousIncome = Number(previousMonth.income) || 0;
-  const previousExpense = Number(previousMonth.expense) || 0;
-  const latestNet = Number(latestMonth.net);
-  const previousNet = Number(previousMonth.net);
+  const latestIncome = safeNumber(latestMonth.income);
+  const latestExpense = safeNumber(latestMonth.expense);
+  const previousIncome = safeNumber(previousMonth.income);
+  const previousExpense = safeNumber(previousMonth.expense);
+  const latestNet = safeNumber(latestMonth.net, NaN);
+  const previousNet = safeNumber(previousMonth.net, NaN);
   const monthNet = Number.isFinite(latestNet) ? latestNet : latestIncome - latestExpense;
   const previousMonthNet = Number.isFinite(previousNet) ? previousNet : previousIncome - previousExpense;
-  const latestSavingsRate = Number.isFinite(Number(latestMonth.savingsRate))
-    ? Number(latestMonth.savingsRate)
+  const latestSavingsRate = Number.isFinite(safeNumber(latestMonth.savingsRate, NaN))
+    ? safeNumber(latestMonth.savingsRate)
     : latestIncome
       ? Math.round(((latestIncome - latestExpense) / latestIncome) * 1000) / 10
       : 0;
@@ -871,10 +896,10 @@ function getPortfolioMetrics() {
   const twShares = parseShares(tw.shares);
   const monthlyInvestment = investmentAmountForPeriod(currentMonthKey());
   const monthlyInvestmentRemaining = Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlyInvestment));
-  const sinopacBalance = Number(data.accountBreakdown.sinopacBalance) || 0;
-  const postOfficeBalance = Number(data.accountBreakdown.postOfficeBalance) || 0;
+  const sinopacBalance = safeNumber(data.accountBreakdown.sinopacBalance);
+  const postOfficeBalance = safeNumber(data.accountBreakdown.postOfficeBalance);
   const creditCardDebt = data.accountBreakdown.creditCardDebt !== undefined
-    ? Number(data.accountBreakdown.creditCardDebt) || 0
+    ? safeNumber(data.accountBreakdown.creditCardDebt)
     : debt;
   const buckets = cashBuckets(cash);
   const emergencyFund = buckets.emergencyFund;
@@ -882,7 +907,7 @@ function getPortfolioMetrics() {
   const availableCash = buckets.availableCash;
   const livingVaultBalance = Math.max(0, postOfficeBalance + availableCash - creditCardDebt);
   const sinopacInvestableBalance = Math.max(0, sinopacBalance - emergencyFund - investmentReserve);
-  const monthlySinopacTransfer = Number(currentMonthFinance?.sinopacTransfer) || 0;
+  const monthlySinopacTransfer = safeNumber(currentMonthFinance?.sinopacTransfer);
   const investableSinopacCash = Math.max(0, investmentReserve + availableCash);
   const leveragedValue = taiwanStocks || data.rebalancer.leveragedValue || 0;
   const protectedEmergencyCash = emergencyFund;
@@ -890,11 +915,11 @@ function getPortfolioMetrics() {
   const rebalanceTotal = leveragedValue + rebalanceCash;
   const leveragedRatio = rebalanceTotal ? (leveragedValue / rebalanceTotal) * 100 : 0;
   const leveragedDrift = leveragedRatio - LEVERAGED_TARGET_RATIO;
-  const twCostTwd = Number(tw.cost) || 0;
+  const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
   const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
-  const investmentCostTwd = twCostTwd + Number(usCostTwd || 0);
-  const investmentGainTwd = (Number(tw.gain) || 0) + Number(usGainTwd || 0);
+  const investmentCostTwd = twCostTwd + safeNumber(usCostTwd);
+  const investmentGainTwd = safeNumber(tw.gain) + safeNumber(usGainTwd);
 
   return {
     taiwanStocks,
@@ -1892,7 +1917,7 @@ function setupPriceUpdater() {
       markTodayPriceUpdated();
       renderPriceUpdateProgress("更新完成", "重新整理首頁資料", Math.floor((Date.now() - progress.startedAt) / 1000));
       await loadExternalData();
-      await fetchWithTimeout("/api/prices", { cache: "no-store" }, 12000);
+      await refreshPricesQuietly();
       render();
       renderDetailedPriceUpdate(payload);
       button.textContent = payload.warnings?.length ? "部分更新完成" : "股價更新完成";
@@ -1942,7 +1967,7 @@ async function runAutomaticPriceUpdate() {
     markTodayPriceUpdated();
     localStorage.removeItem("wealthDashboardUpdateWarning");
     await loadExternalData();
-    await fetchWithTimeout("/api/prices", { cache: "no-store" }, 12000);
+    await refreshPricesQuietly();
     render();
     if (payload.warnings?.length) {
       console.warn("自動更新股價警告", payload.warnings);
@@ -2269,20 +2294,8 @@ async function loadExternalData() {
     .then(renderDataStatusCards)
     .catch(() => {});
 
-  const cachedFinanceData = readLastFinanceData();
-  if (cachedFinanceData?.years?.length && !window.financeData?.years?.length) {
-    window.financeData = cachedFinanceData;
-    financeDataLoaded = true;
-  }
-
-  const cachedCore = readLastDashboardCore();
-  if (cachedCore?.portfolio) {
-    applyPortfolioData(cachedCore.portfolio, cachedCore.history || []);
-    applyAccountData(cachedCore.accounts || {});
-    applyCurrentMonthFinance(cachedCore.currentMonthFinance || null);
-    dashboardDataLoaded = true;
-    if (cachedCore.transactions) applyTransactionData(cachedCore.transactions);
-    if (cachedCore.dividends) applyDividendData(cachedCore.dividends);
+  hydrateFinanceFromCache();
+  if (hydrateDashboardFromCache()) {
     renderCoreDashboard();
     window.requestAnimationFrame(() => {
       renderVisualDashboard();
@@ -2379,6 +2392,14 @@ async function loadAppVersion() {
   }
 }
 
+async function refreshPricesQuietly() {
+  try {
+    await fetchWithTimeout("/api/prices", { cache: "no-store" }, 12000);
+  } catch (error) {
+    console.info("價格補充資料讀取失敗，保留目前畫面資料。", error);
+  }
+}
+
 async function runDailyDataHealthCheck() {
   try {
     await fetchWithTimeout("/api/data-health", { cache: "no-store" }, 12000);
@@ -2405,6 +2426,14 @@ async function initializeDashboard() {
     return;
   }
   renderInitialLoading();
+  const hadCachedDashboard = hydrateFinanceFromCache() || hydrateDashboardFromCache();
+  if (hadCachedDashboard) {
+    renderCoreDashboard();
+    window.requestAnimationFrame(() => {
+      renderVisualDashboard();
+      renderDetailDashboard();
+    });
+  }
   try {
     await loadExternalData();
     render();

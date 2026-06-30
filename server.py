@@ -49,6 +49,7 @@ AUTH_PASSWORD = os.getenv("ASSET_DASHBOARD_PASSWORD", "").strip()
 AUTH_REALM = "Personal Wealth Dashboard"
 AUTH_COOKIE_NAME = "wealth_dashboard_session"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
+EMERGENCY_FUND_TARGET = 100000
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -566,6 +567,70 @@ def verify_deleted_row(rows: list[dict[str, Any]], row_id: str, message: str) ->
         raise HTTPException(status_code=503, detail=message)
 
 
+def verify_saved_finance_month(month_key: str, expected: dict[str, Any]) -> None:
+    finance_data = db_store.read_finance_data({})
+    months = [
+        month
+        for year in finance_data.get("years", [])
+        for month in year.get("months", [])
+        if isinstance(month, dict) and month.get("month") == month_key
+    ]
+    if not months:
+        raise HTTPException(status_code=503, detail="月份統計已送出，但重新讀取後沒有找到這個月份，請重新整理確認。")
+    saved = months[0]
+    for field in ["income", "expense", "net", "sinopacTransfer"]:
+        if round(float(saved.get(field, 0) or 0)) != round(float(expected.get(field, 0) or 0)):
+            raise HTTPException(status_code=503, detail="月份統計已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+
+
+def verify_saved_finance_import(expected: dict[str, Any]) -> None:
+    saved = db_store.read_finance_data({})
+    expected_years = expected.get("years", [])
+    saved_years = saved.get("years", [])
+    if not isinstance(saved_years, list) or len(saved_years) != len(expected_years):
+        raise HTTPException(status_code=503, detail="年度/月度對帳已送出，但重新讀取後年度數量沒有對上，請重新整理確認。")
+    expected_month_count = sum(len(year.get("months", [])) for year in expected_years if isinstance(year, dict))
+    saved_month_count = sum(len(year.get("months", [])) for year in saved_years if isinstance(year, dict))
+    if expected_month_count != saved_month_count:
+        raise HTTPException(status_code=503, detail="年度/月度對帳已送出，但重新讀取後月份數量沒有對上，請重新整理確認。")
+
+
+def plain_health_summary(
+    read_ok: bool,
+    write_ok: bool,
+    price_api_ok: bool,
+    status: dict[str, Any],
+    anomalies: list[str],
+) -> dict[str, Any]:
+    formal_data_ok = status.get("currentDb") == "supabase" and not status.get("fallbackActive")
+    can_edit = read_ok and write_ok and formal_data_ok
+    if not read_ok:
+        title = "資料讀取異常，先不要新增或修改資料。"
+        action = "請重新整理後再檢查一次；如果仍異常，先不要輸入新資料。"
+        tone = "error"
+    elif not write_ok:
+        title = "Supabase 目前無法寫入，先不要新增交易、股息或更新資產。"
+        action = "請稍後再試，或到 Supabase 檢查連線狀態。"
+        tone = "error"
+    elif not formal_data_ok:
+        title = "目前不是正式資料狀態，先不要修改重要資料。"
+        action = "請確認 Database Health 與 Data Status 都是正式資料。"
+        tone = "error"
+    elif not price_api_ok:
+        title = "資料保存正常，股價更新暫時不穩。"
+        action = "你仍可以新增資料；股價晚點再更新即可。"
+        tone = "success"
+    elif anomalies:
+        title = "資料可正常使用，但有幾個項目建議留意。"
+        action = "請查看下方提醒；不影響一般新增或修改。"
+        tone = "success"
+    else:
+        title = "網站狀態正常，可以放心輸入資料。"
+        action = "資料讀取、寫入、備份與股價檢查都正常。"
+        tone = "success"
+    return {"tone": tone, "title": title, "action": action, "canEdit": can_edit}
+
+
 def backup_folder_name() -> str:
     return datetime.now(TWD).strftime("%Y-%m-%d_%H-%M-%S")
 
@@ -678,7 +743,7 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
     if not has_fund_buckets:
         total_cash = round(float(accounts.get("cashTWD", 0) or 0))
         emergency_base = sinopac or total_cash
-        emergency_fund = min(200000, emergency_base)
+        emergency_fund = min(EMERGENCY_FUND_TARGET, emergency_base)
         investment_reserve = max(0, (sinopac or total_cash) - emergency_fund)
         available_cash = max(0, total_cash - emergency_fund - investment_reserve)
     return {
@@ -759,6 +824,7 @@ def save_manual_monthly_finance(
     finance_data["importedMonths"] = sorted({*map(str, imported_months), month_key}, reverse=True)
 
     saved_to = db_store.write_finance_data(finance_data)
+    verify_saved_finance_month(month_key, month_payload)
     db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
     portfolio = read_portfolio(use_examples=False)
     history = backfill_history_from_finance_data(portfolio) if portfolio else db_store.read_net_worth_history()
@@ -1206,9 +1272,11 @@ def data_health(request: Request) -> Response:
         anomalies.append("Supabase 目前不是正式寫入狀態。")
     if not transactions:
         anomalies.append("目前沒有交易紀錄。")
+    summary = plain_health_summary(read_ok, write_ok, price_api_ok, status, anomalies)
 
     payload = {
         "ok": read_ok and write_ok and price_api_ok,
+        "summary": summary,
         "readOk": read_ok,
         "writeOk": write_ok,
         "priceApiOk": price_api_ok,
@@ -1336,6 +1404,7 @@ async def import_finance_data(request: Request) -> dict[str, Any]:
 
     write_pre_change_backup("匯入年度/月度對帳")
     saved_to = db_store.write_finance_data(finance_data)
+    verify_saved_finance_import(finance_data)
     db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
     portfolio = read_portfolio(use_examples=False)
     history = backfill_history_from_finance_data(portfolio) if portfolio else db_store.read_net_worth_history()
