@@ -1786,6 +1786,14 @@ canvas {
   text-align: right;
 }
 
+.monthly-table th:last-child,
+.monthly-table td:last-child {
+  width: 100px;
+  min-width: 90px;
+  padding-right: 15px;
+  white-space: nowrap;
+}
+
 .monthly-table tr:last-child td {
   border-bottom: 0;
 }

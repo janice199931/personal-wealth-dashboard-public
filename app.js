@@ -876,6 +876,7 @@ function getPortfolioMetrics() {
   const investmentReserve = buckets.investmentReserve;
   const availableCash = buckets.availableCash;
   const livingVaultBalance = Math.max(0, postOfficeBalance + availableCash - creditCardDebt);
+  const sinopacInvestableBalance = Math.max(0, sinopacBalance - emergencyFund - investmentReserve);
   const monthlySinopacTransfer = Number(currentMonthFinance?.sinopacTransfer) || 0;
   const investableSinopacCash = Math.max(0, investmentReserve + availableCash);
   const leveragedValue = taiwanStocks || data.rebalancer.leveragedValue || 0;
@@ -919,6 +920,7 @@ function getPortfolioMetrics() {
     monthlyInvestment,
     monthlyInvestmentRemaining,
     sinopacBalance,
+    sinopacInvestableBalance,
     postOfficeBalance,
     creditCardDebt,
     livingVaultBalance,
@@ -1180,7 +1182,7 @@ function renderVaults() {
       status: "good",
       progress: monthlyInvestmentProgress,
       lines: [
-        ["目前餘額", money.format(metrics.sinopacBalance)],
+        ["目前餘額", money.format(metrics.sinopacInvestableBalance)],
         ["本月投入進度", `${money.format(monthlyInvestmentRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)} (${monthlyInvestmentStatus})`],
       ],
     },
