@@ -1087,16 +1087,21 @@ function decisionIcon(status) {
 
 function decisionChecklist(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
+  const monthlyTransferRemaining = Math.max(0, Math.round(metrics.monthlySinopacTransferRemaining));
+  const reserveGap = Math.max(0, INVESTMENT_RESERVE_MIN - Math.round(metrics.investmentReserve));
   return [
-    metrics.monthlyInvestmentRemaining <= 0 ? "本月固定投入已完成" : `本月固定投入還差 ${money.format(metrics.monthlyInvestmentRemaining)}`,
-    metrics.emergencyFund >= EMERGENCY_FUND_TARGET && metrics.investmentReserve >= INVESTMENT_RESERVE_MIN
-      ? "現金水位正常"
-      : "現金水位需要補強",
+    metrics.emergencyFund >= EMERGENCY_FUND_TARGET
+      ? "緊急預備金已達標"
+      : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - Math.round(metrics.emergencyFund))}`,
+    monthlyTransferRemaining <= 0
+      ? "本月已轉入永豐 35,000"
+      : `本月轉入永豐還差 ${money.format(monthlyTransferRemaining)}`,
+    metrics.investmentReserve >= INVESTMENT_RESERVE_MIN
+      ? "投資預備金水位足夠"
+      : `投資預備金還差 ${money.format(reserveGap)}`,
     signal.state === "ready" && signal.pullback >= 10
-      ? "市場回檔達加碼觀察區"
-      : metrics.hasLeveragedHolding && metrics.rebalanceTotal && Math.abs(metrics.leveragedDrift) > REBALANCE_BAND
-      ? "股票配置先作參考"
-      : "股票配置正常",
+      ? "00685L 進入加碼觀察區"
+      : "00685L 尚未達加碼條件",
   ];
 }
 
@@ -1414,27 +1419,43 @@ function investableCashSummary(metrics) {
 }
 
 function todayConclusion(metrics) {
-  const water = cashWaterStatus(metrics);
   const signal = data.leveragedPullbackSignal || { state: "idle" };
-  if (water.status === "good" && signal.state === "ready" && signal.pullback >= 10) {
+  const monthlyTransferRemaining = Math.max(0, Math.round(metrics.monthlySinopacTransferRemaining));
+  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
     return {
-      status: signal.pullback >= 20 ? "warn" : "watch",
-      text: "符合加碼條件，可分批投入現金",
+      status: "warn",
+      text: "先補緊急預備金，今天不要加碼",
     };
   }
-  if (water.status === "good" && metrics.monthlyInvestmentRemaining <= 0) {
-    return { status: "good", text: "今天不用做任何事" };
+  if (monthlyTransferRemaining > 0) {
+    return {
+      status: "watch",
+      text: "先完成本月轉入永豐 35,000",
+    };
   }
-  return water;
+  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) {
+    return {
+      status: "watch",
+      text: "優先補足投資預備金",
+    };
+  }
+  if (signal.state === "ready" && signal.pullback >= 10) {
+    return {
+      status: signal.pullback >= 20 ? "warn" : "watch",
+      text: "符合加碼條件，可分批動用投資預備金",
+    };
+  }
+  return { status: "good", text: "今天不用做任何事" };
 }
 
 function nextActionSummary(metrics) {
   const water = cashWaterStatus(metrics);
+  const monthlyTransferRemaining = Math.max(0, Math.round(metrics.monthlySinopacTransferRemaining));
   if (water.status === "warn") return "今天不買，先補緊急預備金。";
+  if (monthlyTransferRemaining > 0) return `先完成本月轉入永豐，還差 ${money.format(monthlyTransferRemaining)}。`;
   if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "先把投資預備金補到 15 萬。";
   if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return `超過 ${money.format(INVESTMENT_RESERVE_MAX)} 的部分可分 2-3 筆投入。`;
-  if (metrics.monthlyInvestmentRemaining <= 0) return "本月固定投入已完成，先觀察。";
-  return `維持每月固定投入，本月還差 ${money.format(metrics.monthlyInvestmentRemaining)}。`;
+  return "本月固定轉入已完成，等待 00685L 回檔條件。";
 }
 
 function availableContributionBudget(metrics) {

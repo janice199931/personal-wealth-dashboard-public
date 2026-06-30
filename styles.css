@@ -2096,8 +2096,10 @@ canvas {
 
   .sidebar-nav a:nth-child(2),
   .sidebar-nav a:nth-child(3),
+  .sidebar-nav a:nth-child(5),
   .sidebar-nav a:nth-child(6),
-  .sidebar-nav a:nth-child(7) {
+  .sidebar-nav a:nth-child(8),
+  .sidebar-nav a:nth-child(9) {
     display: none;
   }
 
@@ -2153,8 +2155,38 @@ canvas {
   }
 
   main {
+    display: flex;
+    flex-direction: column;
     margin-left: 0;
     padding: 0 12px 36px;
+  }
+
+  .hero-dashboard {
+    order: 1;
+  }
+
+  .section-block[aria-label="四個金庫"] {
+    order: 2;
+  }
+
+  .section-block[aria-label="財務總覽"] {
+    order: 3;
+  }
+
+  .data-status-grid {
+    order: 4;
+  }
+
+  .section-block[aria-label="資產分析"],
+  .dashboard-primary {
+    order: 5;
+  }
+
+  .investment-section,
+  .investment-grid,
+  .ledger-section,
+  .dashboard-footer {
+    order: 6;
   }
 
   .as-of {

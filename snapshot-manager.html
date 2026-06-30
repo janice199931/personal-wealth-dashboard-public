@@ -18,22 +18,6 @@
 
       <form id="snapshotForm">
         <label>
-          緊急預備金
-          <input name="emergencyFund" type="number" step="1" min="0" placeholder="100000" />
-        </label>
-        <label>
-          投資預備金
-          <input name="investmentReserve" type="number" step="1" min="0" placeholder="150000" />
-        </label>
-        <label>
-          現金
-          <input name="availableCash" type="number" step="1" min="0" />
-        </label>
-        <label>
-          其他銀行餘額
-          <input name="otherBankBalance" type="number" step="1" min="0" placeholder="不含郵局與永豐" />
-        </label>
-        <label>
           郵局餘額
           <input name="postOfficeBalance" type="number" step="1" min="0" placeholder="薪資入帳帳戶" />
         </label>
@@ -42,16 +26,16 @@
           <input name="sinopacBalance" type="number" step="1" min="0" placeholder="投資扣款帳戶" />
         </label>
         <label>
+          本月轉入永豐
+          <input name="monthlySinopacTransfer" type="number" step="1" min="0" placeholder="例如 35000" />
+        </label>
+        <label>
+          現金
+          <input name="availableCash" type="number" step="1" min="0" />
+        </label>
+        <label>
           信用卡負債
           <input name="creditCardDebt" type="number" step="1" min="0" />
-        </label>
-        <label>
-          統計年份
-          <select id="financeYear"></select>
-        </label>
-        <label>
-          統計月份
-          <select id="financeMonth"></select>
         </label>
         <label>
           月份收入
@@ -62,17 +46,38 @@
           <input name="monthlyExpense" type="number" step="1" min="0" placeholder="例如 25000" />
         </label>
         <label>
-          本月轉入永豐
-          <input name="monthlySinopacTransfer" type="number" step="1" min="0" placeholder="例如 35000" />
+          統計年份
+          <select id="financeYear"></select>
         </label>
         <label>
-          MOZE CSV
-          <input name="csv" type="file" accept=".csv,text/csv" />
+          統計月份
+          <select id="financeMonth"></select>
         </label>
-        <label class="full">
-          帳戶總覽截圖
-          <input name="image" type="file" accept="image/*" />
-        </label>
+        <details class="advanced-fields full">
+          <summary>進階欄位</summary>
+          <div>
+            <label>
+              緊急預備金
+              <input name="emergencyFund" type="number" step="1" min="0" placeholder="100000" />
+            </label>
+            <label>
+              投資預備金
+              <input name="investmentReserve" type="number" step="1" min="0" placeholder="150000" />
+            </label>
+            <label>
+              其他銀行餘額
+              <input name="otherBankBalance" type="number" step="1" min="0" placeholder="不含郵局與永豐" />
+            </label>
+            <label>
+              MOZE CSV
+              <input name="csv" type="file" accept=".csv,text/csv" />
+            </label>
+            <label class="full">
+              帳戶總覽截圖
+              <input name="image" type="file" accept="image/*" />
+            </label>
+          </div>
+        </details>
         <div class="actions full">
           <span class="status" id="statusText">可只填有異動的欄位；空白欄位會維持原資料，不會歸零。</span>
           <button id="submitButton" type="submit">更新資產</button>

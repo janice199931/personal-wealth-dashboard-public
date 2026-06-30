@@ -279,6 +279,41 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.advanced-fields {
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  background: rgba(255, 253, 250, 0.58);
+}
+
+.advanced-fields summary {
+  cursor: pointer;
+  padding: 14px 16px;
+  color: var(--muted);
+  font-weight: 900;
+  list-style: none;
+}
+
+.advanced-fields summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-fields summary::after {
+  content: "＋";
+  float: right;
+  color: #d17f87;
+}
+
+.advanced-fields[open] summary::after {
+  content: "－";
+}
+
+.advanced-fields > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 16px 16px;
+}
+
 .actions,
 .row-actions {
   display: flex;
@@ -316,6 +351,75 @@ small {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.rules-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.rule-card {
+  min-height: 210px;
+  margin-bottom: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.rule-card.wide {
+  grid-column: span 2;
+}
+
+.rule-card span {
+  color: #d17f87;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.rule-card h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.rule-card > strong {
+  color: var(--ink);
+  font-size: 30px;
+  line-height: 1;
+}
+
+.rule-card p,
+.rule-card li {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 850;
+  line-height: 1.65;
+}
+
+.rule-card ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.rule-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rule-steps div {
+  min-height: 98px;
+  padding: 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: rgba(255, 253, 250, 0.7);
+}
+
+.rule-steps strong {
+  display: block;
+  margin-bottom: 6px;
 }
 
 .summary-box,
@@ -599,11 +703,17 @@ th {
   .quick-filters,
   .summary-grid,
   .result-grid,
+  .rules-grid,
+  .rule-steps,
   .section-heading,
   .audit-item summary,
   .audit-summary {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .rule-card.wide {
+    grid-column: span 1;
   }
 
   .hero-card {
@@ -612,6 +722,10 @@ th {
 
   .hero-card a {
     justify-self: start;
+  }
+
+  .advanced-fields > div {
+    grid-template-columns: 1fr;
   }
 
   .actions {

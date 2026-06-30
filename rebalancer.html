@@ -29,7 +29,7 @@
         </label>
         <label>
           已保留緊急預備金
-          <input name="protectedCash" type="number" step="1" min="0" value="200000" readonly />
+          <input name="protectedCash" type="number" step="1" min="0" value="100000" readonly />
         </label>
         <label>
           台股參考比例
@@ -80,7 +80,7 @@
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
       const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
       const STORAGE_KEY = "wealthDashboardRebalanceDraft";
-      const EMERGENCY_FUND_TARGET = 200000;
+      const EMERGENCY_FUND_TARGET = 100000;
 
       function numberValue(name) {
         return Number(form.elements[name].value) || 0;
