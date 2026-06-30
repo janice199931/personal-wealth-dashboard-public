@@ -784,6 +784,7 @@ function drawPieChart(canvas, rows) {
   let angle = -Math.PI / 2;
   const slices = [];
   ctx.clearRect(0, 0, width, height);
+  if (!total) return;
 
   rows.forEach((row) => {
     const slice = (row.value / total) * Math.PI * 2;
@@ -810,6 +811,8 @@ function drawPieChart(canvas, rows) {
   ctx.font = "800 11px system-ui";
   ctx.textBaseline = "middle";
   slices.forEach(({ row, startAngle, endAngle, pct }) => {
+    if (pct < 5) return;
+
     const middle = (startAngle + endAngle) / 2;
     const outside = pct < 7;
     const labelRadius = radius * (outside ? 1.18 : 0.76);
