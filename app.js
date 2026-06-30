@@ -589,6 +589,17 @@ function applyCurrentMonthFinance(month = null) {
 
 function cashBuckets(totalCash = 0) {
   const breakdown = data.accountBreakdown || {};
+  const sinopac = Math.max(0, Math.round(Number(breakdown.sinopacBalance) || 0));
+  const hasSinopacBalance = breakdown.sinopacBalance !== undefined
+    && breakdown.sinopacBalance !== null
+    && breakdown.sinopacBalance !== "";
+  if (hasSinopacBalance) {
+    const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, sinopac);
+    const investmentReserve = Math.max(0, sinopac - emergencyFund);
+    const availableCash = Math.max(0, Math.round(Number(breakdown.availableCash) || 0));
+    return { emergencyFund, investmentReserve, availableCash };
+  }
+
   const hasManualBuckets = ["emergencyFund", "investmentReserve", "availableCash"]
     .some((key) => breakdown[key] !== undefined && breakdown[key] !== null && breakdown[key] !== "");
   if (hasManualBuckets) {
@@ -598,7 +609,6 @@ function cashBuckets(totalCash = 0) {
     return { emergencyFund, investmentReserve, availableCash };
   }
 
-  const sinopac = Math.max(0, Math.round(Number(breakdown.sinopacBalance) || 0));
   const emergencyBase = sinopac || totalCash;
   const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, emergencyBase);
   const reserveBase = Math.max(0, (sinopac || totalCash) - emergencyFund);
@@ -1181,7 +1191,7 @@ function renderVaults() {
       lines: [
         ["目標", money.format(EMERGENCY_FUND_TARGET)],
         ["目前", money.format(metrics.emergencyFund)],
-        ["狀態", metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "正常" : "偏低"],
+        ["狀態", metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "🟢 充足" : "🔴 偏低"],
       ],
     },
     {
