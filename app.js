@@ -1160,9 +1160,9 @@ function renderVaults() {
   const reserve = investmentReserveStatus(metrics);
   const emergencyProgress = safeProgress(metrics.emergencyFund, EMERGENCY_FUND_TARGET);
   const reserveProgress = safeProgress(metrics.investmentReserve, INVESTMENT_RESERVE_MAX);
-  const monthlyInvestmentProgress = safeProgress(metrics.monthlyInvestment, MONTHLY_INVESTMENT_TARGET);
-  const monthlyInvestmentRounded = Math.round(metrics.monthlyInvestment);
-  const monthlyInvestmentStatus = monthlyInvestmentRounded >= MONTHLY_INVESTMENT_TARGET ? "已達標" : "未達標";
+  const monthlySinopacTransferRounded = Math.round(metrics.monthlySinopacTransfer);
+  const monthlySinopacProgress = safeProgress(monthlySinopacTransferRounded, MONTHLY_INVESTMENT_TARGET);
+  const monthlySinopacStatus = monthlySinopacTransferRounded >= MONTHLY_INVESTMENT_TARGET ? "已達標" : "未達標";
   const rows = [
     {
       title: "🏠 生活金庫（郵局）",
@@ -1180,10 +1180,10 @@ function renderVaults() {
     {
       title: "📈 投資金庫（永豐）",
       status: "good",
-      progress: monthlyInvestmentProgress,
+      progress: monthlySinopacProgress,
       lines: [
-        ["目前餘額", money.format(metrics.sinopacInvestableBalance)],
-        ["本月投入進度", `${money.format(monthlyInvestmentRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)} (${monthlyInvestmentStatus})`],
+        ["可加碼資金", money.format(metrics.sinopacInvestableBalance)],
+        ["本月投入進度", `${money.format(monthlySinopacTransferRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)} (${monthlySinopacStatus})`],
       ],
     },
     {

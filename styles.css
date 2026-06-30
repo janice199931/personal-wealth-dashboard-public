@@ -1751,6 +1751,7 @@ canvas {
 .monthly-table-wrap {
   margin: 0 14px 14px;
   overflow: auto;
+  overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 18px;
   background: var(--surface);
@@ -1788,9 +1789,9 @@ canvas {
 
 .monthly-table th:last-child,
 .monthly-table td:last-child {
-  width: 100px;
-  min-width: 90px;
-  padding-right: 15px;
+  width: 116px;
+  min-width: 112px;
+  padding-right: 18px;
   white-space: nowrap;
 }
 
