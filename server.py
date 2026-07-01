@@ -50,6 +50,7 @@ AUTH_REALM = "Personal Wealth Dashboard"
 AUTH_COOKIE_NAME = "wealth_dashboard_session"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 EMERGENCY_FUND_TARGET = 100000
+INVESTMENT_RESERVE_TARGET = 150000
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -735,16 +736,19 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
     available_cash = round(float(breakdown.get("availableCash", 0) or 0))
     cash_balance = breakdown.get("cashBalance")
     other_bank = breakdown.get("otherBankBalance")
+    if sinopac:
+        emergency_fund = min(EMERGENCY_FUND_TARGET, sinopac)
+        investment_reserve = min(INVESTMENT_RESERVE_TARGET, max(0, sinopac - emergency_fund))
     if has_fund_buckets:
-        cash_balance = emergency_fund + investment_reserve + available_cash
+        cash_balance = available_cash
     if cash_balance is None and other_bank is None:
         other_bank = max(0, round(float(accounts.get("cashTWD", 0) or 0)) - post_office - sinopac)
         cash_balance = 0
-    if not has_fund_buckets:
+    if not has_fund_buckets and not sinopac:
         total_cash = round(float(accounts.get("cashTWD", 0) or 0))
         emergency_base = sinopac or total_cash
         emergency_fund = min(EMERGENCY_FUND_TARGET, emergency_base)
-        investment_reserve = max(0, (sinopac or total_cash) - emergency_fund)
+        investment_reserve = min(INVESTMENT_RESERVE_TARGET, max(0, (sinopac or total_cash) - emergency_fund))
         available_cash = max(0, total_cash - emergency_fund - investment_reserve)
     return {
         "cash": round(float(cash_balance or 0)),
@@ -755,6 +759,16 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
         "investmentReserve": investment_reserve,
         "availableCash": available_cash,
     }
+
+
+def cash_total_from_amounts(amounts: dict[str, Any]) -> int:
+    cash = round(float(amounts.get("cash", 0) or 0))
+    bank = round(float(amounts.get("bank", 0) or 0))
+    post_office = round(float(amounts.get("postOfficeBalance", 0) or 0))
+    sinopac = round(float(amounts.get("sinopacBalance", 0) or 0))
+    if post_office or sinopac or bank:
+        return cash + bank + post_office + sinopac
+    return round(float(amounts.get("bucketCash", cash) or cash))
 
 
 def save_manual_monthly_finance(
@@ -1940,11 +1954,13 @@ async def update_asset_snapshot(
             next_emergency = manual_emergency_fund if manual_emergency_fund is not None else existing_parts["emergencyFund"]
             next_reserve = manual_investment_reserve if manual_investment_reserve is not None else existing_parts["investmentReserve"]
             next_available = manual_available_cash if manual_available_cash is not None else existing_parts["availableCash"]
-            next_cash = next_emergency + next_reserve + next_available if has_fund_buckets else (
+            bucket_cash = next_emergency + next_reserve + next_available
+            next_cash = next_available if has_fund_buckets else (
                 manual_cash if manual_cash is not None else existing_parts["cash"]
             )
             amounts = {
                 "cash": next_cash,
+                "bucketCash": bucket_cash,
                 "emergencyFund": next_emergency,
                 "investmentReserve": next_reserve,
                 "availableCash": next_available,
@@ -2011,7 +2027,7 @@ async def update_asset_snapshot(
     else:
         accounts = db_store.read_accounts({})
         accounts["cashTWD"] = (
-            amounts["cash"]
+            cash_total_from_amounts(amounts)
             if has_fund_buckets
             else (
                 amounts["cash"]
@@ -2053,8 +2069,7 @@ async def update_asset_snapshot(
         next_bank = round(float(account_breakdown.get("otherBankBalance", parts["bank"]) or 0))
         next_post_office = round(float(account_breakdown.get("postOfficeBalance", parts["postOfficeBalance"]) or 0))
         next_sinopac = round(float(account_breakdown.get("sinopacBalance", parts["sinopacBalance"]) or 0))
-        next_has_fund_buckets = any(key in account_breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
-        accounts["cashTWD"] = next_cash if next_has_fund_buckets else next_cash + next_bank + next_post_office + next_sinopac
+        accounts["cashTWD"] = next_cash + next_bank + next_post_office + next_sinopac
         account_breakdown["updatedAt"] = datetime.now().isoformat(timespec="seconds")
         accounts["accountBreakdown"] = account_breakdown
         db_store.write_accounts(accounts)
@@ -2088,7 +2103,7 @@ async def update_asset_snapshot(
         raise HTTPException(status_code=503, detail="其他銀行餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if amounts["source"] not in {"supplement_only", "existing_accounts"}:
         expected_cash_twd = (
-            round(float(amounts["cash"]))
+            cash_total_from_amounts(amounts)
             if any(key in verified_breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
             else (
                 round(float(amounts["cash"]))

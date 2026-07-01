@@ -174,7 +174,10 @@
         const totalCash = numberValue(accounts.cashTWD);
         const sinopac = numberValue(breakdown.sinopacBalance);
         const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, sinopac || totalCash);
-        const investmentReserve = Math.max(0, (sinopac || totalCash) - emergencyFund);
+        const investmentReserve = Math.min(
+          INVESTMENT_RESERVE_TARGET,
+          Math.max(0, (sinopac || totalCash) - emergencyFund),
+        );
         const availableForExtra = Math.max(0, sinopac - emergencyFund - investmentReserve);
         const month = financeMonth(payload);
         const monthlyTransfer = numberValue(month?.sinopacTransfer);

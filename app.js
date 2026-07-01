@@ -620,7 +620,7 @@ function cashBuckets(totalCash = 0) {
     && breakdown.sinopacBalance !== "";
   if (hasSinopacBalance) {
     const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, sinopac);
-    const investmentReserve = Math.max(0, sinopac - emergencyFund);
+    const investmentReserve = Math.min(INVESTMENT_RESERVE_MAX, Math.max(0, sinopac - emergencyFund));
     const availableCash = Math.max(0, Math.round(Number(breakdown.availableCash) || 0));
     return { emergencyFund, investmentReserve, availableCash };
   }
@@ -637,7 +637,7 @@ function cashBuckets(totalCash = 0) {
   const emergencyBase = sinopac || totalCash;
   const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, emergencyBase);
   const reserveBase = Math.max(0, (sinopac || totalCash) - emergencyFund);
-  const investmentReserve = reserveBase;
+  const investmentReserve = Math.min(INVESTMENT_RESERVE_MAX, reserveBase);
   const availableCash = Math.max(0, Math.round(totalCash - emergencyFund - investmentReserve));
   return { emergencyFund, investmentReserve, availableCash };
 }
