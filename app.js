@@ -875,6 +875,7 @@ function getPortfolioMetrics() {
   const previousMonth = monthlyRows[monthlyRows.length - 2] ?? monthlyFallback();
   const latestIncome = safeNumber(latestMonth.income);
   const latestExpense = safeNumber(latestMonth.expense);
+  const currentMonthExpense = safeNumber(currentMonthFinance?.expense);
   const previousIncome = safeNumber(previousMonth.income);
   const previousExpense = safeNumber(previousMonth.expense);
   const latestNet = safeNumber(latestMonth.net, NaN);
@@ -935,6 +936,7 @@ function getPortfolioMetrics() {
     latestMonth,
     latestIncome,
     latestExpense,
+    currentMonthExpense,
     latestSavingsRate,
     monthNet,
     monthNetChange: monthNet - previousMonthNet,
@@ -1034,7 +1036,9 @@ function formatEtaDate(date) {
 }
 
 function postOfficeStatus(metrics) {
-  const suggested = Math.max(0, Math.round(Number(metrics.latestMonth?.expense) || 0));
+  const currentExpense = Math.round(Number(metrics.currentMonthExpense) || 0);
+  const latestExpense = Math.round(Number(metrics.latestMonth?.expense) || 0);
+  const suggested = Math.max(0, currentExpense || latestExpense);
   if (!suggested) return { status: "watch", suggested, text: "待記錄" };
   return {
     status: metrics.livingVaultBalance >= suggested ? "good" : "warn",
