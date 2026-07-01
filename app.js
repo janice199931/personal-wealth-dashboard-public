@@ -1840,7 +1840,15 @@ function renderDataUpdates() {
 
 function isQuietUpdateWarning(message = "") {
   const text = String(message).trim().toLowerCase();
-  return ["load failed", "failed to fetch", "networkerror", "cancelled", "canceled"].some((keyword) => text.includes(keyword));
+  return [
+    "load failed",
+    "failed to fetch",
+    "networkerror",
+    "cancelled",
+    "canceled",
+    "確認登入狀態",
+    "股價更新失敗，請重新整理",
+  ].some((keyword) => text.includes(keyword.toLowerCase()));
 }
 
 function renderUpdateWarning(message = "部分資料更新失敗，請查看更新結果") {
@@ -2371,6 +2379,7 @@ async function loadExternalData() {
   let transactionsLoaded = false;
   let dividendsLoaded = false;
   if (core?.portfolio) {
+    localStorage.removeItem("wealthDashboardUpdateWarning");
     applyPortfolioData(core.portfolio, core.history || []);
     applyAccountData(core.accounts || {});
     applyCurrentMonthFinance(core.currentMonthFinance || null);
