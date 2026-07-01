@@ -2162,7 +2162,34 @@ def update_prices(request: Request) -> dict:
     if request.headers.get("x-price-check") == "1":
         return {"ok": True, "method": "POST", "message": "股價更新 API 已就緒。"}
 
-    PRICE_UPDATE_LOCK.acquire()
+    if not PRICE_UPDATE_LOCK.acquire(blocking=False):
+        portfolio = read_portfolio(use_examples=False) or read_portfolio(use_examples=True)
+        warning = "股價更新正在執行中，已保留目前價格；請稍後再看更新時間。"
+        current_db = db_store.active_backend()
+        return {
+            "ok": True,
+            "currentDb": current_db,
+            "savedTo": "none",
+            "updatedSymbols": [],
+            "failedSymbols": [],
+            "errorMessages": [warning],
+            "twResult": {"updatedSymbols": [], "failedSymbols": [], "symbols": {}},
+            "usResult": {"updatedSymbols": [], "failedSymbols": [], "symbols": {}},
+            "source": current_db,
+            "updatedAt": portfolio.get("updatedAt", ""),
+            "fxRate": portfolio.get("fxRate"),
+            "warnings": [warning],
+            "marketUpdates": {
+                "TW": portfolio.get("markets", {}).get("TW", {}).get("updatedAt", ""),
+                "US": portfolio.get("markets", {}).get("US", {}).get("updatedAt", ""),
+            },
+            "marketStatus": {"TW": "unchanged", "US": "unchanged"},
+            "portfolioSummary": portfolio.get("summary", {}),
+            "updatedHoldings": 0,
+            "totalHoldings": len(portfolio.get("holdings", [])),
+            "durationSeconds": 0,
+        }
+
     started_at = datetime.now(TWD)
     try:
         has_formal_data = bool(
@@ -2174,7 +2201,6 @@ def update_prices(request: Request) -> dict:
             portfolio = read_portfolio(use_examples=True)
             warnings = ["目前是範例資料，請先匯入正式備份"]
             current_db = db_store.active_backend()
-            PRICE_UPDATE_LOCK.release()
             return {
                 "ok": True,
                 "currentDb": current_db,
@@ -2241,9 +2267,9 @@ def update_prices(request: Request) -> dict:
             "US": "partial" if price_details["usResult"]["failedSymbols"] else ("ok" if price_details["usResult"]["updatedSymbols"] else "unchanged"),
         }
     except Exception as error:
-        PRICE_UPDATE_LOCK.release()
         raise HTTPException(status_code=500, detail=f"股價更新失敗：{error}") from error
-    PRICE_UPDATE_LOCK.release()
+    finally:
+        PRICE_UPDATE_LOCK.release()
     return {
         "ok": True,
         "currentDb": current_db,
