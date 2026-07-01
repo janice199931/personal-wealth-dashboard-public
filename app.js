@@ -1036,14 +1036,19 @@ function formatEtaDate(date) {
 }
 
 function postOfficeStatus(metrics) {
-  const currentExpense = Math.round(Number(metrics.currentMonthExpense) || 0);
-  const latestExpense = Math.round(Number(metrics.latestMonth?.expense) || 0);
-  const suggested = Math.max(0, currentExpense || latestExpense);
+  const recentExpenses = financeMonths()
+    .map((month) => Number(month.expense))
+    .filter((expense) => Number.isFinite(expense) && expense > 0)
+    .slice(-6);
+  const averageExpense = recentExpenses.length
+    ? recentExpenses.reduce((sum, expense) => sum + expense, 0) / recentExpenses.length
+    : 0;
+  const suggested = Math.round(averageExpense * 1.2);
   if (!suggested) return { status: "watch", suggested, text: "待記錄" };
   return {
     status: metrics.livingVaultBalance >= suggested ? "good" : "warn",
     suggested,
-    text: metrics.livingVaultBalance >= suggested ? "正常" : "偏低",
+    text: metrics.livingVaultBalance >= suggested ? "🟢 充足" : "⚠️ 偏低",
   };
 }
 
