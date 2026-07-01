@@ -896,6 +896,20 @@ main {
   border-color: rgba(216, 164, 95, 0.3);
 }
 
+.status-dot {
+  display: inline-block;
+  width: 0.78em;
+  height: 0.78em;
+  margin-right: 0.38em;
+  border-radius: 50%;
+  vertical-align: -0.06em;
+}
+
+.status-dot.good {
+  background: #8faa83;
+  box-shadow: 0 0 0 4px rgba(143, 170, 131, 0.14);
+}
+
 .data-status-card {
   min-height: 74px;
   padding: 11px 12px;

@@ -1048,7 +1048,7 @@ function postOfficeStatus(metrics) {
   return {
     status: metrics.livingVaultBalance >= suggested ? "good" : "warn",
     suggested,
-    text: metrics.livingVaultBalance >= suggested ? "🟢 充足" : "⚠️ 偏低",
+    text: metrics.livingVaultBalance >= suggested ? '<span class="status-dot good"></span>充足' : "⚠️ 偏低",
   };
 }
 
@@ -1250,7 +1250,7 @@ function renderVaults() {
       lines: [
         ["目標", money.format(EMERGENCY_FUND_TARGET)],
         ["目前", money.format(metrics.emergencyFund)],
-        ["狀態", metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "🟢 充足" : "🔴 偏低"],
+        ["狀態", metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? '<span class="status-dot good"></span>充足' : "🔴 偏低"],
       ],
     },
     {
