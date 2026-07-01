@@ -1166,7 +1166,12 @@ function renderKpis() {
       note: healthScoreText(score),
       progress: score,
     },
-    { label: "淨資產", value: money.format(metrics.netWorth), note: `本月 ${money.format(metrics.monthNet)}` },
+    {
+      label: "投資總損益",
+      value: money.format(metrics.investmentGainTwd),
+      valueTone: gainTone(metrics.investmentGainTwd),
+      note: `報酬率 ${metrics.investmentReturnRate}`,
+    },
     {
       label: "加碼戰備狀態",
       value: money.format(strategyCash),
