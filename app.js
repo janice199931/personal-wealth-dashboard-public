@@ -73,6 +73,8 @@ const EMERGENCY_FUND_TARGET = 100000;
 const INVESTMENT_RESERVE_MIN = 150000;
 const INVESTMENT_RESERVE_MAX = 150000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
+const TARGET_ANNUAL_SAVING = 700000;
+const ANNUAL_SAVING_YEAR = 2026;
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
@@ -993,6 +995,46 @@ function getNextMilestone() {
   return { target, progress, remaining, etaDate, age, annualRunRate };
 }
 
+function getAnnualSavingMilestone(metrics) {
+  const startKey = `${ANNUAL_SAVING_YEAR}-01-01`;
+  const endKey = `${ANNUAL_SAVING_YEAR}-12-31`;
+  const rows = data.assetTrend
+    .map((row) => ({
+      date: String(row.month || ""),
+      netWorth: safeNumber(row.assets),
+    }))
+    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && row.date <= endKey)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const beforeYearRows = rows.filter((row) => row.date < startKey);
+  const beforeYear = beforeYearRows[beforeYearRows.length - 1] || null;
+  const inYear = rows.filter((row) => row.date >= startKey && row.date <= endKey);
+  const firstInYear = inYear[0] || null;
+  const latestInYear = inYear[inYear.length - 1] || null;
+  let accumulated = 0;
+  let hasBasis = false;
+
+  if (latestInYear && (beforeYear || firstInYear)) {
+    const baseline = beforeYear?.netWorth ?? firstInYear.netWorth;
+    accumulated = latestInYear.netWorth - baseline;
+    hasBasis = true;
+  } else {
+    const annualMonths = financeMonths().filter((month) => String(month.month || "").startsWith(`${ANNUAL_SAVING_YEAR}-`));
+    accumulated = annualMonths.reduce((sum, month) => sum + safeNumber(month.net), 0);
+    hasBasis = annualMonths.length > 0;
+  }
+
+  if (!hasBasis && new Date().getFullYear() === ANNUAL_SAVING_YEAR) {
+    accumulated = safeNumber(metrics.monthNet);
+  }
+
+  const current = Math.max(0, Math.round(accumulated));
+  return {
+    current,
+    remaining: Math.max(0, TARGET_ANNUAL_SAVING - current),
+    progress: safeProgress(current, TARGET_ANNUAL_SAVING),
+  };
+}
+
 function financeMonths() {
   return (window.financeData?.years ?? [])
     .flatMap((year) => year.months ?? [])
@@ -1154,9 +1196,7 @@ function renderKpis() {
   }
   const metrics = getPortfolioMetrics();
   const next = getNextMilestone();
-  const strategyTarget = 35000;
-  const strategyCash = Math.round(metrics.sinopacInvestableBalance);
-  const strategyReady = strategyCash >= strategyTarget;
+  const annualSaving = getAnnualSavingMilestone(metrics);
   const calculatedScore = financialHealthScore(metrics);
   const score = Number.isFinite(Number(calculatedScore)) && Number(calculatedScore) > 0 ? Number(calculatedScore) : 0;
   const rows = [
@@ -1173,12 +1213,10 @@ function renderKpis() {
       note: `報酬率 ${metrics.investmentReturnRate}`,
     },
     {
-      label: "加碼戰備狀態",
-      value: money.format(strategyCash),
-      note: strategyReady
-        ? `🟢 水位達標！大盤若回檔 5%，建議打出 ${money.format(10500)} 買進 00685L`
-        : "🎯 加碼子彈蓄力中...",
-      progress: safeProgress(strategyCash, strategyTarget),
+      label: "年度儲蓄里程碑",
+      value: money.format(annualSaving.current),
+      note: `剩餘 ${money.format(annualSaving.remaining)} / 目標 ${money.format(TARGET_ANNUAL_SAVING)}`,
+      progress: annualSaving.progress,
     },
     {
       label: "財富目標進度",
