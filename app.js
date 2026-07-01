@@ -80,8 +80,8 @@ const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
-const PRICE_UPDATE_TIMEOUT_MS = 65000;
-const AUTO_PRICE_UPDATE_TIMEOUT_MS = 18000;
+const PRICE_UPDATE_TIMEOUT_MS = 120000;
+const AUTO_PRICE_UPDATE_TIMEOUT_MS = 90000;
 const DASHBOARD_CORE_TIMEOUTS = [8000, 12000];
 let dataStatus = null;
 let priceUpdateInProgress = false;
@@ -1965,7 +1965,7 @@ function setupPriceUpdater() {
     try {
       const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, PRICE_UPDATE_TIMEOUT_MS);
       if (handleAuthExpired(response)) return;
-      const payload = await readApiPayload(response, "股價更新失敗，請重新整理或確認登入狀態。");
+      const payload = await readApiPayload(response, "股價更新回應異常，請稍後再試一次。");
       if (!response.ok) {
         const missingRouteMessage =
           response.status === 404
@@ -2000,7 +2000,7 @@ function setupPriceUpdater() {
       button.textContent = "更新失敗";
       console.warn("股價更新失敗", error);
       const message = error.name === "AbortError" || String(error.message || "").includes("Request timeout")
-        ? "股價更新等候過久，已先保留原本資料。"
+        ? "股價更新等候過久，已先保留原本資料；稍後可再按一次手動更新。"
         : error.message || "股價更新失敗";
       localStorage.setItem("wealthDashboardUpdateWarning", message);
       renderUpdateWarning(message);
@@ -2500,7 +2500,7 @@ async function initializeDashboard() {
   window.setTimeout(runDailyDataHealthCheck, 45000);
   window.setTimeout(runDailyBackupCheck, 9000);
   setupAutomaticPriceRefresh();
-  window.setTimeout(runAutomaticPriceUpdate, 1200);
+  window.setTimeout(runAutomaticPriceUpdate, 30000);
 }
 
 initializeDashboard();
