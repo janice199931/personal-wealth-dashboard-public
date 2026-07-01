@@ -122,12 +122,17 @@
           : {};
         const totalCash = Math.round(Number(accounts?.cashTWD ?? 0) || 0);
         const sinopac = Math.round(Number(breakdown.sinopacBalance ?? 0) || 0);
-        const protectedCash = Math.min(totalCash, sinopac ? Math.min(sinopac, EMERGENCY_FUND_TARGET) : EMERGENCY_FUND_TARGET);
+        const hasSinopacBalance = breakdown.sinopacBalance !== undefined
+          && breakdown.sinopacBalance !== null
+          && breakdown.sinopacBalance !== "";
+        const cashBase = hasSinopacBalance ? sinopac : totalCash;
+        const protectedCash = Math.min(EMERGENCY_FUND_TARGET, cashBase);
+        const investmentReserve = Math.min(150000, Math.max(0, cashBase - protectedCash));
         return {
           totalCash,
           sinopac,
           protectedCash,
-          investableCash: Math.max(0, totalCash - protectedCash),
+          investableCash: Math.max(0, cashBase - protectedCash - investmentReserve),
         };
       }
 

@@ -730,13 +730,14 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
     breakdown = accounts.get("accountBreakdown") if isinstance(accounts.get("accountBreakdown"), dict) else {}
     post_office = round(float(breakdown.get("postOfficeBalance", 0) or 0))
     sinopac = round(float(breakdown.get("sinopacBalance", 0) or 0))
+    has_sinopac_balance = "sinopacBalance" in breakdown and breakdown.get("sinopacBalance") not in (None, "")
     has_fund_buckets = any(key in breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
     emergency_fund = round(float(breakdown.get("emergencyFund", 0) or 0))
     investment_reserve = round(float(breakdown.get("investmentReserve", 0) or 0))
     available_cash = round(float(breakdown.get("availableCash", 0) or 0))
     cash_balance = breakdown.get("cashBalance")
     other_bank = breakdown.get("otherBankBalance")
-    if sinopac:
+    if has_sinopac_balance:
         emergency_fund = min(EMERGENCY_FUND_TARGET, sinopac)
         investment_reserve = min(INVESTMENT_RESERVE_TARGET, max(0, sinopac - emergency_fund))
     if has_fund_buckets:
@@ -744,11 +745,11 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
     if cash_balance is None and other_bank is None:
         other_bank = max(0, round(float(accounts.get("cashTWD", 0) or 0)) - post_office - sinopac)
         cash_balance = 0
-    if not has_fund_buckets and not sinopac:
+    if not has_fund_buckets and not has_sinopac_balance:
         total_cash = round(float(accounts.get("cashTWD", 0) or 0))
-        emergency_base = sinopac or total_cash
+        emergency_base = total_cash
         emergency_fund = min(EMERGENCY_FUND_TARGET, emergency_base)
-        investment_reserve = min(INVESTMENT_RESERVE_TARGET, max(0, (sinopac or total_cash) - emergency_fund))
+        investment_reserve = min(INVESTMENT_RESERVE_TARGET, max(0, total_cash - emergency_fund))
         available_cash = max(0, total_cash - emergency_fund - investment_reserve)
     return {
         "cash": round(float(cash_balance or 0)),
@@ -1887,7 +1888,7 @@ async def update_asset_snapshot(
     manual_cash = parse_manual_amount(cash, "現金")
     manual_emergency_fund = parse_manual_amount(emergencyFund, "緊急預備金")
     manual_investment_reserve = parse_manual_amount(investmentReserve, "投資預備金")
-    manual_available_cash = parse_manual_amount(availableCash, "可自由運用現金")
+    manual_available_cash = parse_manual_amount(availableCash, "現金")
     manual_bank = parse_manual_amount(bank, "其他銀行餘額")
     manual_post_office = parse_manual_amount(postOfficeBalance, "郵局餘額")
     manual_sinopac = parse_manual_amount(sinopacBalance, "永豐餘額")
@@ -1897,11 +1898,13 @@ async def update_asset_snapshot(
     manual_sinopac_transfer = parse_manual_amount(monthlySinopacTransfer, "本月轉入永豐")
     manual_month = parse_month_key(month)
     manual_values = {
-        "現金": manual_cash,
+        "現金總額": manual_cash,
         "緊急預備金": manual_emergency_fund,
         "投資預備金": manual_investment_reserve,
-        "可自由運用現金": manual_available_cash,
+        "現金": manual_available_cash,
         "其他銀行餘額": manual_bank,
+        "郵局餘額": manual_post_office,
+        "永豐餘額": manual_sinopac,
         "信用卡負債": manual_debt,
     }
     has_any_manual = any(value is not None for value in manual_values.values())

@@ -1062,7 +1062,9 @@ function financialHealthScore(metrics) {
   let score = 100;
   const emergencyFund = Number(metrics.emergencyFund) || 0;
   const investmentReserve = Number(metrics.investmentReserve) || 0;
-  const monthlyInvestmentRemaining = Number(metrics.monthlyInvestmentRemaining) || 0;
+  const monthlyPlanRemaining = Number.isFinite(Number(metrics.monthlySinopacTransferRemaining))
+    ? Number(metrics.monthlySinopacTransferRemaining)
+    : Number(metrics.monthlyInvestmentRemaining) || 0;
   const monthNet = Number(metrics.monthNet) || 0;
   const debt = Number(metrics.debt) || 0;
   const totalAssets = Math.max(1, Number(metrics.totalAssets) || 0);
@@ -1075,8 +1077,8 @@ function financialHealthScore(metrics) {
   } else if (investmentReserve > INVESTMENT_RESERVE_MAX) {
     score -= 6;
   }
-  if (monthlyInvestmentRemaining > 0) {
-    score -= Math.min(14, Math.round((monthlyInvestmentRemaining / MONTHLY_INVESTMENT_TARGET) * 14));
+  if (monthlyPlanRemaining > 0) {
+    score -= Math.min(14, Math.round((monthlyPlanRemaining / MONTHLY_INVESTMENT_TARGET) * 14));
   }
   if (monthNet < 0) score -= 12;
   if (debt > 0) score -= Math.min(10, Math.round(((debt / totalAssets) * 100) / 5));
@@ -1389,7 +1391,7 @@ function fundWaterSummary(metrics) {
     `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
     `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(INVESTMENT_RESERVE_MAX)}`,
     `每月固定投入：${money.format(MONTHLY_INVESTMENT_TARGET)}`,
-    `本月已投入：${money.format(Math.round(metrics.monthlyInvestment))}`,
+    `本月已轉入永豐：${money.format(Math.round(metrics.monthlySinopacTransfer))}`,
   ].join("<br>");
 }
 
@@ -1592,9 +1594,9 @@ function renderTodayActions() {
     },
     { status: leveragedPriceSignalStatus(), title: "加碼規則", text: leveragedPriceSignalText(metrics) },
     {
-      status: metrics.monthlyInvestmentRemaining <= 0 ? "good" : "watch",
+      status: metrics.monthlySinopacTransferRemaining <= 0 ? "good" : "watch",
       title: "本月進度",
-      text: monthlyInvestmentSummary(metrics),
+      text: monthlyTransferSummary(metrics),
     },
     { status: "watch", title: "下一步", text: nextActionSummary(metrics) },
   ];

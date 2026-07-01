@@ -172,13 +172,19 @@
           ? accounts.accountBreakdown
           : {};
         const totalCash = numberValue(accounts.cashTWD);
+        const hasSinopacBalance = breakdown.sinopacBalance !== undefined
+          && breakdown.sinopacBalance !== null
+          && breakdown.sinopacBalance !== "";
         const sinopac = numberValue(breakdown.sinopacBalance);
-        const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, sinopac || totalCash);
+        const cashBase = hasSinopacBalance ? sinopac : totalCash;
+        const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, cashBase);
         const investmentReserve = Math.min(
           INVESTMENT_RESERVE_TARGET,
-          Math.max(0, (sinopac || totalCash) - emergencyFund),
+          Math.max(0, cashBase - emergencyFund),
         );
-        const availableForExtra = Math.max(0, sinopac - emergencyFund - investmentReserve);
+        const availableForExtra = hasSinopacBalance
+          ? Math.max(0, sinopac - emergencyFund - investmentReserve)
+          : Math.max(0, totalCash - emergencyFund - investmentReserve);
         const month = financeMonth(payload);
         const monthlyTransfer = numberValue(month?.sinopacTransfer);
         return { totalCash, sinopac, emergencyFund, investmentReserve, availableForExtra, monthlyTransfer };

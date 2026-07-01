@@ -132,7 +132,16 @@ def parse_moze_account_ocr(text: str) -> dict[str, int]:
 def update_accounts(cash: int, bank: int, debt: int) -> dict:
     accounts_path = DATA_DIR / "accounts.json"
     accounts = read_json(accounts_path, {})
-    accounts["cashTWD"] = cash + bank
+    breakdown = accounts.get("accountBreakdown") if isinstance(accounts.get("accountBreakdown"), dict) else {}
+    breakdown["cashBalance"] = cash
+    breakdown["otherBankBalance"] = bank
+    accounts["accountBreakdown"] = breakdown
+    accounts["cashTWD"] = (
+        cash
+        + bank
+        + round(float(breakdown.get("postOfficeBalance", 0) or 0))
+        + round(float(breakdown.get("sinopacBalance", 0) or 0))
+    )
     accounts["creditCardDebt"] = debt
     accounts.setdefault("cashUSD", 0)
     accounts.setdefault("otherDebt", 0)
