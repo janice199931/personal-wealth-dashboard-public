@@ -1772,25 +1772,7 @@ canvas {
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
-}
-
-.monthly-table th:nth-child(1),
-.monthly-table td:nth-child(1) {
-  width: 15%;
-}
-
-.monthly-table th:nth-child(2),
-.monthly-table td:nth-child(2),
-.monthly-table th:nth-child(3),
-.monthly-table td:nth-child(3),
-.monthly-table th:nth-child(4),
-.monthly-table td:nth-child(4) {
-  width: 25%;
-}
-
-.monthly-table th:nth-child(5),
-.monthly-table td:nth-child(5) {
-  width: 10%;
+  width: 20%;
 }
 
 .monthly-table th {
@@ -1810,7 +1792,6 @@ canvas {
 
 .monthly-table th:last-child,
 .monthly-table td:last-child {
-  min-width: 90px;
   padding-right: 15px;
   white-space: nowrap;
 }
