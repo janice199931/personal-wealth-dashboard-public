@@ -75,6 +75,8 @@ const INVESTMENT_RESERVE_MAX = 150000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
 const TARGET_ANNUAL_SAVING = 550000;
 const ANNUAL_SAVING_YEAR = 2026;
+const EXPECTED_RETURN = 0.07;
+const ANNUAL_SAVING = 550000;
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
@@ -986,13 +988,12 @@ function getPortfolioMetrics() {
 
 function getNextMilestone() {
   const { netWorth } = getPortfolioMetrics();
-  const annualRunRate = estimateAnnualRunRate();
   const target = [5000000, 10000000, 15000000, 20000000].find((item) => item > netWorth) ?? 20000000;
   const progress = Math.min(100, Number(((netWorth / target) * 100).toFixed(1)));
   const remaining = Math.max(0, target - netWorth);
-  const etaDate = estimateMilestoneDate(remaining, annualRunRate);
+  const etaDate = estimateMilestoneDate(netWorth, target);
   const age = etaDate ? ageOnDate(etaDate) : null;
-  return { target, progress, remaining, etaDate, age, annualRunRate };
+  return { target, progress, remaining, etaDate, age };
 }
 
 function getAnnualSavingMilestone() {
@@ -1022,23 +1023,19 @@ function financeMonths() {
     .sort((a, b) => String(a.month).localeCompare(String(b.month)));
 }
 
-function estimateAnnualRunRate() {
-  const months = financeMonths()
-    .map((month) => Number(month.net) || 0)
-    .filter((net) => Number.isFinite(net));
-  if (!months.length) return 0;
-  const recent = months.slice(-12);
-  const positive = recent.filter((net) => net > 0);
-  const basis = positive.length >= 3 ? positive : recent;
-  const averageMonthly = basis.reduce((sum, net) => sum + net, 0) / Math.max(1, basis.length);
-  return Math.max(0, averageMonthly * 12);
-}
+function estimateMilestoneDate(currentNetWorth, target) {
+  if (currentNetWorth >= target) return new Date();
+  const monthlyReturn = Math.pow(1 + EXPECTED_RETURN, 1 / 12) - 1;
+  const monthlySaving = ANNUAL_SAVING / 12;
+  let projected = Math.max(0, Number(currentNetWorth) || 0);
+  let monthsNeeded = 0;
 
-function estimateMilestoneDate(remaining, annualRunRate) {
-  if (remaining <= 0) return new Date();
-  if (!annualRunRate) return null;
-  const monthsNeeded = Math.ceil(remaining / (annualRunRate / 12));
-  if (!Number.isFinite(monthsNeeded) || monthsNeeded > 600) return null;
+  while (projected < target && monthsNeeded <= 600) {
+    projected = projected * (1 + monthlyReturn) + monthlySaving;
+    monthsNeeded += 1;
+  }
+
+  if (!Number.isFinite(projected) || monthsNeeded > 600) return null;
   const date = new Date();
   date.setMonth(date.getMonth() + monthsNeeded);
   return date;
@@ -1795,13 +1792,12 @@ function setupChartHover() {
 
 function renderMilestones() {
   const { netWorth } = getPortfolioMetrics();
-  const annualRunRate = estimateAnnualRunRate();
   const targets = [5000000, 10000000, 15000000, 20000000];
   document.getElementById("milestones").innerHTML = targets
     .map((target) => {
       const progress = Math.min(100, Math.round((netWorth / target) * 100));
       const remaining = Math.max(0, target - netWorth);
-      const etaDate = estimateMilestoneDate(remaining, annualRunRate);
+      const etaDate = estimateMilestoneDate(netWorth, target);
       const age = etaDate ? ageOnDate(etaDate) : null;
       const etaText = age === null ? "持續追蹤中" : `${formatEtaDate(etaDate)}（${age}歲）`;
       return `<div class="milestone-row">
