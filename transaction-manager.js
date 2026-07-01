@@ -40,6 +40,15 @@ const purposeLabels = {
 
 form.elements.date.value = "";
 
+function clearDashboardCache() {
+  try {
+    localStorage.removeItem("wealthDashboardLastCore");
+    localStorage.removeItem("wealthDashboardLastFinanceData");
+  } catch {
+    // Cache cleanup should never block saving records.
+  }
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 6 }).format(Number(value) || 0);
 }
@@ -660,6 +669,7 @@ async function deleteTransaction(id) {
 
   setTransactions(payload.transactions || []);
   await verifySavedTransaction(payload, "delete", id);
+  clearDashboardCache();
   if (editingId === id) resetForm();
   setStatus(savedStatus(`已刪除，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, payload.savedAt), "success");
 }
@@ -682,6 +692,7 @@ form.addEventListener("submit", async (event) => {
     const payload = await saveTransaction(transaction);
     const mode = editingId ? "update" : "create";
     await verifySavedTransaction(payload, mode);
+    clearDashboardCache();
     setStatus(
       mode === "update"
         ? savedStatus(`已更新，現在共有 ${transactions.length} 筆交易，顯示 ${filteredTransactions().length} 筆`, payload.savedAt)

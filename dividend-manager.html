@@ -144,6 +144,15 @@
 
       form.elements.date.value = "";
 
+      function clearDashboardCache() {
+        try {
+          localStorage.removeItem("wealthDashboardLastCore");
+          localStorage.removeItem("wealthDashboardLastFinanceData");
+        } catch {
+          // Cache cleanup should never block saving records.
+        }
+      }
+
       function escapeHtml(value) {
         return String(value ?? "")
           .replaceAll("&", "&amp;")
@@ -601,6 +610,7 @@
         const payload = await readApiPayload(response, "股息刪除失敗，請稍後再試。");
         if (!response.ok) throw new Error(friendlyApiError(payload, "股息刪除失敗，請稍後再試。"));
         setDividends(payload.dividends || []);
+        clearDashboardCache();
         if (editingId === id) resetForm();
         setStatus(savedStatus(`已刪除，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, payload.savedAt), "success");
       }
@@ -612,6 +622,7 @@
         try {
           const payload = await saveDividend();
           setDividends(payload.dividends || []);
+          clearDashboardCache();
           setStatus(
             editingId
               ? savedStatus(`已更新，現在共有 ${dividends.length} 筆股息，顯示 ${visibleDividends().length} 筆`, payload.savedAt)
