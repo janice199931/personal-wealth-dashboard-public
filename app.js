@@ -73,7 +73,7 @@ const EMERGENCY_FUND_TARGET = 100000;
 const INVESTMENT_RESERVE_MIN = 150000;
 const INVESTMENT_RESERVE_MAX = 150000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
-const TARGET_ANNUAL_SAVING = 700000;
+const TARGET_ANNUAL_SAVING = 550000;
 const ANNUAL_SAVING_YEAR = 2026;
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
@@ -995,41 +995,21 @@ function getNextMilestone() {
   return { target, progress, remaining, etaDate, age, annualRunRate };
 }
 
-function getAnnualSavingMilestone(metrics) {
-  const startKey = `${ANNUAL_SAVING_YEAR}-01-01`;
-  const endKey = `${ANNUAL_SAVING_YEAR}-12-31`;
-  const rows = data.assetTrend
-    .map((row) => ({
-      date: String(row.month || ""),
-      netWorth: safeNumber(row.assets),
-    }))
-    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && row.date <= endKey)
-    .sort((a, b) => a.date.localeCompare(b.date));
-  const beforeYearRows = rows.filter((row) => row.date < startKey);
-  const beforeYear = beforeYearRows[beforeYearRows.length - 1] || null;
-  const inYear = rows.filter((row) => row.date >= startKey && row.date <= endKey);
-  const firstInYear = inYear[0] || null;
-  const latestInYear = inYear[inYear.length - 1] || null;
-  let accumulated = 0;
-  let hasBasis = false;
-
-  if (latestInYear && (beforeYear || firstInYear)) {
-    const baseline = beforeYear?.netWorth ?? firstInYear.netWorth;
-    accumulated = latestInYear.netWorth - baseline;
-    hasBasis = true;
-  } else {
-    const annualMonths = financeMonths().filter((month) => String(month.month || "").startsWith(`${ANNUAL_SAVING_YEAR}-`));
-    accumulated = annualMonths.reduce((sum, month) => sum + safeNumber(month.net), 0);
-    hasBasis = annualMonths.length > 0;
-  }
-
-  if (!hasBasis && new Date().getFullYear() === ANNUAL_SAVING_YEAR) {
-    accumulated = safeNumber(metrics.monthNet);
-  }
-
-  const current = Math.max(0, Math.round(accumulated));
+function getAnnualSavingMilestone() {
+  const years = applyDividendIncomeToFinanceYears(window.financeData?.years ?? []);
+  const targetYear = years.find((year) => Number(year.year) === ANNUAL_SAVING_YEAR);
+  const current = Math.max(
+    0,
+    Math.round(
+      targetYear
+        ? safeNumber(targetYear.income) - safeNumber(targetYear.expense)
+        : 0,
+    ),
+  );
+  const percentValue = TARGET_ANNUAL_SAVING > 0 ? (current / TARGET_ANNUAL_SAVING) * 100 : 0;
   return {
     current,
+    percent: Number.isFinite(percentValue) ? percentValue : 0,
     remaining: Math.max(0, TARGET_ANNUAL_SAVING - current),
     progress: safeProgress(current, TARGET_ANNUAL_SAVING),
   };
@@ -1196,7 +1176,7 @@ function renderKpis() {
   }
   const metrics = getPortfolioMetrics();
   const next = getNextMilestone();
-  const annualSaving = getAnnualSavingMilestone(metrics);
+  const annualSaving = getAnnualSavingMilestone();
   const calculatedScore = financialHealthScore(metrics);
   const score = Number.isFinite(Number(calculatedScore)) && Number(calculatedScore) > 0 ? Number(calculatedScore) : 0;
   const rows = [
@@ -1214,8 +1194,10 @@ function renderKpis() {
     },
     {
       label: "年度儲蓄里程碑",
-      value: money.format(annualSaving.current),
-      note: `剩餘 ${money.format(annualSaving.remaining)} / 目標 ${money.format(TARGET_ANNUAL_SAVING)}`,
+      value: `${annualSaving.percent.toFixed(1)}%`,
+      note: annualSaving.remaining > 0
+        ? `距離目標尚餘 ${money.format(annualSaving.remaining)}`
+        : "🎉 年度目標已達成！",
       progress: annualSaving.progress,
     },
     {
