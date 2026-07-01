@@ -165,7 +165,7 @@ def is_secure_request(request: Request) -> bool:
 
 @app.middleware("http")
 async def require_password(request: Request, call_next):
-    public_paths = {"/api/health", "/api/auth-debug", "/api/login", "/api/logout", "/login.html"}
+    public_paths = {"/api/health", "/api/login", "/api/logout", "/login.html"}
     if request.url.path in public_paths:
         return await call_next(request)
     if is_authorized(request):
@@ -1206,17 +1206,6 @@ def logout() -> JSONResponse:
     response = JSONResponse(content={"ok": True, "message": "已登出。"})
     response.delete_cookie(AUTH_COOKIE_NAME, path="/")
     return response
-
-
-@app.get("/api/auth-debug")
-def auth_debug() -> dict[str, Any]:
-    return {
-        "usernameConfigured": bool(AUTH_USERNAME),
-        "passwordConfigured": bool(AUTH_PASSWORD),
-        "usernameLength": len(AUTH_USERNAME or ""),
-        "passwordLength": len(AUTH_PASSWORD or ""),
-        "usernameValue": AUTH_USERNAME,
-    }
 
 
 @app.get("/api/db/status")
