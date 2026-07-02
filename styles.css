@@ -1178,6 +1178,10 @@ main {
   text-align: right;
 }
 
+.asset-pie-row.muted {
+  opacity: 0.72;
+}
+
 .summary-bar {
   display: grid;
   gap: 8px;

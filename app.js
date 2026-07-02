@@ -870,19 +870,58 @@ function drawPieChart(canvas, rows) {
 }
 
 function renderAssetPie() {
-  const rows = data.assetPie;
-  const total = rows.reduce((sum, row) => sum + row.value, 0);
-  drawPieChart(document.getElementById("assetPieChart"), rows);
-  document.getElementById("assetPieLegend").innerHTML = rows
-    .map((row) => {
-      const pct = total ? ((row.value / total) * 100).toFixed(1) : "0.0";
+  const assetRows = data.assetPie.filter((row) => row.label !== "負債");
+  const debtRow = data.assetPie.find((row) => row.label === "負債");
+  const assetTotal = assetRows.reduce((sum, row) => sum + row.value, 0);
+  drawPieChart(document.getElementById("assetPieChart"), assetRows);
+  document.getElementById("assetPieLegend").innerHTML = [
+    ...assetRows.map((row) => {
+      const pct = assetTotal ? ((row.value / assetTotal) * 100).toFixed(1) : "0.0";
       return `<div class="asset-pie-row">
         <span><i style="background:${row.color}"></i>${row.label} ${pct}%</span>
         <strong>${money.format(row.value)}</strong>
         <em>${pct}%</em>
       </div>`;
-    })
+    }),
+    debtRow ? (() => {
+      const debtPct = assetTotal ? ((debtRow.value / assetTotal) * 100).toFixed(1) : "0.0";
+      return `<div class="asset-pie-row muted">
+        <span><i style="background:${debtRow.color}"></i>負債率 ${debtPct}%</span>
+        <strong>${money.format(debtRow.value)}</strong>
+        <em>${debtPct}%</em>
+      </div>`;
+    })() : "",
+  ]
+    .filter(Boolean)
     .join("");
+}
+
+function currentMonthFallback() {
+  return { month: currentMonthKey(), income: 0, expense: 0, net: 0, savingsRate: 0, sinopacTransfer: 0 };
+}
+
+function previousFinanceMonth(monthKey) {
+  return financeMonths()
+    .filter((month) => String(month.month || "") < monthKey)
+    .at(-1) || monthlyFallback();
+}
+
+function latestRecordedFinanceMonth() {
+  return financeMonths().at(-1) || monthlyFallback();
+}
+
+function monthNetValue(month) {
+  const net = safeNumber(month?.net, NaN);
+  if (Number.isFinite(net)) return net;
+  return safeNumber(month?.income) - safeNumber(month?.expense);
+}
+
+function monthSavingsRateValue(month) {
+  const savingsRate = safeNumber(month?.savingsRate, NaN);
+  if (Number.isFinite(savingsRate)) return savingsRate;
+  const income = safeNumber(month?.income);
+  const expense = safeNumber(month?.expense);
+  return income ? Math.round(((income - expense) / income) * 1000) / 10 : 0;
 }
 
 function getPortfolioMetrics() {
@@ -896,23 +935,18 @@ function getPortfolioMetrics() {
   const totalAssets = stockAssets + cash;
   const netWorth = totalAssets - debt;
   const monthlyRows = monthlyMetricRows();
-  const latestMonth = monthlyRows[monthlyRows.length - 1] ?? monthlyFallback();
   const currentMonthFinance = currentFinanceMonth();
-  const previousMonth = monthlyRows[monthlyRows.length - 2] ?? monthlyFallback();
-  const latestIncome = safeNumber(latestMonth.income);
-  const latestExpense = safeNumber(latestMonth.expense);
+  const currentMonth = currentMonthFinance || currentMonthFallback();
+  const latestMonth = currentMonthFinance || latestRecordedFinanceMonth();
+  const previousMonth = previousFinanceMonth(currentMonth.month);
+  const latestIncome = safeNumber(currentMonth.income);
+  const latestExpense = safeNumber(currentMonth.expense);
   const currentMonthExpense = safeNumber(currentMonthFinance?.expense);
   const previousIncome = safeNumber(previousMonth.income);
   const previousExpense = safeNumber(previousMonth.expense);
-  const latestNet = safeNumber(latestMonth.net, NaN);
-  const previousNet = safeNumber(previousMonth.net, NaN);
-  const monthNet = Number.isFinite(latestNet) ? latestNet : latestIncome - latestExpense;
-  const previousMonthNet = Number.isFinite(previousNet) ? previousNet : previousIncome - previousExpense;
-  const latestSavingsRate = Number.isFinite(safeNumber(latestMonth.savingsRate, NaN))
-    ? safeNumber(latestMonth.savingsRate)
-    : latestIncome
-      ? Math.round(((latestIncome - latestExpense) / latestIncome) * 1000) / 10
-      : 0;
+  const monthNet = monthNetValue(currentMonth);
+  const previousMonthNet = monthNetValue({ ...previousMonth, income: previousIncome, expense: previousExpense });
+  const latestSavingsRate = monthSavingsRateValue(currentMonth);
   const cashDays = Math.round((cash / Math.max(1, latestExpense)) * 30);
   const usMarketValue = us.holdings.reduce(
     (sum, holding) => sum + parseShares(holding.shares) * parseAmount(holding.price),
@@ -960,6 +994,7 @@ function getPortfolioMetrics() {
     totalAssets,
     netWorth,
     latestMonth,
+    currentMonth,
     latestIncome,
     latestExpense,
     currentMonthExpense,
