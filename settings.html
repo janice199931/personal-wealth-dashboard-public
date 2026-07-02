@@ -129,7 +129,7 @@
 
       function healthAdvice(payload, pricePayload = null) {
         if (payload.summary?.title) {
-          const priceOk = pricePayload?.ok || payload.priceApiOk;
+          const priceOk = pricePayload?.ok || pricePayload?.updating || payload.priceApiOk;
           if (!priceOk && payload.summary.tone === "success") {
             return { tone: "success", text: "資料保存正常，可以輸入資料；股價更新暫時不穩，晚點再更新即可。" };
           }
@@ -140,7 +140,7 @@
         if (!payload.readOk) return { tone: "error", text: "Supabase 目前讀取異常，先不要新增或修改資料。" };
         if (!payload.writeOk) return { tone: "error", text: "Supabase 目前無法寫入，先不要新增交易、股息或更新資產。" };
         if (!formalDataOk) return { tone: "error", text: "目前不是正式資料狀態，先不要新增或修改重要資料。" };
-        if (!pricePayload?.ok || !payload.priceApiOk) return { tone: "success", text: "資料保存正常，可以輸入資料；股價更新暫時不穩，晚點再更新即可。" };
+        if ((!pricePayload?.ok && !pricePayload?.updating) || !payload.priceApiOk) return { tone: "success", text: "資料保存正常，可以輸入資料；股價更新暫時不穩，晚點再更新即可。" };
         return { tone: "success", text: "網站狀態正常，可以放心輸入資料。" };
       }
 
@@ -153,7 +153,7 @@
           ["Supabase 可讀", healthLabel(payload.readOk)],
           ["Supabase 可寫", healthLabel(payload.writeOk)],
           ["正式資料", formalDataOk ? "正常" : "請確認"],
-          ["股價更新", pricePayload?.ok ? "正常" : healthLabel(payload.priceApiOk)],
+          ["股價更新", pricePayload?.updating ? "更新中" : (pricePayload?.ok ? "正常" : healthLabel(payload.priceApiOk))],
           ["最近成功保存", formatHealthValue(payload.lastSuccessfulSave)],
           ["最近自動備份", formatHealthValue(backup)],
           ["最近股價更新", formatHealthValue(payload.lastPriceUpdate)],
@@ -168,7 +168,7 @@
           </article>`)
           .join("");
         const issues = [...(payload.anomalies || [])];
-        if (!pricePayload?.ok) issues.push("股價更新 API 目前檢查失敗。");
+        if (!pricePayload?.ok && !pricePayload?.updating) issues.push("股價更新 API 目前檢查失敗。");
         document.getElementById("dataHealthNote").textContent = issues.length
           ? issues.join(" ")
           : payload.summary?.action || "沒有發現需要處理的問題。";
@@ -211,7 +211,7 @@
         try {
           const [healthResult, priceResult] = await Promise.allSettled([
             fetch("/api/data-health", { cache: "no-store" }),
-            fetch("/api/update-prices", { method: "POST", headers: { "x-price-check": "1" }, cache: "no-store" }),
+            fetch("/api/price-health", { cache: "no-store" }),
           ]);
           if (healthResult.status !== "fulfilled") throw new Error("資料健康檢查失敗");
           const response = healthResult.value;

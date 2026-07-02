@@ -82,6 +82,8 @@ const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
+const DASHBOARD_CORE_CACHE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+const FINANCE_DATA_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRICE_UPDATE_TIMEOUT_MS = 120000;
 const AUTO_PRICE_UPDATE_TIMEOUT_MS = 90000;
 const DASHBOARD_CORE_TIMEOUTS = [8000, 12000];
@@ -122,7 +124,14 @@ function handleAuthExpired(response) {
 function readLastDashboardCore() {
   if (!window.localStorage) return null;
   try {
-    return JSON.parse(window.localStorage.getItem(DASHBOARD_CORE_CACHE_KEY) || "null");
+    const item = JSON.parse(window.localStorage.getItem(DASHBOARD_CORE_CACHE_KEY) || "null");
+    const core = item?.payload || item;
+    const savedAt = Date.parse(item?.savedAt || core?.cachedAt || "");
+    if (savedAt && Date.now() - savedAt > DASHBOARD_CORE_CACHE_MAX_AGE_MS) {
+      window.localStorage.removeItem(DASHBOARD_CORE_CACHE_KEY);
+      return null;
+    }
+    return core;
   } catch {
     window.localStorage.removeItem(DASHBOARD_CORE_CACHE_KEY);
     return null;
@@ -136,7 +145,10 @@ function rememberDashboardCore(core) {
     const nextCore = core.fast && previous
       ? { ...core, transactions: previous.transactions, dividends: previous.dividends }
       : core;
-    window.localStorage.setItem(DASHBOARD_CORE_CACHE_KEY, JSON.stringify(nextCore));
+    window.localStorage.setItem(DASHBOARD_CORE_CACHE_KEY, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      payload: nextCore,
+    }));
   } catch {
     // Last-good data is only a safety net; live Supabase data remains the source of truth.
   }
@@ -145,7 +157,14 @@ function rememberDashboardCore(core) {
 function readLastFinanceData() {
   if (!window.localStorage) return null;
   try {
-    return JSON.parse(window.localStorage.getItem(FINANCE_DATA_CACHE_KEY) || "null");
+    const item = JSON.parse(window.localStorage.getItem(FINANCE_DATA_CACHE_KEY) || "null");
+    const financeData = item?.payload || item;
+    const savedAt = Date.parse(item?.savedAt || "");
+    if (savedAt && Date.now() - savedAt > FINANCE_DATA_CACHE_MAX_AGE_MS) {
+      window.localStorage.removeItem(FINANCE_DATA_CACHE_KEY);
+      return null;
+    }
+    return financeData;
   } catch {
     window.localStorage.removeItem(FINANCE_DATA_CACHE_KEY);
     return null;
@@ -155,7 +174,10 @@ function readLastFinanceData() {
 function rememberFinanceData(financeData) {
   if (!window.localStorage || !financeData?.years?.length) return;
   try {
-    window.localStorage.setItem(FINANCE_DATA_CACHE_KEY, JSON.stringify(financeData));
+    window.localStorage.setItem(FINANCE_DATA_CACHE_KEY, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      payload: financeData,
+    }));
   } catch {
     // Cached finance data only keeps the dashboard from looking empty during slow loads.
   }

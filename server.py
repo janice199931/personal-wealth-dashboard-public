@@ -1300,6 +1300,17 @@ def data_health(request: Request) -> Response:
     return utf8_json(payload)
 
 
+@app.get("/api/price-health")
+def price_health() -> dict[str, Any]:
+    status = db_store.status()
+    return {
+        "ok": True,
+        "updating": PRICE_UPDATE_LOCK.locked(),
+        "lastPriceUpdate": status.get("metadata", {}).get("lastPriceUpdate"),
+        "message": "股價更新狀態正常。",
+    }
+
+
 @app.get("/api/db/debug-supabase")
 def debug_supabase() -> dict[str, Any]:
     return db_store.debug_supabase()
