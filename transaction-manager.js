@@ -456,7 +456,7 @@ function renderTransactions() {
   cards.innerHTML = visibleTransactions
     .map((item) => {
       const actionTone = item.action === "SELL" ? "sell" : "buy";
-      const total = Number(item.shares) * Number(item.price) + Number(item.fee || 0);
+      const total = estimatedTradeAmount(item);
       return `<article class="transaction-card ${item.id === editingId ? "editing-card" : ""}">
         <div class="transaction-card-head">
           <div>

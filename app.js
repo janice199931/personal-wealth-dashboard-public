@@ -545,6 +545,17 @@ function applyDividendIncomeToFinanceYears(years) {
   });
 }
 
+function applyDividendIncomeToFinanceMonth(month) {
+  if (!month || typeof month !== "object") return month;
+  if (month.investmentIncome !== undefined) return month;
+  const investmentIncome = Math.round(dividendIncomeByMonth()[month.month] || 0);
+  const income = (Number(month.income) || 0) + investmentIncome;
+  const expense = Number(month.expense) || 0;
+  const net = (Number(month.net) || 0) + investmentIncome;
+  const savingsRate = income ? Math.round((net / income) * 1000) / 10 : 0;
+  return { ...month, investmentIncome, income, expense, net, savingsRate };
+}
+
 function applyPortfolioData(portfolio, history = []) {
   if (!portfolio?.summary) return;
   const twMarket = portfolio.markets?.TW ?? {};
@@ -1645,8 +1656,9 @@ function savingsRateStatus(rate) {
 
 function currentFinanceMonth() {
   const monthKey = currentMonthKey();
-  if (data.currentMonthFinance?.month === monthKey) return data.currentMonthFinance;
-  return financeMonths().find((month) => month.month === monthKey) || null;
+  const currentMonth = monthlyMetricRows().find((month) => month.month === monthKey)
+    || (data.currentMonthFinance?.month === monthKey ? data.currentMonthFinance : null);
+  return applyDividendIncomeToFinanceMonth(currentMonth);
 }
 
 function renderTodayActions() {
