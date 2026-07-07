@@ -67,7 +67,9 @@ const usd = new Intl.NumberFormat("en-US", {
 const number = new Intl.NumberFormat("zh-TW");
 let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
+const AUTO_PRICE_UPDATE_AT_KEY = "wealthDashboardLastAutoPriceUpdateAt";
 const PRICE_AUTO_REFRESH_MS = 5 * 60 * 1000;
+const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
 const INVESTMENT_RESERVE_MIN = 150000;
@@ -181,6 +183,16 @@ function rememberFinanceData(financeData) {
   } catch {
     // Cached finance data only keeps the dashboard from looking empty during slow loads.
   }
+}
+
+function hasPayloadKey(payload, payloadKey) {
+  return Boolean(payload && typeof payload === "object" && Object.prototype.hasOwnProperty.call(payload, payloadKey));
+}
+
+function usableApiPayload(payload, payloadKey) {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.ok === false) return false;
+  return payloadKey ? hasPayloadKey(payload, payloadKey) : true;
 }
 
 function hydrateDashboardFromCache() {
@@ -1986,6 +1998,18 @@ function startPriceProgress(button, automatic = false) {
 function markTodayPriceUpdated() {
   if (!window.localStorage) return;
   window.localStorage.setItem(AUTO_PRICE_UPDATE_KEY, todayKey());
+  window.localStorage.setItem(AUTO_PRICE_UPDATE_AT_KEY, new Date().toISOString());
+}
+
+function recentlyTriedAutoPriceUpdate() {
+  if (!window.localStorage) return false;
+  const lastAttemptAt = Date.parse(window.localStorage.getItem(AUTO_PRICE_UPDATE_AT_KEY) || "");
+  return Number.isFinite(lastAttemptAt) && Date.now() - lastAttemptAt < AUTO_PRICE_UPDATE_COOLDOWN_MS;
+}
+
+function markAutoPriceUpdateAttempt() {
+  if (!window.localStorage) return;
+  window.localStorage.setItem(AUTO_PRICE_UPDATE_AT_KEY, new Date().toISOString());
 }
 
 function setupPriceUpdater() {
@@ -2054,7 +2078,9 @@ function setupPriceUpdater() {
 
 async function runAutomaticPriceUpdate() {
   if (priceUpdateInProgress) return;
+  if (recentlyTriedAutoPriceUpdate()) return;
   priceUpdateInProgress = true;
+  markAutoPriceUpdateAttempt();
   const startedAt = Date.now();
   try {
     const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, AUTO_PRICE_UPDATE_TIMEOUT_MS);
@@ -2366,7 +2392,9 @@ async function loadExternalData() {
         if (handleAuthExpired(primaryResponse)) return fallbackValue;
         if (primaryResponse.ok) {
           const payload = await primaryResponse.json();
-          return payloadKey ? payload[payloadKey] : payload;
+          if (usableApiPayload(payload, payloadKey)) {
+            return payloadKey ? payload[payloadKey] : payload;
+          }
         }
       } catch {
         // Retry live API once before deciding whether to use fallback data.

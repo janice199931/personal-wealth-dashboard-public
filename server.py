@@ -1177,7 +1177,11 @@ def filter_safe_price_updates(
             continue
         if old_price > 0:
             change_ratio = abs(new_price - old_price) / old_price
-            if change_ratio > 0.8:
+            split_adjusted_00685l = (
+                key == "TW:00685L"
+                and abs((old_price / max(new_price, 0.0001)) - ETF_00685L_SPLIT_RATIO) <= 1.5
+            )
+            if change_ratio > 0.8 and not split_adjusted_00685l:
                 warnings.append(f"{key} 新價格與原價格差距超過 80%，已保留原價格。")
                 continue
         safe_prices[key] = row
