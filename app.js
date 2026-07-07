@@ -306,51 +306,6 @@ function setSidebarUpdatedAt(value) {
   if (target) target.textContent = formatUpdateTime(value);
 }
 
-function syncTaiwanStockPrice(price, dateText, updatedAt) {
-  const tw = data.investments.tw;
-  const shares = parseShares(tw.shares);
-  const marketValue = Math.round(price * shares);
-  const gain = marketValue - tw.cost;
-  tw.marketValue = marketValue;
-  tw.gain = gain;
-  tw.returnRate = percent(gain, tw.cost, 2);
-  tw.updatedAt = cleanUpdateTime(updatedAt ?? formatTaiwanUpdateTime(dateText));
-  const twAsset = data.assetPie.find((row) => row.label === "台股");
-  if (twAsset) twAsset.value = marketValue;
-}
-
-async function refreshTaiwanStockPrice() {
-  if (!window.fetch || !window.localStorage) return;
-  const cacheKey = `twse-0050-${todayKey()}`;
-  const cached = window.localStorage.getItem(cacheKey);
-  if (cached) {
-    const item = JSON.parse(cached);
-    syncTaiwanStockPrice(item.price, item.date, item.updatedAt);
-    render();
-    return;
-  }
-
-  try {
-    const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${todayKey()}&stockNo=0050&response=json`;
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) throw new Error("TWSE request failed");
-    const payload = await response.json();
-    const latest = payload.data?.at(-1);
-    if (!latest) throw new Error("TWSE data empty");
-    const item = {
-      date: latest[0],
-      price: Number(String(latest[6]).replace(/,/g, "")),
-      updatedAt: formatTaiwanUpdateTime(latest[0]),
-    };
-    if (!Number.isFinite(item.price)) throw new Error("TWSE price invalid");
-    window.localStorage.setItem(cacheKey, JSON.stringify(item));
-    syncTaiwanStockPrice(item.price, item.date, item.updatedAt);
-    render();
-  } catch (error) {
-    console.info("保留目前台股資料，台灣證交所資料暫時無法更新。", error);
-  }
-}
-
 function parseAmount(value) {
   if (typeof value === "number") return safeNumber(value);
   return safeNumber(String(value).replace(/[^\d.-]/g, ""));
@@ -529,10 +484,19 @@ function applyDividendIncomeToFinanceYears(years) {
   const monthlyDividends = dividendIncomeByMonth();
   return years.map((year) => {
     const months = (year.months ?? []).map((month) => {
-      const investmentIncome = Math.round(monthlyDividends[month.month] || 0);
-      const income = (Number(month.income) || 0) + investmentIncome;
+      const hasRecordedInvestmentIncome = month.investmentIncome !== undefined
+        && month.investmentIncome !== null
+        && month.investmentIncome !== "";
+      const investmentIncome = hasRecordedInvestmentIncome
+        ? Math.round(Number(month.investmentIncome) || 0)
+        : Math.round(monthlyDividends[month.month] || 0);
+      const income = hasRecordedInvestmentIncome
+        ? Number(month.income) || 0
+        : (Number(month.income) || 0) + investmentIncome;
       const expense = Number(month.expense) || 0;
-      const net = (Number(month.net) || 0) + investmentIncome;
+      const net = hasRecordedInvestmentIncome
+        ? Number(month.net) || 0
+        : (Number(month.net) || 0) + investmentIncome;
       const savingsRate = income ? Math.round((net / income) * 1000) / 10 : 0;
       return { ...month, investmentIncome, income, net, savingsRate };
     });
