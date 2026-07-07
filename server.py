@@ -51,6 +51,10 @@ AUTH_COOKIE_NAME = "wealth_dashboard_session"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 EMERGENCY_FUND_TARGET = 100000
 INVESTMENT_RESERVE_TARGET = 150000
+ETF_00685L_SPLIT_METADATA_KEY = "corporateAction00685LSplit202607"
+ETF_00685L_SPLIT_RATIO = 24
+ETF_00685L_TARGET_SHARES = 8880
+ETF_00685L_TARGET_AVERAGE_COST = 12.1
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -909,6 +913,118 @@ def position_state(transactions: list[dict[str, Any]], market: str, symbol: str)
     }
 
 
+def _is_00685l_transaction(row: dict[str, Any]) -> bool:
+    return str(row.get("market", "")).upper() == "TW" and str(row.get("symbol", "")).upper() == "00685L"
+
+
+def _is_target_00685l_state(state: dict[str, Any]) -> bool:
+    return (
+        abs(float(state.get("shares") or 0) - ETF_00685L_TARGET_SHARES) < 0.001
+        and abs(float(state.get("averageCost") or 0) - ETF_00685L_TARGET_AVERAGE_COST) < 0.01
+    )
+
+
+def _apply_00685l_split_to_price_cache() -> bool:
+    prices = db_store.read_prices({"fxRate": 31.451, "prices": {}})
+    price_book = prices.get("prices")
+    if not isinstance(price_book, dict):
+        return False
+    row = price_book.get("TW:00685L")
+    if not isinstance(row, dict):
+        return False
+    price = to_float(row.get("price"))
+    if price <= 100:
+        return False
+    updated_row = dict(row)
+    for key in ["price", "previousClose"]:
+        value = to_float(updated_row.get(key))
+        if value > 100:
+            updated_row[key] = round(value / ETF_00685L_SPLIT_RATIO, 4)
+    updated_row["updatedAt"] = db_store.now_iso()
+    price_book["TW:00685L"] = updated_row
+    db_store.write_prices({**prices, "prices": price_book})
+    return True
+
+
+def apply_00685l_split_adjustment() -> dict[str, Any]:
+    metadata = db_store.read_metadata()
+    existing = metadata.get(ETF_00685L_SPLIT_METADATA_KEY)
+    if isinstance(existing, dict) and existing.get("status") == "applied":
+        return {"ok": True, "status": "alreadyApplied", **existing}
+
+    transactions, ids_changed = ensure_transaction_ids(read_transactions(use_examples=False))
+    split_rows = [row for row in transactions if _is_00685l_transaction(row)]
+    if not split_rows:
+        return {"ok": True, "status": "skipped", "reason": "no00685LTransactions"}
+    if ids_changed:
+        write_transactions(transactions)
+
+    before = position_state(transactions, "TW", "00685L")
+    if _is_target_00685l_state(before):
+        priceAdjusted = _apply_00685l_split_to_price_cache()
+        db_store.set_metadata(ETF_00685L_SPLIT_METADATA_KEY, {
+            "status": "applied",
+            "reason": "alreadyTargetState",
+            "appliedAt": db_store.now_iso(),
+            "before": before,
+            "after": before,
+            "priceAdjusted": priceAdjusted,
+        })
+        return {"ok": True, "status": "alreadyTarget", "before": before, "after": before, "priceAdjusted": priceAdjusted}
+
+    before_shares = float(before.get("shares") or 0)
+    if before_shares <= 0 or before_shares >= ETF_00685L_TARGET_SHARES:
+        return {"ok": True, "status": "skipped", "reason": "unexpectedCurrentState", "before": before}
+
+    adjusted_transactions: list[dict[str, Any]] = []
+    for row in transactions:
+        if not _is_00685l_transaction(row):
+            adjusted_transactions.append(row)
+            continue
+        adjusted = dict(row)
+        adjusted["shares"] = round(to_float(adjusted.get("shares")) * ETF_00685L_SPLIT_RATIO, 6)
+        adjusted["price"] = round(to_float(adjusted.get("price")) / ETF_00685L_SPLIT_RATIO, 6)
+        note = str(adjusted.get("note", "")).strip()
+        split_note = "00685L 1拆24 股份分割校正"
+        adjusted["note"] = note if split_note in note else (f"{note}；{split_note}" if note else split_note)
+        adjusted_transactions.append(adjusted)
+
+    after = position_state(adjusted_transactions, "TW", "00685L")
+    target_total_cost = round(ETF_00685L_TARGET_SHARES * ETF_00685L_TARGET_AVERAGE_COST, 2)
+    if abs(float(after.get("shares") or 0) - ETF_00685L_TARGET_SHARES) < 0.001 and not _is_target_00685l_state(after):
+        delta_cost = round(target_total_cost - float(after.get("totalCost") or 0), 2)
+        for adjusted in sorted(adjusted_transactions, key=lambda row: (row.get("date", ""), row.get("id", "")), reverse=True):
+            if _is_00685l_transaction(adjusted) and str(adjusted.get("action", "")).upper() == "BUY":
+                next_fee = round(to_float(adjusted.get("fee")) + delta_cost, 2)
+                if next_fee >= 0:
+                    adjusted["fee"] = next_fee
+                    note = str(adjusted.get("note", "")).strip()
+                    fee_note = "校正分割後平均成本至 12.1"
+                    adjusted["note"] = note if fee_note in note else (f"{note}；{fee_note}" if note else fee_note)
+                    after = position_state(adjusted_transactions, "TW", "00685L")
+                break
+    if not _is_target_00685l_state(after):
+        return {"ok": True, "status": "skipped", "reason": "adjustedStateMismatch", "before": before, "after": after}
+
+    validate_positions(adjusted_transactions)
+    write_pre_change_backup("00685L 1拆24 股份分割校正")
+    write_transactions(adjusted_transactions)
+    priceAdjusted = _apply_00685l_split_to_price_cache()
+    portfolio = rebuild_portfolio_outputs()
+    applied_at = mark_successful_save()
+    result = {
+        "status": "applied",
+        "appliedAt": applied_at,
+        "ratio": ETF_00685L_SPLIT_RATIO,
+        "before": before,
+        "after": after,
+        "priceAdjusted": priceAdjusted,
+        "portfolioSummary": portfolio.get("summary", {}),
+    }
+    db_store.set_metadata(ETF_00685L_SPLIT_METADATA_KEY, result)
+    return {"ok": True, **result}
+
+
 def build_holding_audit() -> dict[str, Any]:
     transactions = read_transactions(use_examples=False)
     portfolio = read_portfolio(use_examples=False) or rebuild_portfolio_outputs()
@@ -1375,6 +1491,11 @@ def get_dashboard_core(fast: bool = False) -> Response:
 @app.get("/api/holdings-audit")
 def holdings_audit() -> Response:
     return utf8_json(build_holding_audit())
+
+
+@app.post("/api/corporate-actions/00685l-split")
+def apply_00685l_split() -> Response:
+    return utf8_json(apply_00685l_split_adjustment())
 
 
 @app.get("/api/accounts")
@@ -2309,6 +2430,14 @@ def update_prices(request: Request) -> dict:
 @app.get("/api/update-prices")
 def update_prices_status() -> dict:
     return {"ok": True, "method": "POST", "message": "股價更新 API 已就緒。"}
+
+
+@app.on_event("startup")
+def startup_data_checks() -> None:
+    try:
+        apply_00685l_split_adjustment()
+    except Exception as error:
+        print(f"00685L split adjustment skipped: {error}")
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
