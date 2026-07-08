@@ -55,7 +55,7 @@ ETF_00685L_SPLIT_METADATA_KEY = "corporateAction00685LSplit202607"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
 ETF_00685L_TARGET_AVERAGE_COST = 12.1
-US_DRIP_POSITION_METADATA_KEY = "usDripPositionCorrection20260708"
+US_DRIP_POSITION_METADATA_KEY = "usDripPositionCorrection20260708v2"
 US_DRIP_POSITION_TARGETS = {
     "MU": {"name": "MICRON TECHNOLOGY INC", "shares": 26.00282, "averageCost": 499.88},
     "VOO": {"name": "VANGUARD S&P 500 ETF", "shares": 9.07725, "averageCost": 602.22},
@@ -77,6 +77,7 @@ BACKUP_FILES = {
 app = FastAPI(title="Personal Wealth Dashboard Local API")
 PORTFOLIO_REBUILD_LOCK = Lock()
 PRICE_UPDATE_LOCK = Lock()
+CORPORATE_ACTION_LOCK = Lock()
 
 
 @app.exception_handler(RuntimeError)
@@ -1189,6 +1190,18 @@ def apply_us_drip_position_corrections() -> dict[str, Any]:
     return {"ok": True, **result}
 
 
+def ensure_corporate_action_corrections() -> None:
+    if not CORPORATE_ACTION_LOCK.acquire(blocking=False):
+        return
+    try:
+        apply_00685l_split_adjustment()
+        apply_us_drip_position_corrections()
+    except Exception as error:
+        print(f"Corporate action correction skipped: {error}")
+    finally:
+        CORPORATE_ACTION_LOCK.release()
+
+
 def build_holding_audit() -> dict[str, Any]:
     transactions = read_transactions(use_examples=False)
     portfolio = read_portfolio(use_examples=False) or rebuild_portfolio_outputs()
@@ -1602,6 +1615,7 @@ def debug_supabase() -> dict[str, Any]:
 
 @app.get("/api/portfolio")
 def get_portfolio() -> dict[str, Any]:
+    ensure_corporate_action_corrections()
     portfolio = read_portfolio(use_examples=True)
     return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if portfolio else "example"}
 
@@ -1620,6 +1634,7 @@ def future_result_or_default(future: Any, default: Any, label: str) -> Any:
 
 @app.get("/api/dashboard-core")
 def get_dashboard_core(fast: bool = False) -> Response:
+    ensure_corporate_action_corrections()
     with ThreadPoolExecutor(max_workers=6) as executor:
         portfolio_future = executor.submit(read_portfolio, True)
         history_future = executor.submit(read_net_worth_history, False)
@@ -1658,6 +1673,7 @@ def get_dashboard_core(fast: bool = False) -> Response:
 
 @app.get("/api/holdings-audit")
 def holdings_audit() -> Response:
+    ensure_corporate_action_corrections()
     return utf8_json(build_holding_audit())
 
 
@@ -2607,14 +2623,7 @@ def update_prices_status() -> dict:
 
 @app.on_event("startup")
 def startup_data_checks() -> None:
-    try:
-        apply_00685l_split_adjustment()
-    except Exception as error:
-        print(f"00685L split adjustment skipped: {error}")
-    try:
-        apply_us_drip_position_corrections()
-    except Exception as error:
-        print(f"US DRIP position correction skipped: {error}")
+    ensure_corporate_action_corrections()
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
