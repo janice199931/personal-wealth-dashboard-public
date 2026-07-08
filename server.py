@@ -1115,11 +1115,6 @@ def _append_us_position_correction(
 
 
 def apply_us_drip_position_corrections() -> dict[str, Any]:
-    metadata = db_store.read_metadata()
-    existing = metadata.get(US_DRIP_POSITION_METADATA_KEY)
-    if isinstance(existing, dict) and existing.get("status") == "applied":
-        return {"ok": True, "status": "alreadyApplied", **existing}
-
     transactions, ids_changed = ensure_transaction_ids(read_transactions(use_examples=False))
     if ids_changed:
         write_transactions(transactions)
@@ -1190,14 +1185,16 @@ def apply_us_drip_position_corrections() -> dict[str, Any]:
     return {"ok": True, **result}
 
 
-def ensure_corporate_action_corrections() -> None:
+def ensure_corporate_action_corrections() -> dict[str, Any]:
     if not CORPORATE_ACTION_LOCK.acquire(blocking=False):
-        return
+        return {"ok": True, "status": "busy"}
     try:
-        apply_00685l_split_adjustment()
-        apply_us_drip_position_corrections()
+        split_result = apply_00685l_split_adjustment()
+        us_result = apply_us_drip_position_corrections()
+        return {"ok": True, "00685L": split_result, "usDrip": us_result}
     except Exception as error:
         print(f"Corporate action correction skipped: {error}")
+        return {"ok": False, "status": "error", "detail": str(error)}
     finally:
         CORPORATE_ACTION_LOCK.release()
 
@@ -1615,9 +1612,9 @@ def debug_supabase() -> dict[str, Any]:
 
 @app.get("/api/portfolio")
 def get_portfolio() -> dict[str, Any]:
-    ensure_corporate_action_corrections()
+    correction = ensure_corporate_action_corrections()
     portfolio = read_portfolio(use_examples=True)
-    return {"ok": True, "portfolio": portfolio, "source": db_store.active_backend() if portfolio else "example"}
+    return {"ok": True, "portfolio": portfolio, "correction": correction, "source": db_store.active_backend() if portfolio else "example"}
 
 
 def future_result_or_default(future: Any, default: Any, label: str) -> Any:
@@ -1634,7 +1631,7 @@ def future_result_or_default(future: Any, default: Any, label: str) -> Any:
 
 @app.get("/api/dashboard-core")
 def get_dashboard_core(fast: bool = False) -> Response:
-    ensure_corporate_action_corrections()
+    correction = ensure_corporate_action_corrections()
     with ThreadPoolExecutor(max_workers=6) as executor:
         portfolio_future = executor.submit(read_portfolio, True)
         history_future = executor.submit(read_net_worth_history, False)
@@ -1666,6 +1663,7 @@ def get_dashboard_core(fast: bool = False) -> Response:
         "dividends": None if fast else dividends,
         "accounts": accounts,
         "currentMonthFinance": current_month_finance,
+        "correction": correction,
         "fast": fast,
         "source": db_store.active_backend() if portfolio else "example",
     })
