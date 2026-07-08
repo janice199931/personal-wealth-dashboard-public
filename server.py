@@ -9,6 +9,7 @@ import secrets
 import shutil
 import tempfile
 import time
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from datetime import datetime
@@ -444,7 +445,121 @@ def rebuild_portfolio_outputs() -> dict[str, Any]:
         return portfolio
 
 
+def _snapshot_needs_us_drip_overlay(holding: dict[str, Any], target: dict[str, Any]) -> bool:
+    current_shares = float(holding.get("shares") or 0)
+    current_average_cost = float(holding.get("averageCost") or 0)
+    if current_shares <= 0:
+        return False
+    if abs(current_shares - float(target["shares"])) > 0.1:
+        return False
+    return (
+        abs(current_shares - float(target["shares"])) > 0.00001
+        or abs(current_average_cost - float(target["averageCost"])) > 0.01
+    )
+
+
+def overlay_us_drip_targets_on_portfolio(portfolio: dict[str, Any]) -> dict[str, Any]:
+    holdings = portfolio.get("holdings")
+    if not isinstance(holdings, list):
+        return portfolio
+
+    changed = False
+    output = deepcopy(portfolio)
+    fx_rate = float(output.get("fxRate") or 31.451)
+    for holding in output.get("holdings", []):
+        if str(holding.get("market", "")).upper() != "US":
+            continue
+        symbol = str(holding.get("symbol", "")).upper()
+        target = US_DRIP_POSITION_TARGETS.get(symbol)
+        if not target or not _snapshot_needs_us_drip_overlay(holding, target):
+            continue
+        shares = float(target["shares"])
+        average_cost = float(target["averageCost"])
+        price = float(holding.get("price") or average_cost)
+        total_cost = round(shares * average_cost, 2)
+        market_value = round(shares * price, 2)
+        unrealized_gain = round(market_value - total_cost, 2)
+        holding["shares"] = round(shares, 6)
+        holding["averageCost"] = round(average_cost, 4)
+        holding["totalCost"] = total_cost
+        holding["marketValue"] = market_value
+        holding["unrealizedGain"] = unrealized_gain
+        holding["returnRate"] = round((unrealized_gain / total_cost * 100), 2) if total_cost else 0
+        holding["marketValueTWD"] = round(market_value * fx_rate)
+        holding["totalCostTWD"] = round(total_cost * fx_rate)
+        holding["unrealizedGainTWD"] = round(unrealized_gain * fx_rate)
+        changed = True
+
+    if not changed:
+        return portfolio
+
+    tw_holdings = [row for row in output.get("holdings", []) if row.get("market") == "TW"]
+    us_holdings = [row for row in output.get("holdings", []) if row.get("market") == "US"]
+    tw_market_value = round(sum(float(row.get("marketValueTWD") or 0) for row in tw_holdings))
+    us_market_value = round(sum(float(row.get("marketValueTWD") or 0) for row in us_holdings))
+    tw_cost = round(sum(float(row.get("totalCostTWD") or 0) for row in tw_holdings))
+    us_cost = round(sum(float(row.get("totalCostTWD") or 0) for row in us_holdings))
+    cash_twd = round(float(output.get("summary", {}).get("cash") or output.get("allocation", {}).get("cash") or 0))
+    debt = round(float(output.get("summary", {}).get("debt") or output.get("allocation", {}).get("debt") or 0))
+    stock_assets = tw_market_value + us_market_value
+    total_assets = stock_assets + cash_twd
+    net_worth = total_assets - debt
+
+    def gain(rows: list[dict[str, Any]]) -> int:
+        return round(sum(float(row.get("unrealizedGainTWD") or 0) for row in rows))
+
+    def rate(market_value: int, cost: int) -> float:
+        return round(((market_value - cost) / cost * 100), 2) if cost else 0
+
+    output["summary"] = {
+        **output.get("summary", {}),
+        "totalAssets": total_assets,
+        "stockAssets": stock_assets,
+        "cash": cash_twd,
+        "debt": debt,
+        "netWorth": net_worth,
+    }
+    output["markets"] = {
+        **output.get("markets", {}),
+        "TW": {
+            **output.get("markets", {}).get("TW", {}),
+            "marketValue": tw_market_value,
+            "cost": tw_cost,
+            "unrealizedGain": gain(tw_holdings),
+            "returnRate": rate(tw_market_value, tw_cost),
+        },
+        "US": {
+            **output.get("markets", {}).get("US", {}),
+            "marketValueUSD": round(sum(float(row.get("marketValue") or 0) for row in us_holdings), 2),
+            "marketValue": us_market_value,
+            "costUSD": round(sum(float(row.get("totalCost") or 0) for row in us_holdings), 2),
+            "cost": us_cost,
+            "unrealizedGainUSD": round(sum(float(row.get("unrealizedGain") or 0) for row in us_holdings), 2),
+            "unrealizedGain": gain(us_holdings),
+            "returnRate": rate(us_market_value, us_cost),
+        },
+    }
+    output["allocation"] = {
+        **output.get("allocation", {}),
+        "taiwanStocks": tw_market_value,
+        "usStocks": us_market_value,
+        "cash": cash_twd,
+        "debt": debt,
+    }
+    output["usDripDisplayCorrection"] = {"status": "applied", "symbols": list(US_DRIP_POSITION_TARGETS)}
+    return output
+
+
 def read_portfolio(use_examples: bool = False) -> dict[str, Any]:
+    portfolio = db_store.read_latest_portfolio({})
+    if not portfolio and db_store.has_private_data():
+        portfolio = rebuild_portfolio_outputs()
+    if not portfolio and use_examples:
+        portfolio = read_json(EXAMPLE_PORTFOLIO_PATH, {})
+    return overlay_us_drip_targets_on_portfolio(portfolio)
+
+
+def read_raw_portfolio(use_examples: bool = False) -> dict[str, Any]:
     portfolio = db_store.read_latest_portfolio({})
     if not portfolio and db_store.has_private_data():
         portfolio = rebuild_portfolio_outputs()
