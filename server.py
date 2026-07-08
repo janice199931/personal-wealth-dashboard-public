@@ -1926,6 +1926,24 @@ def recheck_holding_corrections() -> Response:
     })
 
 
+@app.post("/api/db/repair-data-health")
+def repair_data_health() -> Response:
+    correction = ensure_corporate_action_corrections()
+    portfolio = rebuild_portfolio_outputs()
+    backup = ensure_daily_backup()
+    saved_at = mark_successful_save()
+    consistency_checks = data_consistency_checks(portfolio, read_transactions(use_examples=False), db_store.read_accounts({}))
+    return utf8_json({
+        "ok": True,
+        "savedAt": saved_at,
+        "backup": backup,
+        "correction": correction,
+        "correctionSummary": correction_result_summary(correction),
+        "consistencyChecks": consistency_checks,
+        "portfolioSummary": portfolio.get("summary", {}),
+    })
+
+
 @app.get("/api/accounts")
 def get_accounts() -> dict[str, Any]:
     accounts = db_store.read_accounts({})

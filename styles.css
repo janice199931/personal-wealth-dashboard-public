@@ -966,6 +966,36 @@ main {
   gap: 8px;
 }
 
+.settings-action-groups {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.settings-action-group {
+  min-height: 46px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(147, 122, 108, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 253, 250, 0.52);
+}
+
+.settings-action-group > span {
+  padding: 0 4px 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.repair-actions {
+  background: rgba(255, 238, 237, 0.42);
+}
+
 .subtle-action {
   background: rgba(255, 253, 250, 0.72);
   color: var(--muted);
@@ -2313,8 +2343,22 @@ canvas {
     width: 100%;
   }
 
+  .settings-action-groups,
+  .settings-action-group {
+    width: 100%;
+  }
+
+  .settings-action-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
   .settings-actions .action-button {
     flex: 1 1 100%;
+  }
+
+  .settings-action-group .action-button {
+    width: 100%;
   }
 
   .diagnostics-grid {

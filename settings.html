@@ -53,11 +53,18 @@
             <p class="eyebrow">Data Health</p>
             <h2>一鍵健康檢查</h2>
           </div>
-          <div class="settings-actions">
-            <button class="action-button" id="runHealthCheckButton" type="button">檢查網站狀態</button>
-            <button class="action-button subtle-action" id="rebuildPortfolioButton" type="button">重建首頁資料</button>
-            <button class="action-button subtle-action" id="recheckHoldingsButton" type="button">重新校正持股</button>
-            <button class="action-button subtle-action" id="createBackupButton" type="button">建立備份</button>
+          <div class="settings-action-groups">
+            <div class="settings-action-group" aria-label="一般操作">
+              <span>一般操作</span>
+              <button class="action-button" id="runHealthCheckButton" type="button">檢查網站狀態</button>
+              <button class="action-button subtle-action" id="createBackupButton" type="button">建立備份</button>
+            </div>
+            <div class="settings-action-group repair-actions" aria-label="修復工具">
+              <span>修復工具</span>
+              <button class="action-button" id="repairDataButton" type="button" hidden>一鍵修復</button>
+              <button class="action-button subtle-action" id="rebuildPortfolioButton" type="button">重建首頁資料</button>
+              <button class="action-button subtle-action" id="recheckHoldingsButton" type="button">重新校正持股</button>
+            </div>
           </div>
         </div>
         <div id="dataHealthConclusion" class="health-conclusion">尚未檢查</div>
@@ -174,9 +181,20 @@
         renderConsistencyChecks(payload.consistencyChecks || []);
         const issues = [...(payload.anomalies || [])];
         if (!pricePayload?.ok && !pricePayload?.updating) issues.push("股價更新 API 目前檢查失敗。");
+        updateRepairButton(payload, pricePayload);
         document.getElementById("dataHealthNote").textContent = issues.length
           ? issues.join(" ")
           : payload.summary?.action || "沒有發現需要處理的問題。";
+      }
+
+      function updateRepairButton(payload, pricePayload = null) {
+        const button = document.getElementById("repairDataButton");
+        if (!button) return;
+        const failedConsistency = (payload.consistencyChecks || []).some((item) => !item.ok);
+        const rebuildOutdated = (payload.anomalies || []).some((item) => String(item).includes("首頁資料重算時間"));
+        const dataRepairable = Boolean(payload.readOk && payload.writeOk && (failedConsistency || rebuildOutdated));
+        const priceOnlyIssue = !pricePayload?.ok && !failedConsistency && !rebuildOutdated;
+        button.hidden = !dataRepairable || priceOnlyIssue;
       }
 
       function renderConsistencyChecks(checks) {
@@ -310,6 +328,10 @@
         return postMaintenanceAction("recheckHoldingsButton", "校正中...", "重新校正持股", "/api/corporate-actions/recheck-holdings");
       }
 
+      function repairDataHealth() {
+        return postMaintenanceAction("repairDataButton", "修復中...", "一鍵修復", "/api/db/repair-data-health");
+      }
+
       async function loadDiagnostics() {
         const target = document.getElementById("diagnosticsGrid");
         target.innerHTML = '<article class="diagnostics-card"><span>Status</span><strong>讀取中</strong></article>';
@@ -329,6 +351,7 @@
 
       document.getElementById("refreshDiagnosticsButton").addEventListener("click", loadDiagnostics);
       document.getElementById("runHealthCheckButton").addEventListener("click", runHealthCheck);
+      document.getElementById("repairDataButton").addEventListener("click", repairDataHealth);
       document.getElementById("rebuildPortfolioButton").addEventListener("click", rebuildPortfolio);
       document.getElementById("recheckHoldingsButton").addEventListener("click", recheckHoldings);
       document.getElementById("createBackupButton").addEventListener("click", createBackup);
