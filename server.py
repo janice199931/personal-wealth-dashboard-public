@@ -55,6 +55,15 @@ ETF_00685L_SPLIT_METADATA_KEY = "corporateAction00685LSplit202607"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
 ETF_00685L_TARGET_AVERAGE_COST = 12.1
+US_DRIP_POSITION_METADATA_KEY = "usDripPositionCorrection20260708"
+US_DRIP_POSITION_TARGETS = {
+    "MU": {"name": "MICRON TECHNOLOGY INC", "shares": 26.00282, "averageCost": 499.88},
+    "VOO": {"name": "VANGUARD S&P 500 ETF", "shares": 9.07725, "averageCost": 602.22},
+    "SNDK": {"name": "SANDISK CORP", "shares": 1.0, "averageCost": 1960.0},
+    "NVDA": {"name": "NVIDIA CORP", "shares": 7.00704, "averageCost": 151.54},
+    "GOOG": {"name": "ALPHABET INC", "shares": 3.00125, "averageCost": 311.64, "sellPrice": 370.0},
+    "TSM": {"name": "TAIWAN SEMICONDUCTOR", "shares": 2.00397, "averageCost": 340.07},
+}
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -1025,6 +1034,161 @@ def apply_00685l_split_adjustment() -> dict[str, Any]:
     return {"ok": True, **result}
 
 
+def _is_us_symbol_transaction(row: dict[str, Any], symbol: str) -> bool:
+    return str(row.get("market", "")).upper() == "US" and str(row.get("symbol", "")).upper() == symbol
+
+
+def _target_us_position_cost(target: dict[str, Any]) -> float:
+    return round(float(target["shares"]) * float(target["averageCost"]), 2)
+
+
+def _matches_us_position_target(state: dict[str, Any], target: dict[str, Any]) -> bool:
+    return (
+        abs(float(state.get("shares") or 0) - float(target["shares"])) < 0.00001
+        and abs(float(state.get("averageCost") or 0) - float(target["averageCost"])) < 0.01
+    )
+
+
+def _adjust_latest_buy_cost(transactions: list[dict[str, Any]], symbol: str, delta_cost: float) -> bool:
+    if abs(delta_cost) < 0.005:
+        return True
+    buy_rows = [
+        row
+        for row in transactions
+        if _is_us_symbol_transaction(row, symbol) and str(row.get("action", "")).upper() == "BUY"
+    ]
+    buy_rows.sort(key=lambda item: to_float(item.get("shares")), reverse=True)
+    for row in buy_rows:
+        current_fee = to_float(row.get("fee"))
+        next_fee = round(current_fee + delta_cost, 2)
+        if next_fee >= 0:
+            row["fee"] = next_fee
+        else:
+            shares = to_float(row.get("shares"))
+            price = to_float(row.get("price"))
+            next_price = round(price + (delta_cost / shares), 6) if shares else price
+            if next_price <= 0:
+                return False
+            row["price"] = next_price
+        note = str(row.get("note", "")).strip()
+        cost_note = "美股股息再投資後持股成本校正"
+        row["note"] = note if cost_note in note else (f"{note}；{cost_note}" if note else cost_note)
+        return True
+    return False
+
+
+def _append_us_position_correction(
+    transactions: list[dict[str, Any]],
+    symbol: str,
+    target: dict[str, Any],
+    before: dict[str, Any],
+) -> bool:
+    before_shares = float(before.get("shares") or 0)
+    before_cost = float(before.get("totalCost") or 0)
+    target_shares = float(target["shares"])
+    target_cost = _target_us_position_cost(target)
+    share_delta = round(target_shares - before_shares, 6)
+    if abs(share_delta) >= 0.000001:
+        action = "BUY" if share_delta > 0 else "SELL"
+        trade_shares = abs(share_delta)
+        if action == "BUY":
+            price = max(0.0001, round((target_cost - before_cost) / trade_shares, 6))
+        else:
+            price = float(target.get("sellPrice") or target.get("averageCost") or 1)
+        transactions.append({
+            "id": f"tx-us-drip-{symbol.lower()}-{uuid4().hex[:8]}",
+            "date": "2026-07-08",
+            "market": "US",
+            "symbol": symbol,
+            "name": target.get("name", symbol),
+            "action": action,
+            "shares": trade_shares,
+            "price": price,
+            "fee": 0,
+            "purpose": "dividend" if action == "BUY" else "rebalance",
+            "note": "美股股息再投資後持股校正",
+        })
+    after_trade = position_state(transactions, "US", symbol)
+    delta_cost = round(target_cost - float(after_trade.get("totalCost") or 0), 2)
+    return _adjust_latest_buy_cost(transactions, symbol, delta_cost)
+
+
+def apply_us_drip_position_corrections() -> dict[str, Any]:
+    metadata = db_store.read_metadata()
+    existing = metadata.get(US_DRIP_POSITION_METADATA_KEY)
+    if isinstance(existing, dict) and existing.get("status") == "applied":
+        return {"ok": True, "status": "alreadyApplied", **existing}
+
+    transactions, ids_changed = ensure_transaction_ids(read_transactions(use_examples=False))
+    if ids_changed:
+        write_transactions(transactions)
+
+    current_states = {
+        symbol: position_state(transactions, "US", symbol)
+        for symbol in US_DRIP_POSITION_TARGETS
+    }
+    existing_symbols = [
+        symbol
+        for symbol, state in current_states.items()
+        if float(state.get("shares") or 0) > 0
+    ]
+    if not existing_symbols:
+        return {"ok": True, "status": "skipped", "reason": "noUsHoldings"}
+    target_symbols = list(US_DRIP_POSITION_TARGETS)
+    if all(_matches_us_position_target(current_states[symbol], US_DRIP_POSITION_TARGETS[symbol]) for symbol in target_symbols):
+        result = {
+            "status": "applied",
+            "reason": "alreadyTargetState",
+            "appliedAt": db_store.now_iso(),
+            "symbols": target_symbols,
+            "before": current_states,
+            "after": current_states,
+        }
+        db_store.set_metadata(US_DRIP_POSITION_METADATA_KEY, result)
+        return {"ok": True, **result}
+
+    adjusted_transactions = [dict(row) for row in transactions]
+    before_states = {
+        symbol: position_state(adjusted_transactions, "US", symbol)
+        for symbol in target_symbols
+    }
+    for symbol in target_symbols:
+        target = US_DRIP_POSITION_TARGETS[symbol]
+        before = position_state(adjusted_transactions, "US", symbol)
+        if _matches_us_position_target(before, target):
+            continue
+        if not _append_us_position_correction(adjusted_transactions, symbol, target, before):
+            return {"ok": True, "status": "skipped", "reason": f"{symbol}CorrectionFailed", "before": before_states}
+
+    after_states = {
+        symbol: position_state(adjusted_transactions, "US", symbol)
+        for symbol in target_symbols
+    }
+    mismatches = {
+        symbol: after_states[symbol]
+        for symbol in target_symbols
+        if not _matches_us_position_target(after_states[symbol], US_DRIP_POSITION_TARGETS[symbol])
+    }
+    if mismatches:
+        return {"ok": True, "status": "skipped", "reason": "targetMismatch", "before": before_states, "after": after_states}
+
+    validate_positions(adjusted_transactions)
+    write_pre_change_backup("美股股息再投資持股校正")
+    write_transactions(adjusted_transactions)
+    portfolio = rebuild_portfolio_outputs()
+    applied_at = mark_successful_save()
+    result = {
+        "status": "applied",
+        "appliedAt": applied_at,
+        "symbols": target_symbols,
+        "before": before_states,
+        "after": after_states,
+        "portfolioSummary": portfolio.get("summary", {}),
+    }
+    db_store.set_metadata(US_DRIP_POSITION_METADATA_KEY, result)
+    return {"ok": True, **result}
+
+
 def build_holding_audit() -> dict[str, Any]:
     transactions = read_transactions(use_examples=False)
     portfolio = read_portfolio(use_examples=False) or rebuild_portfolio_outputs()
@@ -1500,6 +1664,11 @@ def holdings_audit() -> Response:
 @app.post("/api/corporate-actions/00685l-split")
 def apply_00685l_split() -> Response:
     return utf8_json(apply_00685l_split_adjustment())
+
+
+@app.post("/api/corporate-actions/us-drip-positions")
+def apply_us_drip_positions() -> Response:
+    return utf8_json(apply_us_drip_position_corrections())
 
 
 @app.get("/api/accounts")
@@ -2442,6 +2611,10 @@ def startup_data_checks() -> None:
         apply_00685l_split_adjustment()
     except Exception as error:
         print(f"00685L split adjustment skipped: {error}")
+    try:
+        apply_us_drip_position_corrections()
+    except Exception as error:
+        print(f"US DRIP position correction skipped: {error}")
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
