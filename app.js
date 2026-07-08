@@ -1772,6 +1772,7 @@ function renderDataStatusCards() {
   const rows = [
     { label: "Current DB", value: status?.currentDbLabel ?? "讀取中", note: currentDbNote(status) },
     { label: "Database Health", value: health.value, note: health.note },
+    { label: "首頁重算", value: formatStatusDate(metadata.lastPortfolioRebuild || data.updatedAt), note: "" },
     { label: "Last Price Update", value: formatStatusDate(metadata.lastPriceUpdate || data.updatedAt), note: "" },
     { label: "Data Status", value: dataStatusMessage(status), note: dataStatusNote(status) },
   ];
@@ -1922,9 +1923,11 @@ function renderDataUpdates() {
     }
   }
   const lastSave = dataStatus?.metadata?.lastSuccessfulSave || dataStatus?.lastSuccessfulSave;
+  const lastRebuild = dataStatus?.metadata?.lastPortfolioRebuild || dataStatus?.lastPortfolioRebuild || data.updatedAt;
   const transactionCount = data.transactions?.length ?? dataStatus?.counts?.transactions;
   const rows = [
     { label: "資產資料", value: lastSave ? "已同步" : formatUpdateTime(data.updatedAt) },
+    { label: "首頁重算", value: formatUpdateTime(lastRebuild) },
     { label: "交易紀錄", value: Number.isFinite(Number(transactionCount)) ? `已同步 ${Number(transactionCount)} 筆` : "確認中" },
     { label: "台股更新", value: formatUpdateTime(data.investments.tw.updatedAt) },
     { label: "美股更新", value: formatUpdateTime(data.investments.us.updatedAt) },
@@ -2471,7 +2474,7 @@ async function loadExternalData() {
     .catch(() => {});
 
   hydrateFinanceFromCache();
-  if (hydrateDashboardFromCache()) {
+  if (window.location.protocol === "file:" && hydrateDashboardFromCache()) {
     renderCoreDashboard();
     window.requestAnimationFrame(() => {
       renderVisualDashboard();

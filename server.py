@@ -442,6 +442,7 @@ def rebuild_portfolio_outputs() -> dict[str, Any]:
                 history = expanded_history
         db_store.write_portfolio_snapshot(portfolio)
         db_store.write_net_worth_history(history)
+        db_store.set_metadata("lastPortfolioRebuild", db_store.now_iso())
         return portfolio
 
 
@@ -1682,6 +1683,11 @@ def data_health(request: Request) -> Response:
         anomalies.extend(detect_data_anomalies(read_portfolio(use_examples=False), transactions, db_store.read_net_worth_history()))
     except Exception as error:
         anomalies.append(f"資料異常檢查未完成：{error}")
+    metadata = status.get("metadata", {})
+    last_save = str(metadata.get("lastSuccessfulSave") or "")
+    last_rebuild = str(metadata.get("lastPortfolioRebuild") or "")
+    if last_save and last_rebuild and last_rebuild < last_save:
+        anomalies.append("首頁資料重算時間早於最近保存時間，建議按一次重建首頁資料。")
     if status.get("fallbackActive"):
         anomalies.append("Supabase 目前不是正式寫入狀態。")
     if not transactions:
@@ -1698,10 +1704,11 @@ def data_health(request: Request) -> Response:
         "readError": read_error,
         "writeError": write_error,
         "priceError": price_error,
-        "lastSuccessfulSave": status.get("metadata", {}).get("lastSuccessfulSave"),
-        "lastBackup": status.get("metadata", {}).get("lastBackup"),
-        "lastAutoBackup": status.get("metadata", {}).get("lastAutoBackup"),
-        "lastPriceUpdate": status.get("metadata", {}).get("lastPriceUpdate"),
+        "lastSuccessfulSave": metadata.get("lastSuccessfulSave"),
+        "lastPortfolioRebuild": metadata.get("lastPortfolioRebuild"),
+        "lastBackup": metadata.get("lastBackup"),
+        "lastAutoBackup": metadata.get("lastAutoBackup"),
+        "lastPriceUpdate": metadata.get("lastPriceUpdate"),
         "backup": backup,
         "anomalies": anomalies,
         "status": status,
@@ -1800,6 +1807,19 @@ def apply_us_drip_positions() -> Response:
     return utf8_json(apply_us_drip_position_corrections())
 
 
+@app.post("/api/corporate-actions/recheck-holdings")
+def recheck_holding_corrections() -> Response:
+    correction = ensure_corporate_action_corrections()
+    portfolio = rebuild_portfolio_outputs()
+    saved_at = mark_successful_save()
+    return utf8_json({
+        "ok": True,
+        "correction": correction,
+        "savedAt": saved_at,
+        "portfolioSummary": portfolio.get("summary", {}),
+    })
+
+
 @app.get("/api/accounts")
 def get_accounts() -> dict[str, Any]:
     accounts = db_store.read_accounts({})
@@ -1847,6 +1867,7 @@ async def import_finance_data(request: Request) -> dict[str, Any]:
     db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
     portfolio = read_portfolio(use_examples=False)
     history = backfill_history_from_finance_data(portfolio) if portfolio else db_store.read_net_worth_history()
+    saved_at = mark_successful_save()
     return {
         "ok": True,
         "currentDb": db_store.active_backend(),
@@ -1854,6 +1875,7 @@ async def import_finance_data(request: Request) -> dict[str, Any]:
         "years": len(finance_data.get("years", [])),
         "recordCount": finance_data.get("recordCount", 0),
         "historyCount": len(history),
+        "savedAt": saved_at,
     }
 
 
@@ -1909,6 +1931,7 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
             db_store.set_metadata("lastFinanceDataImport", db_store.now_iso())
             portfolio = read_portfolio(use_examples=False)
             history = backfill_history_from_finance_data(portfolio) if portfolio else db_store.read_net_worth_history()
+            saved_at = mark_successful_save()
             return {
                 "ok": True,
                 "imported": imported,
@@ -1916,6 +1939,7 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
                 "currentDb": db_store.active_backend(),
                 "savedTo": saved_to,
                 "historyCount": len(history),
+                "savedAt": saved_at,
                 "message": "年度/月度對帳資料已匯入，不影響投資與資產資料。",
             }
 
@@ -1929,12 +1953,14 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
 
         portfolio = rebuild_portfolio_outputs()
         db_store.set_metadata("lastImport", db_store.now_iso())
+        saved_at = mark_successful_save()
         return {
             "ok": True,
             "imported": imported,
             "counts": db_store.status()["counts"],
             "portfolioSummary": portfolio.get("summary", {}),
             "currentDb": db_store.active_backend(),
+            "savedAt": saved_at,
             "message": "備份 JSON 已匯入資料庫並重建投資組合。",
         }
 
@@ -1988,12 +2014,14 @@ async def import_json_to_db(backup: Optional[UploadFile] = File(None)) -> dict[s
 
     portfolio = rebuild_portfolio_outputs()
     db_store.set_metadata("lastImport", db_store.now_iso())
+    saved_at = mark_successful_save()
     return {
         "ok": True,
         "imported": imported,
         "counts": db_store.status()["counts"],
         "portfolioSummary": portfolio.get("summary", {}),
         "currentDb": db_store.active_backend(),
+        "savedAt": saved_at,
         "message": "JSON 匯入資料庫完成。正式 JSON 仍應留在本機並由 .gitignore 忽略。",
     }
 
@@ -2026,11 +2054,13 @@ def backfill_net_worth_history() -> dict[str, Any]:
 def rebuild_portfolio_from_db() -> dict[str, Any]:
     write_pre_change_backup("重建投資組合")
     portfolio = rebuild_portfolio_outputs()
+    saved_at = mark_successful_save()
     return {
         "ok": True,
         "currentDb": db_store.active_backend(),
         "counts": db_store.status()["counts"],
         "portfolioSummary": portfolio.get("summary", {}),
+        "savedAt": saved_at,
     }
 
 

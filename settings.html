@@ -55,6 +55,8 @@
           </div>
           <div class="settings-actions">
             <button class="action-button" id="runHealthCheckButton" type="button">檢查網站狀態</button>
+            <button class="action-button subtle-action" id="rebuildPortfolioButton" type="button">重建首頁資料</button>
+            <button class="action-button subtle-action" id="recheckHoldingsButton" type="button">重新校正持股</button>
             <button class="action-button subtle-action" id="createBackupButton" type="button">建立備份</button>
           </div>
         </div>
@@ -155,6 +157,7 @@
           ["正式資料", formalDataOk ? "正常" : "請確認"],
           ["股價更新", pricePayload?.updating ? "更新中" : (pricePayload?.ok ? "正常" : healthLabel(payload.priceApiOk))],
           ["最近成功保存", formatHealthValue(payload.lastSuccessfulSave)],
+          ["首頁最近重算", formatHealthValue(payload.lastPortfolioRebuild)],
           ["最近自動備份", formatHealthValue(backup)],
           ["最近股價更新", formatHealthValue(payload.lastPriceUpdate)],
         ];
@@ -256,6 +259,32 @@
         }
       }
 
+      async function postMaintenanceAction(buttonId, loadingText, doneText, endpoint) {
+        const button = document.getElementById(buttonId);
+        button.disabled = true;
+        button.textContent = loadingText;
+        try {
+          const response = await fetch(endpoint, { method: "POST", cache: "no-store" });
+          const payload = await readJsonSafely(response);
+          if (!response.ok || payload.ok === false) throw new Error(payload.detail || "操作失敗，請稍後再試。");
+          document.getElementById("dataHealthNote").textContent = `${doneText}：${formatHealthValue(payload.savedAt || new Date().toISOString())}`;
+          await Promise.all([loadDiagnostics(), loadDataHealth()]);
+        } catch (error) {
+          document.getElementById("dataHealthNote").textContent = error.message || "操作失敗，請稍後再試。";
+        } finally {
+          button.disabled = false;
+          button.textContent = doneText;
+        }
+      }
+
+      function rebuildPortfolio() {
+        return postMaintenanceAction("rebuildPortfolioButton", "重建中...", "重建首頁資料", "/api/db/rebuild-portfolio");
+      }
+
+      function recheckHoldings() {
+        return postMaintenanceAction("recheckHoldingsButton", "校正中...", "重新校正持股", "/api/corporate-actions/recheck-holdings");
+      }
+
       async function loadDiagnostics() {
         const target = document.getElementById("diagnosticsGrid");
         target.innerHTML = '<article class="diagnostics-card"><span>Status</span><strong>讀取中</strong></article>';
@@ -275,6 +304,8 @@
 
       document.getElementById("refreshDiagnosticsButton").addEventListener("click", loadDiagnostics);
       document.getElementById("runHealthCheckButton").addEventListener("click", runHealthCheck);
+      document.getElementById("rebuildPortfolioButton").addEventListener("click", rebuildPortfolio);
+      document.getElementById("recheckHoldingsButton").addEventListener("click", recheckHoldings);
       document.getElementById("createBackupButton").addEventListener("click", createBackup);
       loadDiagnostics();
       loadDataHealth();
