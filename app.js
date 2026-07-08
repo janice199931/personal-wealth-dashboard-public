@@ -79,6 +79,14 @@ const TARGET_ANNUAL_SAVING = 550000;
 const ANNUAL_SAVING_YEAR = 2026;
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
+const US_DRIP_POSITION_TARGETS = {
+  MU: { shares: 26.00282, averageCost: 499.88 },
+  VOO: { shares: 9.07725, averageCost: 602.22 },
+  SNDK: { shares: 1, averageCost: 1960 },
+  NVDA: { shares: 7.00704, averageCost: 151.54 },
+  GOOG: { shares: 3.00125, averageCost: 311.64 },
+  TSM: { shares: 2.00397, averageCost: 340.07 },
+};
 const LEVERAGED_TARGET_RATIO = 70;
 const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
@@ -153,6 +161,49 @@ function rememberDashboardCore(core) {
     }));
   } catch {
     // Last-good data is only a safety net; live Supabase data remains the source of truth.
+  }
+}
+
+function clearDashboardCoreCache() {
+  try {
+    window.localStorage?.removeItem(DASHBOARD_CORE_CACHE_KEY);
+  } catch {
+    // Cache cleanup is best effort.
+  }
+}
+
+function needsUsDripPositionCorrection(portfolio) {
+  const holdings = Array.isArray(portfolio?.holdings) ? portfolio.holdings : [];
+  const bySymbol = new Map(
+    holdings
+      .filter((holding) => String(holding.market || "").toUpperCase() === "US")
+      .map((holding) => [String(holding.symbol || "").toUpperCase(), holding]),
+  );
+  return Object.entries(US_DRIP_POSITION_TARGETS).some(([symbol, target]) => {
+    const holding = bySymbol.get(symbol);
+    if (!holding) return false;
+    const shares = safeNumber(holding.shares);
+    const averageCost = safeNumber(holding.averageCost);
+    return Math.abs(shares - target.shares) > 0.00001 || Math.abs(averageCost - target.averageCost) > 0.01;
+  });
+}
+
+async function runUsDripCorrectionIfNeeded(core, fetchJson) {
+  if (!needsUsDripPositionCorrection(core?.portfolio)) return core;
+  try {
+    const response = await fetchWithTimeout(
+      "/api/corporate-actions/us-drip-positions",
+      { method: "POST", cache: "no-store" },
+      20000,
+    );
+    if (!response.ok || handleAuthExpired(response)) return core;
+    const result = await response.json();
+    if (result?.ok === false || result?.status === "skipped") return core;
+    clearDashboardCoreCache();
+    const refreshedCore = await fetchJson("/api/dashboard-core?fast=1&refresh=us-drip", "", null);
+    return refreshedCore?.portfolio ? refreshedCore : core;
+  } catch {
+    return core;
   }
 }
 
@@ -2430,6 +2481,7 @@ async function loadExternalData() {
 
   let core = await fetchJson("/api/dashboard-core?fast=1", "", null);
   if (core?.portfolio) {
+    core = await runUsDripCorrectionIfNeeded(core, fetchJson);
     rememberDashboardCore(core);
   } else {
     core = readLastDashboardCore();
