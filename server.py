@@ -1447,6 +1447,105 @@ def detect_data_anomalies(
     return anomalies
 
 
+def data_consistency_checks(
+    portfolio: dict[str, Any] | None = None,
+    transactions: list[dict[str, Any]] | None = None,
+    accounts: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    portfolio = portfolio if portfolio is not None else read_portfolio(use_examples=False)
+    transactions = transactions if transactions is not None else read_transactions(use_examples=False)
+    accounts = accounts if accounts is not None else db_store.read_accounts({})
+    checks: list[dict[str, Any]] = []
+
+    def add(label: str, ok: bool, detail: str) -> None:
+        checks.append({"label": label, "ok": ok, "detail": detail})
+
+    if not portfolio:
+        return [{"label": "首頁資料", "ok": False, "detail": "目前讀不到首頁投資組合資料。"}]
+
+    summary = portfolio.get("summary", {})
+    allocation = portfolio.get("allocation", {})
+    stock_assets = round(to_float(summary.get("stockAssets")))
+    cash = round(to_float(summary.get("cash")))
+    debt = round(to_float(summary.get("debt")))
+    total_assets = round(to_float(summary.get("totalAssets")))
+    net_worth = round(to_float(summary.get("netWorth")))
+    add(
+        "資產總額",
+        abs((stock_assets + cash) - total_assets) <= 5,
+        f"股票 {stock_assets:,} + 現金 {cash:,} = 總資產 {total_assets:,}",
+    )
+    add(
+        "淨資產",
+        abs((total_assets - debt) - net_worth) <= 5,
+        f"總資產 {total_assets:,} - 負債 {debt:,} = 淨資產 {net_worth:,}",
+    )
+    allocation_total = round(to_float(allocation.get("taiwanStocks")) + to_float(allocation.get("usStocks")) + to_float(allocation.get("cash")))
+    add(
+        "資產配置",
+        abs(allocation_total - total_assets) <= max(10, total_assets * 0.001),
+        f"配置加總 {allocation_total:,}，首頁總資產 {total_assets:,}",
+    )
+
+    positions = calculate_positions(transactions or [])
+    holding_map = {
+        f"{str(row.get('market', '')).upper()}:{str(row.get('symbol', '')).upper()}": row
+        for row in portfolio.get("holdings", [])
+    }
+    checked_positions = 0
+    mismatches: list[str] = []
+    for key, position in positions.items():
+        holding = holding_map.get(key)
+        if not holding:
+            mismatches.append(f"{key} 缺少首頁持股")
+            continue
+        checked_positions += 1
+        if abs(to_float(position.get("shares")) - to_float(holding.get("shares"))) > 0.001:
+            mismatches.append(f"{key} 股數不一致")
+        if abs(to_float(position.get("cost")) - to_float(holding.get("totalCost"))) > 2:
+            mismatches.append(f"{key} 成本不一致")
+    add(
+        "交易與持股",
+        not mismatches,
+        f"已檢查 {checked_positions} 檔持股" if not mismatches else "；".join(mismatches[:4]),
+    )
+
+    account_cash = round(to_float(accounts.get("cashTWD")))
+    add(
+        "金庫現金",
+        abs(account_cash - cash) <= 5,
+        f"帳戶現金 {account_cash:,}，首頁現金 {cash:,}",
+    )
+
+    metadata = db_store.read_metadata()
+    last_save = str(metadata.get("lastSuccessfulSave") or "")
+    last_rebuild = str(metadata.get("lastPortfolioRebuild") or "")
+    add(
+        "首頁重算",
+        not last_save or not last_rebuild or last_rebuild >= last_save,
+        f"最後保存 {last_save or '尚未記錄'}，首頁重算 {last_rebuild or '尚未記錄'}",
+    )
+    return checks
+
+
+def correction_result_summary(correction: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    split = correction.get("00685L", {}) if isinstance(correction, dict) else {}
+    us_drip = correction.get("usDrip", {}) if isinstance(correction, dict) else {}
+    rows.append({
+        "label": "00685L 分割",
+        "ok": bool(split.get("ok", True)) and split.get("status") in {"applied", "skipped", None},
+        "detail": split.get("reason") or split.get("status") or "已檢查",
+    })
+    symbols = us_drip.get("symbols") or []
+    rows.append({
+        "label": "美股 DRIP",
+        "ok": bool(us_drip.get("ok", True)) and us_drip.get("status") in {"applied", "skipped", None},
+        "detail": f"{us_drip.get('status') or '已檢查'}，{len(symbols)} 檔" if symbols else (us_drip.get("reason") or us_drip.get("status") or "已檢查"),
+    })
+    return rows
+
+
 def filter_safe_price_updates(
     current_portfolio: dict[str, Any],
     stored_prices: dict[str, Any],
@@ -1680,8 +1779,11 @@ def data_health(request: Request) -> Response:
 
     status = db_store.status()
     try:
-        anomalies.extend(detect_data_anomalies(read_portfolio(use_examples=False), transactions, db_store.read_net_worth_history()))
+        portfolio_for_checks = read_portfolio(use_examples=False)
+        anomalies.extend(detect_data_anomalies(portfolio_for_checks, transactions, db_store.read_net_worth_history()))
+        consistency_checks = data_consistency_checks(portfolio_for_checks, transactions, db_store.read_accounts({}))
     except Exception as error:
+        consistency_checks = [{"label": "資料一致性", "ok": False, "detail": f"檢查未完成：{error}"}]
         anomalies.append(f"資料異常檢查未完成：{error}")
     metadata = status.get("metadata", {})
     last_save = str(metadata.get("lastSuccessfulSave") or "")
@@ -1709,6 +1811,7 @@ def data_health(request: Request) -> Response:
         "lastBackup": metadata.get("lastBackup"),
         "lastAutoBackup": metadata.get("lastAutoBackup"),
         "lastPriceUpdate": metadata.get("lastPriceUpdate"),
+        "consistencyChecks": consistency_checks,
         "backup": backup,
         "anomalies": anomalies,
         "status": status,
@@ -1812,10 +1915,13 @@ def recheck_holding_corrections() -> Response:
     correction = ensure_corporate_action_corrections()
     portfolio = rebuild_portfolio_outputs()
     saved_at = mark_successful_save()
+    consistency_checks = data_consistency_checks(portfolio, read_transactions(use_examples=False), db_store.read_accounts({}))
     return utf8_json({
         "ok": True,
         "correction": correction,
+        "correctionSummary": correction_result_summary(correction),
         "savedAt": saved_at,
+        "consistencyChecks": consistency_checks,
         "portfolioSummary": portfolio.get("summary", {}),
     })
 

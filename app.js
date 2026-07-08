@@ -92,6 +92,7 @@ const CASH_TARGET_RATIO = 30;
 const REBALANCE_BAND = 5;
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
+const DASHBOARD_REFRESH_REQUIRED_KEY = "wealthDashboardRefreshRequired";
 const DASHBOARD_CORE_CACHE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 const FINANCE_DATA_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRICE_UPDATE_TIMEOUT_MS = 120000;
@@ -131,8 +132,21 @@ function handleAuthExpired(response) {
   return true;
 }
 
+function friendlyLoadError(error, label = "資料") {
+  const text = String(error?.message || error || "").toLowerCase();
+  if (text.includes("request timeout") || text.includes("abort")) return `${label}載入較慢，先保留目前畫面並稍後自動重試。`;
+  if (text.includes("failed to fetch") || text.includes("network")) return `${label}連線暫時不穩，請稍後再重新整理。`;
+  if (text.includes("401")) return "登入已過期，請重新登入。";
+  if (text.includes("500") || text.includes("503")) return `${label}服務暫時忙碌，資料沒有被覆蓋，請稍後再試。`;
+  return `${label}暫時讀取失敗，請稍後再試。`;
+}
+
 function readLastDashboardCore() {
   if (!window.localStorage) return null;
+  if (window.localStorage.getItem(DASHBOARD_REFRESH_REQUIRED_KEY)) {
+    window.localStorage.removeItem(DASHBOARD_CORE_CACHE_KEY);
+    return null;
+  }
   try {
     const item = JSON.parse(window.localStorage.getItem(DASHBOARD_CORE_CACHE_KEY) || "null");
     const core = item?.payload || item;
@@ -167,6 +181,7 @@ function rememberDashboardCore(core) {
 function clearDashboardCoreCache() {
   try {
     window.localStorage?.removeItem(DASHBOARD_CORE_CACHE_KEY);
+    window.localStorage?.removeItem(DASHBOARD_REFRESH_REQUIRED_KEY);
   } catch {
     // Cache cleanup is best effort.
   }
@@ -2450,8 +2465,10 @@ async function loadExternalData() {
             return payloadKey ? payload[payloadKey] : payload;
           }
         }
-      } catch {
-        // Retry live API once before deciding whether to use fallback data.
+      } catch (error) {
+        if (timeoutMs === attempts[attempts.length - 1] && isLiveApi) {
+          localStorage.setItem("wealthDashboardUpdateWarning", friendlyLoadError(error, payloadKey ? payloadKey : "資料"));
+        }
       }
     }
 

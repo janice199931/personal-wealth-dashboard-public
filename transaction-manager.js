@@ -44,6 +44,7 @@ function clearDashboardCache() {
   try {
     localStorage.removeItem("wealthDashboardLastCore");
     localStorage.removeItem("wealthDashboardLastFinanceData");
+    localStorage.setItem("wealthDashboardRefreshRequired", new Date().toISOString());
   } catch {
     // Cache cleanup should never block saving records.
   }

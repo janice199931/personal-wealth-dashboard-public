@@ -62,6 +62,7 @@
         </div>
         <div id="dataHealthConclusion" class="health-conclusion">尚未檢查</div>
         <div id="dataHealthGrid" class="diagnostics-grid"></div>
+        <div id="consistencyGrid" class="diagnostics-grid"></div>
         <p id="dataHealthNote" class="settings-note"></p>
       </section>
 
@@ -170,11 +171,28 @@
             <strong>${value}</strong>
           </article>`)
           .join("");
+        renderConsistencyChecks(payload.consistencyChecks || []);
         const issues = [...(payload.anomalies || [])];
         if (!pricePayload?.ok && !pricePayload?.updating) issues.push("股價更新 API 目前檢查失敗。");
         document.getElementById("dataHealthNote").textContent = issues.length
           ? issues.join(" ")
           : payload.summary?.action || "沒有發現需要處理的問題。";
+      }
+
+      function renderConsistencyChecks(checks) {
+        const target = document.getElementById("consistencyGrid");
+        if (!target) return;
+        if (!checks.length) {
+          target.innerHTML = "";
+          return;
+        }
+        target.innerHTML = checks
+          .map((item) => `<article class="diagnostics-card">
+            <span>${item.label || "資料檢查"}</span>
+            <strong>${item.ok ? "通過" : "請確認"}</strong>
+            <small>${item.detail || ""}</small>
+          </article>`)
+          .join("");
       }
 
       async function readJsonSafely(response) {
@@ -267,7 +285,14 @@
           const response = await fetch(endpoint, { method: "POST", cache: "no-store" });
           const payload = await readJsonSafely(response);
           if (!response.ok || payload.ok === false) throw new Error(payload.detail || "操作失敗，請稍後再試。");
-          document.getElementById("dataHealthNote").textContent = `${doneText}：${formatHealthValue(payload.savedAt || new Date().toISOString())}`;
+          const checks = payload.consistencyChecks || [];
+          const passed = checks.filter((item) => item.ok).length;
+          const checkNote = checks.length ? `，一致性檢查 ${passed}/${checks.length} 通過` : "";
+          const correctionRows = payload.correctionSummary || [];
+          const correctionNote = correctionRows.length
+            ? `，${correctionRows.map((item) => `${item.label}${item.ok ? "通過" : "請確認"}`).join("、")}`
+            : "";
+          document.getElementById("dataHealthNote").textContent = `${doneText}：${formatHealthValue(payload.savedAt || new Date().toISOString())}${checkNote}${correctionNote}`;
           await Promise.all([loadDiagnostics(), loadDataHealth()]);
         } catch (error) {
           document.getElementById("dataHealthNote").textContent = error.message || "操作失敗，請稍後再試。";
