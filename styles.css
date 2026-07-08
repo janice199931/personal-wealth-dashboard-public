@@ -377,11 +377,11 @@ h2 {
 }
 
 .update-strip {
-  min-width: min(520px, 48vw);
-  padding: 8px 12px;
+  min-width: min(660px, 56vw);
+  padding: 8px 14px;
   display: grid;
-  grid-template-columns: repeat(4, auto);
-  gap: 8px 14px;
+  grid-template-columns: repeat(5, max-content);
+  gap: 14px;
   align-items: center;
   justify-content: end;
   border: 1px solid var(--glass-border);
@@ -397,6 +397,7 @@ h2 {
   padding: 0;
   border-bottom: 0;
   text-align: right;
+  white-space: nowrap;
 }
 
 .update-strip span {
@@ -407,7 +408,7 @@ h2 {
 
 .update-strip strong {
   color: var(--ink);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 850;
 }
 
