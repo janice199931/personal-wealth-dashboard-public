@@ -1066,7 +1066,9 @@ function getPortfolioMetrics() {
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
   const availableCash = buckets.availableCash;
-  const livingVaultBalance = Math.max(0, postOfficeBalance + availableCash - creditCardDebt);
+  const livingVaultRawBalance = postOfficeBalance + availableCash - creditCardDebt;
+  const livingVaultBalance = Math.max(0, livingVaultRawBalance);
+  const livingVaultShortfall = Math.max(0, -livingVaultRawBalance);
   const sinopacInvestableBalance = Math.max(0, sinopacBalance - emergencyFund - investmentReserve);
   const monthlySinopacTransfer = safeNumber(currentMonthFinance?.sinopacTransfer);
   const investableSinopacCash = Math.max(0, investmentReserve + availableCash);
@@ -1119,7 +1121,9 @@ function getPortfolioMetrics() {
     sinopacInvestableBalance,
     postOfficeBalance,
     creditCardDebt,
+    livingVaultRawBalance,
     livingVaultBalance,
+    livingVaultShortfall,
     monthlySinopacTransfer,
     monthlySinopacTransferRemaining: Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlySinopacTransfer)),
     investableSinopacCash,
@@ -1218,6 +1222,13 @@ function postOfficeStatus(metrics) {
     : 0;
   const suggested = Math.round(averageExpense * 1.2);
   if (!suggested) return { status: "watch", suggested, text: "待記錄" };
+  if (metrics.livingVaultShortfall > 0) {
+    return {
+      status: "warn",
+      suggested,
+      text: `⚠️ 短缺 ${money.format(metrics.livingVaultShortfall)}`,
+    };
+  }
   return {
     status: metrics.livingVaultBalance >= suggested ? "good" : "warn",
     suggested,
@@ -1401,8 +1412,8 @@ function renderVaults() {
       lines: [
         [
           "目前餘額",
-          money.format(metrics.livingVaultBalance),
-          `郵局: ${money.format(metrics.postOfficeBalance)} + 現金: ${money.format(metrics.availableCash)} - 信用卡: ${money.format(metrics.creditCardDebt)}`,
+          metrics.livingVaultShortfall > 0 ? `短缺 ${money.format(metrics.livingVaultShortfall)}` : money.format(metrics.livingVaultBalance),
+          `郵局: ${money.format(metrics.postOfficeBalance)} + 現金: ${money.format(metrics.availableCash)} - 信用卡: ${money.format(metrics.creditCardDebt)} = ${money.format(metrics.livingVaultRawBalance)}`,
         ],
         ["建議保留金額", postOffice.suggested ? money.format(postOffice.suggested) : "待記錄"],
         ["狀態", postOffice.text],
