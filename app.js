@@ -554,6 +554,50 @@ function investmentAmountForPeriod(periodKey) {
     .reduce((sum, transaction) => sum + transactionInvestmentAmount(transaction), 0);
 }
 
+function realizedGainTwdFromTransactions() {
+  const positions = new Map();
+  let realizedGain = 0;
+  data.transactions
+    .slice()
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))
+    .forEach((transaction) => {
+      const market = String(transaction.market || "").toUpperCase();
+      const symbol = String(transaction.symbol || "").toUpperCase();
+      const action = String(transaction.action || "").toUpperCase();
+      const shares = safeNumber(transaction.shares);
+      const price = safeNumber(transaction.price);
+      const fee = safeNumber(transaction.fee);
+      const key = `${market}:${symbol}`;
+      const position = positions.get(key) || { shares: 0, cost: 0 };
+      const multiplier = market === "US" ? usdToTwd : 1;
+      if (action === "BUY") {
+        position.shares += shares;
+        position.cost += (shares * price + fee) * multiplier;
+      } else if (action === "SELL" && shares > 0 && position.shares > 0) {
+        const sellShares = Math.min(shares, position.shares);
+        const averageCost = position.cost / position.shares;
+        const soldCost = averageCost * sellShares;
+        const proceeds = (sellShares * price - fee) * multiplier;
+        realizedGain += proceeds - soldCost;
+        position.shares -= sellShares;
+        position.cost -= soldCost;
+      }
+      positions.set(key, position);
+    });
+  return Math.round(realizedGain);
+}
+
+function totalDividendIncomeTwd() {
+  return Math.round(data.dividends.reduce((sum, dividend) => sum + dividendNetTwd(dividend), 0));
+}
+
+function cumulativeReturnMetrics() {
+  const realizedGain = realizedGainTwdFromTransactions();
+  const dividendIncome = totalDividendIncomeTwd();
+  const total = realizedGain + dividendIncome;
+  return { realizedGain, dividendIncome, total };
+}
+
 function currentYearKey() {
   return String(new Date().getFullYear());
 }
@@ -1283,7 +1327,7 @@ function renderKpis() {
   }
   const metrics = getPortfolioMetrics();
   const next = getNextMilestone();
-  const annualSaving = getAnnualSavingMilestone();
+  const cumulativeReturn = cumulativeReturnMetrics();
   const calculatedScore = financialHealthScore(metrics);
   const score = Number.isFinite(Number(calculatedScore)) && Number(calculatedScore) > 0 ? Number(calculatedScore) : 0;
   const rows = [
@@ -1300,12 +1344,10 @@ function renderKpis() {
       note: `報酬率 ${metrics.investmentReturnRate}`,
     },
     {
-      label: "年度儲蓄里程碑",
-      value: `${annualSaving.percent.toFixed(1)}%`,
-      note: annualSaving.remaining > 0
-        ? `距離目標尚餘 ${money.format(annualSaving.remaining)}`
-        : "🎉 年度目標已達成！",
-      progress: annualSaving.progress,
+      label: "累積總報酬",
+      value: money.format(cumulativeReturn.total),
+      valueTone: gainTone(cumulativeReturn.total),
+      noteHtml: `<span class="kpi-split-line">已實現損益 ${money.format(cumulativeReturn.realizedGain)}</span><span class="kpi-split-line">股息收入 ${money.format(cumulativeReturn.dividendIncome)}</span>`,
     },
     {
       label: "財富目標進度",
