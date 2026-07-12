@@ -396,7 +396,7 @@ function monthlyFallback() {
 
 function monthlyMetricRows() {
   if (window.financeData?.years?.length) {
-    const rows = applyDividendIncomeToFinanceYears(window.financeData.years)
+    const rows = normalizeFinanceYears(window.financeData.years)
       .flatMap((year) => year.months ?? [])
       .filter((month) => /^\d{4}-\d{2}$/.test(String(month.month || "")))
       .sort((a, b) => String(a.month).localeCompare(String(b.month)));
@@ -514,22 +514,6 @@ function dividendNetTwd(dividend) {
   return dividend.currency === "USD" ? amount * usdToTwd : amount;
 }
 
-function currentYearDividendIncome() {
-  const currentYear = String(new Date().getFullYear());
-  return data.dividends
-    .filter((dividend) => String(dividend.date || "").slice(0, 4) === currentYear)
-    .reduce((sum, dividend) => sum + dividendNetTwd(dividend), 0);
-}
-
-function dividendIncomeByMonth() {
-  return data.dividends.reduce((months, dividend) => {
-    const month = String(dividend.date || "").slice(0, 7);
-    if (!/^\d{4}-\d{2}$/.test(month)) return months;
-    months[month] = (months[month] || 0) + dividendNetTwd(dividend);
-    return months;
-  }, {});
-}
-
 function transactionInvestmentAmount(transaction) {
   const shares = Number(transaction.shares) || 0;
   const price = Number(transaction.price) || 0;
@@ -591,48 +575,24 @@ function cumulativeReturnMetrics() {
   return { realizedGain, dividendIncome, total };
 }
 
-function currentYearKey() {
-  return String(new Date().getFullYear());
+function normalizeFinanceMonth(month) {
+  if (!month || typeof month !== "object") return month;
+  const income = Math.round(Number(month.income) || 0);
+  const expense = Math.round(Number(month.expense) || 0);
+  const net = income - expense;
+  const savingsRate = income ? Math.round((net / income) * 1000) / 10 : 0;
+  return { ...month, income, expense, net, savingsRate };
 }
 
-function applyDividendIncomeToFinanceYears(years) {
-  const monthlyDividends = dividendIncomeByMonth();
+function normalizeFinanceYears(years) {
   return years.map((year) => {
-    const months = (year.months ?? []).map((month) => {
-      const hasRecordedInvestmentIncome = month.investmentIncome !== undefined
-        && month.investmentIncome !== null
-        && month.investmentIncome !== "";
-      const investmentIncome = hasRecordedInvestmentIncome
-        ? Math.round(Number(month.investmentIncome) || 0)
-        : Math.round(monthlyDividends[month.month] || 0);
-      const income = hasRecordedInvestmentIncome
-        ? Number(month.income) || 0
-        : (Number(month.income) || 0) + investmentIncome;
-      const expense = Number(month.expense) || 0;
-      const net = hasRecordedInvestmentIncome
-        ? Number(month.net) || 0
-        : (Number(month.net) || 0) + investmentIncome;
-      const savingsRate = income ? Math.round((net / income) * 1000) / 10 : 0;
-      return { ...month, investmentIncome, income, net, savingsRate };
-    });
-    const investmentIncome = months.reduce((sum, month) => sum + (month.investmentIncome || 0), 0);
+    const months = (year.months ?? []).map(normalizeFinanceMonth);
     const income = months.reduce((sum, month) => sum + (Number(month.income) || 0), 0);
     const expense = months.reduce((sum, month) => sum + (Number(month.expense) || 0), 0);
-    const net = months.reduce((sum, month) => sum + (Number(month.net) || 0), 0);
+    const net = income - expense;
     const savingsRate = income ? Math.round((net / income) * 1000) / 10 : 0;
-    return { ...year, months, investmentIncome, income, expense, net, savingsRate };
+    return { ...year, months, income, expense, net, savingsRate };
   });
-}
-
-function applyDividendIncomeToFinanceMonth(month) {
-  if (!month || typeof month !== "object") return month;
-  if (month.investmentIncome !== undefined) return month;
-  const investmentIncome = Math.round(dividendIncomeByMonth()[month.month] || 0);
-  const income = (Number(month.income) || 0) + investmentIncome;
-  const expense = Number(month.expense) || 0;
-  const net = (Number(month.net) || 0) + investmentIncome;
-  const savingsRate = income ? Math.round((net / income) * 1000) / 10 : 0;
-  return { ...month, investmentIncome, income, expense, net, savingsRate };
 }
 
 function applyPortfolioData(portfolio, history = []) {
@@ -1503,7 +1463,7 @@ function currentFinanceMonth() {
   const monthKey = currentMonthKey();
   const currentMonth = monthlyMetricRows().find((month) => month.month === monthKey)
     || (data.currentMonthFinance?.month === monthKey ? data.currentMonthFinance : null);
-  return applyDividendIncomeToFinanceMonth(currentMonth);
+  return normalizeFinanceMonth(currentMonth);
 }
 
 function renderTodayActions() {
@@ -2171,7 +2131,7 @@ function renderLedger() {
     target.innerHTML = '<div class="empty-state">目前沒有可顯示的年度/月度對帳資料。</div>';
     return;
   }
-  const years = applyDividendIncomeToFinanceYears(window.financeData.years ?? []);
+  const years = normalizeFinanceYears(window.financeData.years ?? []);
   if (!years.length) {
     target.innerHTML = '<div class="empty-state">目前沒有可顯示的年度/月度對帳資料。</div>';
     return;
