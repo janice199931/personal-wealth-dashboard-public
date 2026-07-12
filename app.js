@@ -40,8 +40,6 @@ const data = {
   currentMonthFinance: null,
   leveragedPullbackSignal: { state: "idle" },
   rebalancer: {
-    leveragedValue: 0,
-    hasLeveragedHolding: false,
     hasLeveragedEtfHolding: false,
   },
 };
@@ -75,8 +73,6 @@ const EMERGENCY_FUND_TARGET = 100000;
 const INVESTMENT_RESERVE_MIN = 150000;
 const INVESTMENT_RESERVE_MAX = 150000;
 const MONTHLY_INVESTMENT_TARGET = 35000;
-const TARGET_ANNUAL_SAVING = 550000;
-const ANNUAL_SAVING_YEAR = 2026;
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
 const US_DRIP_POSITION_TARGETS = {
@@ -87,9 +83,6 @@ const US_DRIP_POSITION_TARGETS = {
   GOOG: { shares: 3.00125, averageCost: 311.64 },
   TSM: { shares: 2.00397, averageCost: 340.07 },
 };
-const LEVERAGED_TARGET_RATIO = 70;
-const CASH_TARGET_RATIO = 30;
-const REBALANCE_BAND = 5;
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
 const DASHBOARD_REFRESH_REQUIRED_KEY = "wealthDashboardRefreshRequired";
@@ -708,8 +701,6 @@ function applyPortfolioData(portfolio, history = []) {
     { label: "負債", value: portfolio.allocation?.debt ?? 0, color: "#b8acd3" },
   ];
   data.rebalancer = {
-    leveragedValue: Number(portfolio.allocation?.taiwanStocks ?? twMarket.marketValue ?? 0) || 0,
-    hasLeveragedHolding: Number(portfolio.allocation?.taiwanStocks ?? twMarket.marketValue ?? 0) > 0,
     hasLeveragedEtfHolding: Boolean(leveragedHolding),
   };
 
@@ -787,115 +778,6 @@ function drawGrid(ctx, area, ticks = 4) {
     ctx.lineTo(area.left + area.width, y);
     ctx.stroke();
   }
-}
-
-function drawBarChart(canvas, rows) {
-  const { ctx, width, height } = fitCanvas(canvas);
-  const area = { left: 44, top: 18, width: width - 54, height: height - 62 };
-  const max = Math.max(...rows.flatMap((row) => [row.income, row.expense]));
-  ctx.clearRect(0, 0, width, height);
-  drawGrid(ctx, area);
-
-  const groupWidth = area.width / rows.length;
-  const barWidth = Math.max(5, groupWidth * 0.28);
-  rows.forEach((row, index) => {
-    const x = area.left + index * groupWidth + groupWidth * 0.2;
-    const incomeH = (row.income / max) * area.height;
-    const expenseH = (row.expense / max) * area.height;
-    ctx.fillStyle = "#e9a3ad";
-    ctx.fillRect(x, area.top + area.height - incomeH, barWidth, incomeH);
-    ctx.fillStyle = "#f0bd76";
-    ctx.fillRect(x + barWidth + 3, area.top + area.height - expenseH, barWidth, expenseH);
-
-    if (index % 2 === 1) return;
-    ctx.fillStyle = "#8b7a72";
-    ctx.font = "11px system-ui";
-    ctx.textAlign = "center";
-    ctx.fillText(row.month.slice(5), x + barWidth, height - 20);
-  });
-}
-
-function drawLineChart(canvas, rows) {
-  const { ctx, width, height } = fitCanvas(canvas);
-  const area = { left: 50, top: 18, width: width - 64, height: height - 62 };
-  const values = rows.map((row) => row.assets);
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const span = Math.max(1, max - min);
-  ctx.clearRect(0, 0, width, height);
-  drawGrid(ctx, area);
-
-  const points = rows.map((row, index) => ({
-    x: area.left + (area.width / (rows.length - 1)) * index,
-    y: area.top + area.height - ((row.assets - min) / span) * area.height,
-  }));
-
-  ctx.strokeStyle = "#e9a3ad";
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  points.forEach((point, index) => {
-    if (index === 0) ctx.moveTo(point.x, point.y);
-    else ctx.lineTo(point.x, point.y);
-  });
-  ctx.stroke();
-
-  ctx.fillStyle = "#b8acd3";
-  points.forEach((point) => {
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  ctx.fillStyle = "#8b7a72";
-  ctx.font = "11px system-ui";
-  ctx.textAlign = "center";
-  rows.forEach((row, index) => {
-    if (index % 3 === 0 || index === rows.length - 1) {
-      ctx.fillText(row.month.slice(2), points[index].x, height - 20);
-    }
-  });
-}
-
-function drawDonutChart(canvas, rows) {
-  const { ctx, width, height } = fitCanvas(canvas);
-  const total = rows.reduce((sum, row) => sum + row.value, 0);
-  const radius = Math.min(width, height) * 0.34;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  let angle = -Math.PI / 2;
-  ctx.clearRect(0, 0, width, height);
-
-  rows.forEach((row, index) => {
-    const slice = (row.value / total) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, radius, angle, angle + slice);
-    ctx.arc(centerX, centerY, radius * 0.58, angle + slice, angle, true);
-    ctx.closePath();
-    ctx.fillStyle = colors[index % colors.length];
-    ctx.fill();
-    angle += slice;
-  });
-
-  ctx.fillStyle = "#4a3f3a";
-  ctx.font = "700 20px system-ui";
-  ctx.textAlign = "center";
-  ctx.fillText(`${number.format(Math.round(total / 10000))}萬`, centerX, centerY - 2);
-  ctx.fillStyle = "#8b7a72";
-  ctx.font = "12px system-ui";
-  ctx.fillText("合計", centerX, centerY + 18);
-}
-
-function renderBreakdown(targetId, rows) {
-  const total = rows.reduce((sum, row) => sum + row.value, 0);
-  document.getElementById(targetId).innerHTML = rows
-    .map((row, index) => {
-      const pct = total ? Math.round((row.value / total) * 100) : 0;
-      return `<div class="list-row">
-        <span><i class="swatch" style="background:${colors[index % colors.length]}"></i>${row.label}</span>
-        <strong>${pct}%</strong>
-      </div>`;
-    })
-    .join("");
 }
 
 function drawPieChart(canvas, rows) {
@@ -1071,13 +953,6 @@ function getPortfolioMetrics() {
   const livingVaultShortfall = Math.max(0, -livingVaultRawBalance);
   const sinopacInvestableBalance = Math.max(0, sinopacBalance - emergencyFund - investmentReserve);
   const monthlySinopacTransfer = safeNumber(currentMonthFinance?.sinopacTransfer);
-  const investableSinopacCash = Math.max(0, investmentReserve + availableCash);
-  const leveragedValue = taiwanStocks || data.rebalancer.leveragedValue || 0;
-  const protectedEmergencyCash = emergencyFund;
-  const rebalanceCash = Math.max(0, investmentReserve + availableCash);
-  const rebalanceTotal = leveragedValue + rebalanceCash;
-  const leveragedRatio = rebalanceTotal ? (leveragedValue / rebalanceTotal) * 100 : 0;
-  const leveragedDrift = leveragedRatio - LEVERAGED_TARGET_RATIO;
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
   const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
@@ -1126,20 +1001,12 @@ function getPortfolioMetrics() {
     livingVaultShortfall,
     monthlySinopacTransfer,
     monthlySinopacTransferRemaining: Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlySinopacTransfer)),
-    investableSinopacCash,
     emergencyFund,
     investmentReserve,
     availableCash,
-    protectedEmergencyCash,
-    rebalanceCash,
     investmentCostTwd,
     investmentGainTwd,
     investmentReturnRate: percent(investmentGainTwd, investmentCostTwd, 2),
-    leveragedValue,
-    rebalanceTotal,
-    leveragedRatio,
-    leveragedDrift,
-    hasLeveragedHolding: data.rebalancer.hasLeveragedHolding,
     hasLeveragedEtfHolding: data.rebalancer.hasLeveragedEtfHolding,
   };
 }
@@ -1152,26 +1019,6 @@ function getNextMilestone() {
   const etaDate = estimateMilestoneDate(netWorth, target);
   const age = etaDate ? ageOnDate(etaDate) : null;
   return { target, progress, remaining, etaDate, age };
-}
-
-function getAnnualSavingMilestone() {
-  const years = applyDividendIncomeToFinanceYears(window.financeData?.years ?? []);
-  const targetYear = years.find((year) => Number(year.year) === ANNUAL_SAVING_YEAR);
-  const current = Math.max(
-    0,
-    Math.round(
-      targetYear
-        ? safeNumber(targetYear.income) - safeNumber(targetYear.expense)
-        : 0,
-    ),
-  );
-  const percentValue = TARGET_ANNUAL_SAVING > 0 ? (current / TARGET_ANNUAL_SAVING) * 100 : 0;
-  return {
-    current,
-    percent: Number.isFinite(percentValue) ? percentValue : 0,
-    remaining: Math.max(0, TARGET_ANNUAL_SAVING - current),
-    progress: safeProgress(current, TARGET_ANNUAL_SAVING),
-  };
 }
 
 function financeMonths() {
@@ -1468,82 +1315,10 @@ function renderVaults() {
     .join("");
 }
 
-function renderAiSummary() {
-  const target = document.getElementById("aiSummary");
-  if (!target) return;
-  if (!dashboardDataLoaded) {
-    target.innerHTML = `<div class="ai-summary-skeleton skeleton-card animate-pulse">
-      <span class="skeleton-line wide"></span>
-      <span class="skeleton-line full"></span>
-      <span class="skeleton-line medium"></span>
-    </div>`;
-    return;
-  }
-  const metrics = getPortfolioMetrics();
-  const emergencyGap = Math.max(0, EMERGENCY_FUND_TARGET - Math.round(metrics.emergencyFund));
-  const invested = Math.round(metrics.monthlyInvestment);
-  const progress = safeProgress(invested, MONTHLY_INVESTMENT_TARGET);
-  let summary = "";
-  if (emergencyGap > 0) {
-    summary = `優先補足緊急預備金！目前尚差 ${money.format(emergencyGap)} 元。今天建議：子彈先留著，今天先不加碼股票。`;
-  } else if (invested >= MONTHLY_INVESTMENT_TARGET) {
-    summary = `🎉 太棒了！本月已投入 ${money.format(invested)} 元，投資進度已達標。今天不用做任何事，好好享受生活！`;
-  } else {
-    summary = `📈 財富穩定累積中。本月投資進度：${progress.toFixed(1)}%。依計畫前進即可。`;
-  }
-  target.innerHTML = `<p class="ai-summary-main">${summary}</p>`;
-}
-
 function healthTone(status) {
   if (status === "good") return "完成";
   if (status === "watch") return "留意";
   return "優先";
-}
-
-function rebalanceMessage(metrics) {
-  if (!metrics.hasLeveragedHolding) {
-    return {
-      status: "watch",
-      title: "台股資料",
-      text: "首頁目前找不到台股持股，請先確認交易紀錄或更新股價。",
-    };
-  }
-  if (!metrics.rebalanceTotal) {
-    return {
-      status: "watch",
-      title: "資金水位",
-      text: "目前可投資現金為 0，先守住緊急預備金。",
-    };
-  }
-  const drift = Math.abs(metrics.leveragedDrift);
-  if (drift <= REBALANCE_BAND) {
-    return {
-      status: "good",
-      title: "資金水位",
-      text: "現金水位健康，維持每月固定投入即可。",
-    };
-  }
-  return {
-    status: "warn",
-    title: "資金水位",
-    text: metrics.leveragedDrift > 0
-      ? "台股比例偏高，下次投入先保留投資預備金。"
-      : "台股比例偏低，仍先依資金水位決定是否投入。",
-  };
-}
-
-function nextContributionMessage(metrics) {
-  if (metrics.monthlyInvestmentRemaining <= 0) return "本月投資目標已達成，下一筆先看投資預備金水位。";
-  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，先維持固定投入。`;
-  }
-  if (metrics.leveragedRatio > LEVERAGED_TARGET_RATIO + REBALANCE_BAND) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，台股偏高時先保留投資預備金。`;
-  }
-  if (metrics.leveragedRatio < LEVERAGED_TARGET_RATIO - REBALANCE_BAND) {
-    return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，可照固定投入買台股。`;
-  }
-  return `本月還可投入 ${money.format(metrics.monthlyInvestmentRemaining)}，維持每月固定投入。`;
 }
 
 function cashWaterStatus(metrics) {
@@ -1578,22 +1353,6 @@ function fundWaterSummary(metrics) {
     `每月固定投入：${money.format(MONTHLY_INVESTMENT_TARGET)}`,
     `本月已轉入永豐：${money.format(Math.round(metrics.monthlySinopacTransfer))}`,
   ].join("<br>");
-}
-
-function monthlyInvestmentSummary(metrics) {
-  const invested = Math.round(metrics.monthlyInvestment);
-  const gap = MONTHLY_INVESTMENT_TARGET - invested;
-  if (gap > 0) return `已投入 ${money.format(invested)}，還差 ${money.format(gap)} 達成本月目標。`;
-  if (gap < 0) return `已投入 ${money.format(invested)}，本月已超過目標 ${money.format(Math.abs(gap))}。`;
-  return `已投入 ${money.format(invested)}，剛好達成本月目標。`;
-}
-
-function rebalanceActionSummary(metrics) {
-  if (!metrics.hasLeveragedHolding || !metrics.rebalanceTotal) return "資料完整後會自動判斷資金水位。";
-  if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) return "先補緊急預備金。";
-  if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "接下來補投資預備金。";
-  if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return "投資預備金偏高，可分批投入超出部分。";
-  return "現金水位健康，維持每月固定投入。";
 }
 
 function monthlyTransferSummary(metrics) {
@@ -1655,13 +1414,6 @@ function nextActionSummary(metrics) {
   if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "先把投資預備金補到 15 萬。";
   if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return `超過 ${money.format(INVESTMENT_RESERVE_MAX)} 的部分可分 2-3 筆投入。`;
   return "本月固定轉入已完成，等待 00685L 回檔條件。";
-}
-
-function availableContributionBudget(metrics) {
-  return Math.max(0, Math.min(
-    Number(metrics.investmentReserve) || 0,
-    Number(metrics.monthlyInvestmentRemaining) || 0,
-  ));
 }
 
 function reserveDeploymentAmount(metrics, ratio) {
@@ -1733,13 +1485,11 @@ function loadLeveragedPullbackSignal() {
       };
       renderTodayActions();
       renderHero();
-      renderAiSummary();
     })
     .catch(() => {
       data.leveragedPullbackSignal = { state: "error", checkedKey: today };
       renderTodayActions();
       renderHero();
-      renderAiSummary();
     });
 }
 
@@ -1863,7 +1613,6 @@ function renderInitialLoading() {
   renderPriceUpdateNotice("正在載入正式資料...");
   renderKpis();
   renderVaults();
-  renderAiSummary();
   renderInvestmentCards();
   const ledger = document.getElementById("yearAccordion");
   if (ledger) ledger.innerHTML = '<div class="loading-row">正在載入年度/月度對帳...</div>';
@@ -2453,7 +2202,6 @@ function render() {
   renderHero();
   renderKpis();
   renderVaults();
-  renderAiSummary();
   renderTodayActions();
   renderAssetPie();
   drawNetWorthChart();
@@ -2469,7 +2217,6 @@ function renderCoreDashboard() {
   renderHero();
   renderKpis();
   renderVaults();
-  renderAiSummary();
   renderTodayActions();
   renderDataUpdates();
   renderDataStatusCards();
