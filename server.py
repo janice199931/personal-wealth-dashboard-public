@@ -214,7 +214,11 @@ def asset_version() -> str:
 def html_page(filename: str) -> Response:
     content = (ROOT / filename).read_text(encoding="utf-8")
     content = content.replace("__ASSET_VERSION__", asset_version())
-    return Response(content=content, media_type="text/html; charset=utf-8")
+    return Response(
+        content=content,
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 def read_demo_json(primary_path: Path, example_path: Path, default: Any) -> Any:
@@ -840,6 +844,19 @@ def parse_manual_amount(value: Optional[str], label: str) -> Optional[int]:
         return round(float(cleaned))
     except ValueError as error:
         raise HTTPException(status_code=400, detail=f"{label} 必須是數字。") from error
+
+
+def parse_manual_decimal(value: Optional[str], label: str) -> Optional[float]:
+    if value is None or value.strip() == "":
+        return None
+    cleaned = value.replace(",", "").replace("US$", "").replace("USD", "").replace("$", "").strip()
+    try:
+        amount = round(float(cleaned), 2)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=f"{label} 必須是數字。") from error
+    if amount < 0:
+        raise HTTPException(status_code=400, detail=f"{label} 不可小於 0。")
+    return amount
 
 
 def parse_month_key(value: Optional[str]) -> Optional[str]:
@@ -2456,6 +2473,7 @@ async def update_asset_snapshot(
     postOfficeBalance: Optional[str] = Form(None),
     sinopacBalance: Optional[str] = Form(None),
     creditCardDebt: Optional[str] = Form(None),
+    cashUSD: Optional[str] = Form(None),
     month: Optional[str] = Form(None),
     monthlyIncome: Optional[str] = Form(None),
     monthlyExpense: Optional[str] = Form(None),
@@ -2481,6 +2499,7 @@ async def update_asset_snapshot(
     postOfficeBalance = postOfficeBalance or form_text("postOfficeBalance", "post_office_balance", "postOffice")
     sinopacBalance = sinopacBalance or form_text("sinopacBalance", "sinopac_balance", "sinopac")
     creditCardDebt = creditCardDebt or form_text("creditCardDebt", "debt", "credit_card_debt")
+    cashUSD = cashUSD or form_text("cashUSD", "cash_usd")
     month = month or form_text("month", "financeMonth")
     monthlyIncome = monthlyIncome or form_text("monthlyIncome", "income")
     monthlyExpense = monthlyExpense or form_text("monthlyExpense", "expense")
@@ -2498,6 +2517,7 @@ async def update_asset_snapshot(
     manual_post_office = parse_manual_amount(postOfficeBalance, "郵局餘額")
     manual_sinopac = parse_manual_amount(sinopacBalance, "永豐餘額")
     manual_debt = parse_manual_amount(creditCardDebt, "信用卡負債")
+    manual_cash_usd = parse_manual_decimal(cashUSD, "美股帳戶現金（USD）")
     manual_income = parse_manual_amount(monthlyIncome, "月份收入")
     manual_expense = parse_manual_amount(monthlyExpense, "月份支出")
     manual_sinopac_transfer = parse_manual_amount(monthlySinopacTransfer, "本月轉入永豐")
@@ -2600,7 +2620,7 @@ async def update_asset_snapshot(
                 "source": "existing_accounts",
             }
         else:
-            if not has_any_monthly and not has_account_breakdown:
+            if not has_any_monthly and not has_account_breakdown and manual_cash_usd is None:
                 raise HTTPException(
                     status_code=400,
                     detail="請至少上傳 MOZE CSV、帳戶總覽截圖，填寫資金水位、銀行、信用卡負債，或填寫月份統計。",
@@ -2683,6 +2703,12 @@ async def update_asset_snapshot(
         db_store.write_accounts(accounts)
     elif amounts["source"] not in {"supplement_only", "existing_accounts"}:
         db_store.write_accounts(accounts)
+    if manual_cash_usd is not None:
+        accounts["cashUSD"] = manual_cash_usd
+        accounts.setdefault("cashTWD", 0)
+        accounts.setdefault("creditCardDebt", 0)
+        accounts.setdefault("otherDebt", 0)
+        db_store.write_accounts(accounts)
     portfolio = rebuild_portfolio_outputs()
     if has_any_monthly and monthly_finance is None:
         monthly_finance = save_manual_monthly_finance(
@@ -2709,6 +2735,8 @@ async def update_asset_snapshot(
         raise HTTPException(status_code=503, detail="可自由運用現金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if manual_bank is not None and float(verified_breakdown.get("otherBankBalance", -1) or 0) != float(manual_bank):
         raise HTTPException(status_code=503, detail="其他銀行餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+    if manual_cash_usd is not None and float(verified_accounts.get("cashUSD", -1) or 0) != float(manual_cash_usd):
+        raise HTTPException(status_code=503, detail="美股帳戶現金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if amounts["source"] not in {"supplement_only", "existing_accounts"}:
         expected_cash_twd = (
             cash_total_from_amounts(amounts)
@@ -2754,6 +2782,10 @@ async def update_asset_snapshot(
         "otherBankBalance": verified_breakdown.get("otherBankBalance", amounts["bank"]),
         "creditCardDebt": amounts["debt"],
         "cashTWD": verified_accounts.get("cashTWD", 0),
+        "cashUSD": float(verified_accounts.get("cashUSD", 0) or 0),
+        "cashUSDTWD": round(float(verified_accounts.get("cashUSD", 0) or 0) * float(portfolio.get("fxRate", 0) or 0)),
+        "cashTotalTWD": portfolio.get("summary", {}).get("cash", 0),
+        "fxRate": portfolio.get("fxRate", 0),
         "accountBreakdown": verified_accounts.get("accountBreakdown", {}),
         "totalAssets": portfolio.get("summary", {}).get("totalAssets", 0),
         "netWorth": portfolio.get("summary", {}).get("netWorth", 0),
