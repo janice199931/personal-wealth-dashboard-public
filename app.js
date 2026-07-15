@@ -63,6 +63,10 @@ const usd = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 const number = new Intl.NumberFormat("zh-TW");
+const shareNumber = new Intl.NumberFormat("zh-TW", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 6,
+});
 let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const AUTO_PRICE_UPDATE_AT_KEY = "wealthDashboardLastAutoPriceUpdateAt";
@@ -472,7 +476,7 @@ function formatDaysAsMonths(days) {
 }
 
 function formatSharesValue(value) {
-  return `${number.format(Number(value).toFixed(6).replace(/\.?0+$/, ""))} 股`;
+  return `${shareNumber.format(Number(value))} 股`;
 }
 
 function formatUsdValue(value) {
