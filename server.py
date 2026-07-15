@@ -56,14 +56,15 @@ ETF_00685L_SPLIT_METADATA_KEY = "corporateAction00685LSplit202607"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
 ETF_00685L_TARGET_AVERAGE_COST = 12.1
-US_DRIP_POSITION_METADATA_KEY = "usDripPositionCorrection20260708v2"
+US_DRIP_POSITION_METADATA_KEY = "usDripPositionCorrection20260708v3"
+US_DRIP_POSITION_CORRECTION_DATE = "2026-07-08"
 US_DRIP_POSITION_TARGETS = {
-    "MU": {"name": "MICRON TECHNOLOGY INC", "shares": 26.00282, "averageCost": 499.88},
+    "MU": {"name": "MICRON TECHNOLOGY INC", "shares": 26.00282, "averageCost": 499.87617},
     "VOO": {"name": "VANGUARD S&P 500 ETF", "shares": 9.07725, "averageCost": 602.22},
     "SNDK": {"name": "SANDISK CORP", "shares": 1.0, "averageCost": 1960.0},
-    "NVDA": {"name": "NVIDIA CORP", "shares": 7.00704, "averageCost": 151.54},
-    "GOOG": {"name": "ALPHABET INC", "shares": 3.00125, "averageCost": 311.64, "sellPrice": 370.0},
-    "TSM": {"name": "TAIWAN SEMICONDUCTOR", "shares": 2.00397, "averageCost": 340.07},
+    "NVDA": {"name": "NVIDIA CORP", "shares": 7.00704, "averageCost": 151.53902},
+    "GOOG": {"name": "ALPHABET INC", "shares": 3.00125, "averageCost": 311.63682, "sellPrice": 370.0},
+    "TSM": {"name": "TAIWAN SEMICONDUCTOR", "shares": 2.0074, "averageCost": 340.23114},
 }
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
@@ -455,7 +456,7 @@ def _snapshot_needs_us_drip_overlay(holding: dict[str, Any], target: dict[str, A
         return False
     return (
         abs(current_shares - float(target["shares"])) > 0.00001
-        or abs(current_average_cost - float(target["averageCost"])) > 0.01
+        or abs(current_average_cost - float(target["averageCost"])) > 0.00001
     )
 
 
@@ -481,7 +482,7 @@ def overlay_us_drip_targets_on_portfolio(portfolio: dict[str, Any]) -> dict[str,
         market_value = round(shares * price, 2)
         unrealized_gain = round(market_value - total_cost, 2)
         holding["shares"] = round(shares, 6)
-        holding["averageCost"] = round(average_cost, 4)
+        holding["averageCost"] = round(average_cost, 5)
         holding["totalCost"] = total_cost
         holding["marketValue"] = market_value
         holding["unrealizedGain"] = unrealized_gain
@@ -1162,7 +1163,15 @@ def _target_us_position_cost(target: dict[str, Any]) -> float:
 def _matches_us_position_target(state: dict[str, Any], target: dict[str, Any]) -> bool:
     return (
         abs(float(state.get("shares") or 0) - float(target["shares"])) < 0.00001
-        and abs(float(state.get("averageCost") or 0) - float(target["averageCost"])) < 0.01
+        and abs(float(state.get("averageCost") or 0) - float(target["averageCost"])) < 0.00001
+    )
+
+
+def _has_us_trade_after_position_correction(transactions: list[dict[str, Any]], symbol: str) -> bool:
+    return any(
+        _is_us_symbol_transaction(row, symbol)
+        and str(row.get("date", "")) > US_DRIP_POSITION_CORRECTION_DATE
+        for row in transactions
     )
 
 
@@ -1246,7 +1255,13 @@ def apply_us_drip_position_corrections() -> dict[str, Any]:
     ]
     if not existing_symbols:
         return {"ok": True, "status": "skipped", "reason": "noUsHoldings"}
-    target_symbols = list(US_DRIP_POSITION_TARGETS)
+    target_symbols = [
+        symbol
+        for symbol in US_DRIP_POSITION_TARGETS
+        if not _has_us_trade_after_position_correction(transactions, symbol)
+    ]
+    if not target_symbols:
+        return {"ok": True, "status": "skipped", "reason": "newerTransactionsExist"}
     if all(_matches_us_position_target(current_states[symbol], US_DRIP_POSITION_TARGETS[symbol]) for symbol in target_symbols):
         result = {
             "status": "applied",
@@ -2282,7 +2297,8 @@ async def preview_transaction(request: Request) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="交易資料格式錯誤。")
 
-    editing_id = str(payload.get("editingId", "")).strip() or None
+    raw_editing_id = payload.get("editingId")
+    editing_id = str(raw_editing_id).strip() if raw_editing_id not in (None, "") else None
     transaction = normalize_transaction(payload)
     return transaction_preview(read_transactions(use_examples=False), transaction, editing_id)
 

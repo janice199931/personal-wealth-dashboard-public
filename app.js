@@ -76,12 +76,12 @@ const MONTHLY_INVESTMENT_TARGET = 35000;
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
 const US_DRIP_POSITION_TARGETS = {
-  MU: { shares: 26.00282, averageCost: 499.88 },
+  MU: { shares: 26.00282, averageCost: 499.87617 },
   VOO: { shares: 9.07725, averageCost: 602.22 },
   SNDK: { shares: 1, averageCost: 1960 },
-  NVDA: { shares: 7.00704, averageCost: 151.54 },
-  GOOG: { shares: 3.00125, averageCost: 311.64 },
-  TSM: { shares: 2.00397, averageCost: 340.07 },
+  NVDA: { shares: 7.00704, averageCost: 151.53902 },
+  GOOG: { shares: 3.00125, averageCost: 311.63682 },
+  TSM: { shares: 2.0074, averageCost: 340.23114 },
 };
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
@@ -192,7 +192,7 @@ function needsUsDripPositionCorrection(portfolio) {
     if (!holding) return false;
     const shares = safeNumber(holding.shares);
     const averageCost = safeNumber(holding.averageCost);
-    return Math.abs(shares - target.shares) > 0.00001 || Math.abs(averageCost - target.averageCost) > 0.01;
+    return Math.abs(shares - target.shares) > 0.00001 || Math.abs(averageCost - target.averageCost) > 0.00001;
   });
 }
 
@@ -479,6 +479,15 @@ function formatUsdValue(value) {
   return usd.format(Number(value));
 }
 
+function formatUsdCostValue(value) {
+  return Number(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 5,
+  });
+}
+
 function formatUsdDisplay(value) {
   return usd.format(Number(value));
 }
@@ -643,7 +652,7 @@ function applyPortfolioData(portfolio, history = []) {
       priceValue: Number(holding.price),
       price: formatUsdValue(holding.price),
       costValue: Number(holding.averageCost),
-      cost: formatUsdValue(holding.averageCost),
+      cost: formatUsdCostValue(holding.averageCost),
       marketValue: Number(holding.marketValue),
       marketValueTwd: Number(holding.marketValueTWD),
       totalCostTwd: Number(holding.totalCostTWD),
@@ -1907,12 +1916,18 @@ function setupPriceUpdater() {
   });
 }
 
-async function runAutomaticPriceUpdate() {
+async function runAutomaticPriceUpdate({ force = false, showProgress = false } = {}) {
   if (priceUpdateInProgress) return;
-  if (recentlyTriedAutoPriceUpdate()) return;
+  if (!force && recentlyTriedAutoPriceUpdate()) return;
+  const button = document.getElementById("updatePricesButton");
+  const originalButtonText = button?.textContent || "更新股價";
   priceUpdateInProgress = true;
   markAutoPriceUpdateAttempt();
   const startedAt = Date.now();
+  if (showProgress && button) {
+    button.disabled = true;
+    button.textContent = "自動更新中...";
+  }
   try {
     const response = await fetchWithTimeout("/api/update-prices", { method: "POST", cache: "no-store" }, AUTO_PRICE_UPDATE_TIMEOUT_MS);
     if (handleAuthExpired(response)) return;
@@ -1926,15 +1941,24 @@ async function runAutomaticPriceUpdate() {
     if (payload.warnings?.length) {
       console.warn("自動更新股價警告", payload.warnings);
       renderDetailedPriceUpdate(payload);
+      if (showProgress && button) button.textContent = "部分更新完成";
       return;
     }
     renderDetailedPriceUpdate(payload);
+    if (showProgress && button) button.textContent = "已自動更新";
   } catch (error) {
     console.warn("自動更新股價失敗", error);
     renderDataUpdates();
+    if (showProgress && button) button.textContent = "自動更新失敗";
   } finally {
     console.info(`自動股價更新結束，耗時 ${Math.floor((Date.now() - startedAt) / 1000)} 秒`);
     priceUpdateInProgress = false;
+    if (showProgress && button) {
+      window.setTimeout(() => {
+        button.textContent = originalButtonText;
+        button.disabled = false;
+      }, 1800);
+    }
   }
 }
 
@@ -2398,7 +2422,7 @@ async function initializeDashboard() {
   window.setTimeout(runDailyDataHealthCheck, 45000);
   window.setTimeout(runDailyBackupCheck, 9000);
   setupAutomaticPriceRefresh();
-  window.setTimeout(runAutomaticPriceUpdate, 30000);
+  void runAutomaticPriceUpdate({ force: true, showProgress: true });
 }
 
 initializeDashboard();

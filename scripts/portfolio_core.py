@@ -133,7 +133,7 @@ def enrich_position(position: dict[str, Any], price_book: dict[str, Any], fx_rat
         "market": position["market"],
         "shares": round(shares, 6),
         "price": round(latest_price, 4),
-        "averageCost": round(cost / shares, 4) if shares else 0,
+        "averageCost": round(cost / shares, 5) if shares else 0,
         "totalCost": round(cost, 2),
         "realizedGain": round(float(position.get("realizedGain", 0)), 2),
         "marketValue": round(market_value_native, 2),
