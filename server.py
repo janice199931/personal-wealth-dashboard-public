@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import math
 import os
 import secrets
 import shutil
@@ -303,6 +304,8 @@ def parse_transaction_number(payload: dict[str, Any], key: str, label: str, allo
         value = float(payload.get(key, 0))
     except (TypeError, ValueError) as error:
         raise HTTPException(status_code=400, detail=f"{label} 必須是數字。") from error
+    if not math.isfinite(value):
+        raise HTTPException(status_code=400, detail=f"{label} 必須是有效數字。")
     if value < 0:
         raise HTTPException(status_code=400, detail=f"{label} 不可小於 0。")
     if value == 0 and not allow_zero:
@@ -315,6 +318,8 @@ def parse_dividend_number(payload: dict[str, Any], key: str, label: str, allow_z
         value = float(payload.get(key, 0))
     except (TypeError, ValueError) as error:
         raise HTTPException(status_code=400, detail=f"{label} 必須是數字。") from error
+    if not math.isfinite(value):
+        raise HTTPException(status_code=400, detail=f"{label} 必須是有效數字。")
     if value < 0:
         raise HTTPException(status_code=400, detail=f"{label} 不可小於 0。")
     if value == 0 and not allow_zero:
@@ -411,6 +416,14 @@ def normalize_dividend(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="市場必須是 TW 或 US。")
     if currency not in {"TWD", "USD"}:
         raise HTTPException(status_code=400, detail="幣別必須是 TWD 或 USD。")
+    expected_currency = "USD" if market == "US" else "TWD"
+    if currency != expected_currency:
+        raise HTTPException(status_code=400, detail=f"{market} 市場股息幣別必須是 {expected_currency}。")
+
+    amount = parse_dividend_number(payload, "amount", "股息金額")
+    tax = parse_dividend_number(payload, "tax", "扣稅", allow_zero=True)
+    if tax > amount:
+        raise HTTPException(status_code=400, detail="扣稅不可大於股息金額。")
 
     return {
         **({"id": str(payload.get("id")).strip()} if payload.get("id") else {}),
@@ -418,9 +431,9 @@ def normalize_dividend(payload: dict[str, Any]) -> dict[str, Any]:
         "symbol": symbol,
         "name": name,
         "market": market,
-        "amount": parse_dividend_number(payload, "amount", "股息金額"),
+        "amount": amount,
         "currency": currency,
-        "tax": parse_dividend_number(payload, "tax", "扣稅", allow_zero=True),
+        "tax": tax,
         "note": note,
     }
 
@@ -739,7 +752,7 @@ def plain_health_summary(
     status: dict[str, Any],
     anomalies: list[str],
 ) -> dict[str, Any]:
-    formal_data_ok = status.get("currentDb") == "supabase" and not status.get("fallbackActive")
+    formal_data_ok = status.get("dataStatus") == "正式資料" and not status.get("fallbackActive")
     can_edit = read_ok and write_ok and formal_data_ok
     if not read_ok:
         title = "資料讀取異常，先不要新增或修改資料。"
@@ -1869,9 +1882,11 @@ def debug_supabase() -> dict[str, Any]:
 
 @app.get("/api/portfolio")
 def get_portfolio() -> dict[str, Any]:
-    correction = ensure_corporate_action_corrections()
     portfolio = read_portfolio(use_examples=True)
-    return {"ok": True, "portfolio": portfolio, "correction": correction, "source": db_store.active_backend() if portfolio else "example"}
+    if not isinstance(portfolio, dict) or not portfolio.get("summary"):
+        raise HTTPException(status_code=503, detail="投資組合暫時讀取失敗，請稍後重試。")
+    correction = {"ok": True, "status": "deferred", "reason": "readOnlyRequest"}
+    return {"ok": True, "portfolio": portfolio, "correction": correction, "source": db_store.active_backend()}
 
 
 def future_result_or_default(future: Any, default: Any, label: str) -> Any:
@@ -1888,7 +1903,7 @@ def future_result_or_default(future: Any, default: Any, label: str) -> Any:
 
 @app.get("/api/dashboard-core")
 def get_dashboard_core(fast: bool = False) -> Response:
-    correction = ensure_corporate_action_corrections()
+    correction = {"ok": True, "status": "deferred", "reason": "readOnlyRequest"}
     with ThreadPoolExecutor(max_workers=6) as executor:
         portfolio_future = executor.submit(read_portfolio, True)
         history_future = executor.submit(read_net_worth_history, False)
@@ -1902,6 +1917,8 @@ def get_dashboard_core(fast: bool = False) -> Response:
         dividends = [] if fast else future_result_or_default(dividends_future, [], "dividends")
         accounts = future_result_or_default(accounts_future, {}, "accounts")
         finance_data = future_result_or_default(finance_future, {}, "finance")
+    if not isinstance(portfolio, dict) or not portfolio.get("summary"):
+        raise HTTPException(status_code=503, detail="首頁資產暫時讀取失敗，請稍後重試。")
     current_month = datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y-%m")
     current_month_finance = None
     if isinstance(finance_data, dict):
@@ -1928,7 +1945,6 @@ def get_dashboard_core(fast: bool = False) -> Response:
 
 @app.get("/api/holdings-audit")
 def holdings_audit() -> Response:
-    ensure_corporate_action_corrections()
     return utf8_json(build_holding_audit())
 
 

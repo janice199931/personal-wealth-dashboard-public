@@ -70,7 +70,7 @@ const shareNumber = new Intl.NumberFormat("zh-TW", {
 let usdToTwd = 31.451;
 const AUTO_PRICE_UPDATE_KEY = "wealthDashboardLastAutoPriceUpdate";
 const AUTO_PRICE_UPDATE_AT_KEY = "wealthDashboardLastAutoPriceUpdateAt";
-const PRICE_AUTO_REFRESH_MS = 5 * 60 * 1000;
+const PRICE_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
@@ -90,16 +90,19 @@ const US_DRIP_POSITION_TARGETS = {
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
 const DASHBOARD_REFRESH_REQUIRED_KEY = "wealthDashboardRefreshRequired";
-const DASHBOARD_CORE_CACHE_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+const DASHBOARD_CORE_CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 const FINANCE_DATA_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const PRICE_UPDATE_TIMEOUT_MS = 120000;
 const AUTO_PRICE_UPDATE_TIMEOUT_MS = 90000;
-const DASHBOARD_CORE_TIMEOUTS = [8000, 12000];
+const DASHBOARD_CORE_TIMEOUTS = [30000];
 let dataStatus = null;
 let priceUpdateInProgress = false;
 let priceAutoRefreshTimer = null;
 let financeDataLoaded = Boolean(window.financeData?.years?.length);
 let dashboardDataLoaded = Boolean(window.portfolioData);
+let transactionsDataLoaded = false;
+let dashboardRetryTimer = null;
+let dashboardRetryAttempts = 0;
 
 function safeNumber(value, fallback = 0) {
   const numeric = Number(value);
@@ -152,6 +155,10 @@ function readLastDashboardCore() {
       window.localStorage.removeItem(DASHBOARD_CORE_CACHE_KEY);
       return null;
     }
+    if (!core?.portfolio?.summary) {
+      window.localStorage.removeItem(DASHBOARD_CORE_CACHE_KEY);
+      return null;
+    }
     return core;
   } catch {
     window.localStorage.removeItem(DASHBOARD_CORE_CACHE_KEY);
@@ -160,7 +167,7 @@ function readLastDashboardCore() {
 }
 
 function rememberDashboardCore(core) {
-  if (!window.localStorage || !core?.portfolio) return;
+  if (!window.localStorage || !core?.portfolio?.summary) return;
   try {
     const previous = readLastDashboardCore();
     const nextCore = core.fast && previous
@@ -260,7 +267,7 @@ function usableApiPayload(payload, payloadKey) {
 
 function hydrateDashboardFromCache() {
   const cachedCore = readLastDashboardCore();
-  if (!cachedCore?.portfolio) return false;
+  if (!cachedCore?.portfolio?.summary) return false;
   applyPortfolioData(cachedCore.portfolio, cachedCore.history || []);
   applyAccountData(cachedCore.accounts || {});
   applyCurrentMonthFinance(cachedCore.currentMonthFinance || null);
@@ -520,6 +527,7 @@ function applyDividendData(dividends) {
 
 function applyTransactionData(transactions) {
   data.transactions = Array.isArray(transactions) ? transactions : [];
+  transactionsDataLoaded = true;
 }
 
 function dividendNetTwd(dividend) {
@@ -1584,6 +1592,14 @@ function updateMigrateButtonVisibility(status) {
 
 function renderInitialLoading() {
   renderPriceUpdateNotice("正在載入正式資料...");
+  const heroOverview = document.getElementById("heroOverview");
+  const heroMilestone = document.getElementById("heroMilestone");
+  if (heroOverview) {
+    heroOverview.innerHTML = '<strong class="decision-result watch">正在載入正式資產...</strong>';
+  }
+  if (heroMilestone) {
+    heroMilestone.innerHTML = '<div class="decision-side"><span>淨資產</span><strong>確認中</strong><small>不會以 0 元取代正式資料</small></div>';
+  }
   renderKpis();
   renderVaults();
   renderInvestmentCards();
@@ -1714,7 +1730,9 @@ function renderDataUpdates() {
   }
   const lastSave = dataStatus?.metadata?.lastSuccessfulSave || dataStatus?.lastSuccessfulSave;
   const lastRebuild = dataStatus?.metadata?.lastPortfolioRebuild || dataStatus?.lastPortfolioRebuild || data.updatedAt;
-  const transactionCount = data.transactions?.length ?? dataStatus?.counts?.transactions;
+  const transactionCount = transactionsDataLoaded
+    ? data.transactions.length
+    : dataStatus?.counts?.transactions;
   const rows = [
     { label: "資產資料", value: lastSave ? "已同步" : formatUpdateTime(data.updatedAt) },
     { label: "首頁重算", value: formatUpdateTime(lastRebuild) },
@@ -1845,6 +1863,11 @@ function markTodayPriceUpdated() {
   window.localStorage.setItem(AUTO_PRICE_UPDATE_AT_KEY, new Date().toISOString());
 }
 
+function pricesUpdatedToday() {
+  if (!window.localStorage) return false;
+  return window.localStorage.getItem(AUTO_PRICE_UPDATE_KEY) === todayKey();
+}
+
 function recentlyTriedAutoPriceUpdate() {
   if (!window.localStorage) return false;
   const lastAttemptAt = Date.parse(window.localStorage.getItem(AUTO_PRICE_UPDATE_AT_KEY) || "");
@@ -1922,7 +1945,7 @@ function setupPriceUpdater() {
 
 async function runAutomaticPriceUpdate({ force = false, showProgress = false } = {}) {
   if (priceUpdateInProgress) return;
-  if (!force && recentlyTriedAutoPriceUpdate()) return;
+  if (!force && (pricesUpdatedToday() || recentlyTriedAutoPriceUpdate())) return;
   const button = document.getElementById("updatePricesButton");
   const originalButtonText = button?.textContent || "更新股價";
   priceUpdateInProgress = true;
@@ -2187,6 +2210,11 @@ function renderLedger() {
 }
 
 function render() {
+  if (!dashboardDataLoaded) {
+    renderInitialLoading();
+    renderLedger();
+    return;
+  }
   renderHero();
   renderKpis();
   renderVaults();
@@ -2274,10 +2302,6 @@ async function loadExternalData() {
     return fallbackValue;
   }
 
-  refreshDataStatus()
-    .then(renderDataStatusCards)
-    .catch(() => {});
-
   hydrateFinanceFromCache();
   if (window.location.protocol === "file:" && hydrateDashboardFromCache()) {
     renderCoreDashboard();
@@ -2288,12 +2312,13 @@ async function loadExternalData() {
   }
 
   let core = await fetchJson("/api/dashboard-core?fast=1", "", null);
-  if (core?.portfolio) {
+  if (!core?.portfolio?.summary) core = null;
+  if (core?.portfolio?.summary) {
     core = await runUsDripCorrectionIfNeeded(core, fetchJson);
     rememberDashboardCore(core);
   } else {
     core = readLastDashboardCore();
-    if (core?.portfolio) {
+    if (core?.portfolio?.summary) {
       renderPriceUpdateNotice("目前連線不穩，先顯示上次成功載入的資料。");
     }
   }
@@ -2317,17 +2342,6 @@ async function loadExternalData() {
       dividendsLoaded = true;
       renderCoreDashboard();
     }
-  } else {
-    const [portfolio, history] = await Promise.all([
-      fetchJson("/api/portfolio", "./data/example-portfolio.json", null, "portfolio"),
-      fetchJson("/api/net-worth-history", "./data/example-net-worth-history.json", [], "history"),
-    ]);
-    if (portfolio) {
-      applyPortfolioData(portfolio, history);
-      dashboardDataLoaded = true;
-      renderCoreDashboard();
-      window.requestAnimationFrame(renderVisualDashboard);
-    }
   }
 
   const [transactions, dividends, financeData] = await Promise.all([
@@ -2346,14 +2360,18 @@ async function loadExternalData() {
     window.financeData = financeData;
     rememberFinanceData(financeData);
   }
-  if (transactions || dividends || financeData?.years?.length) {
+  if (dashboardDataLoaded && (transactions || dividends || financeData?.years?.length)) {
     renderCoreDashboard();
   }
-  if (core?.portfolio) {
+  if (core?.portfolio?.summary) {
     rememberDashboardCore({ ...core, transactions: data.transactions, dividends: data.dividends, fast: false });
   }
-  renderVisualDashboard();
+  if (dashboardDataLoaded) renderVisualDashboard();
   renderDetailDashboard();
+  refreshDataStatus()
+    .then(renderDataStatusCards)
+    .catch(() => {});
+  return dashboardDataLoaded;
 }
 
 async function loadAppVersion() {
@@ -2387,6 +2405,27 @@ async function runDailyDataHealthCheck() {
   } catch {
     // Settings page shows detailed health status; the dashboard should stay quiet.
   }
+}
+
+function scheduleDashboardRetry() {
+  if (dashboardDataLoaded || dashboardRetryTimer || window.location.protocol === "file:") return;
+  if (dashboardRetryAttempts >= 3) {
+    renderPriceUpdateNotice("正式資產暫時無法載入，請稍後按重新整理；系統沒有覆蓋原始資料。");
+    return;
+  }
+  renderPriceUpdateNotice("正式資產載入較慢，系統會在背景自動重試。");
+  dashboardRetryTimer = window.setTimeout(async () => {
+    dashboardRetryTimer = null;
+    dashboardRetryAttempts += 1;
+    try {
+      await loadExternalData();
+      render();
+    } catch (error) {
+      console.warn("首頁背景重試失敗", error);
+    }
+    if (dashboardDataLoaded) dashboardRetryAttempts = 0;
+    if (!dashboardDataLoaded) scheduleDashboardRetry();
+  }, 8000);
 }
 
 async function runDailyBackupCheck() {
@@ -2423,10 +2462,12 @@ async function initializeDashboard() {
     renderPriceUpdateNotice("資料載入不穩，請重新整理或稍後再試。");
     render();
   }
-  window.setTimeout(runDailyDataHealthCheck, 45000);
-  window.setTimeout(runDailyBackupCheck, 9000);
+  if (!dashboardDataLoaded) scheduleDashboardRetry();
+  window.setTimeout(runDailyBackupCheck, 60000);
   setupAutomaticPriceRefresh();
-  void runAutomaticPriceUpdate({ force: true, showProgress: true });
+  window.setTimeout(() => {
+    void runAutomaticPriceUpdate({ force: false, showProgress: false });
+  }, 30000);
 }
 
 initializeDashboard();

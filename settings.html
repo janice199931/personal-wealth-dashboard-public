@@ -107,9 +107,10 @@
       }
 
       function diagnosticsValues(status) {
+        const formalDataOk = status.dataStatus === "正式資料" && !status.fallbackActive;
         return {
           database: status.currentDbLabel || "讀取中",
-          status: status.currentDb === "supabase" && !status.fallbackActive ? "Online" : "Fallback",
+          status: formalDataOk ? "Online" : (status.fallbackActive ? "Fallback" : "No Data"),
           fallback: status.fallbackActive ? "Enabled" : "Disabled",
           lastImport: formatDiagnosticsDate(status.metadata?.lastImport),
           transactions: status.counts?.transactions ?? 0,
@@ -145,7 +146,7 @@
           }
           return { tone: payload.summary.tone || "success", text: payload.summary.title };
         }
-        const formalDataOk = payload.status?.currentDb === "supabase" && !payload.status?.fallbackActive;
+        const formalDataOk = payload.status?.dataStatus === "正式資料" && !payload.status?.fallbackActive;
         if (!payload.authOk) return { tone: "error", text: "登入狀態異常，請重新登入後再操作。" };
         if (!payload.readOk) return { tone: "error", text: "Supabase 目前讀取異常，先不要新增或修改資料。" };
         if (!payload.writeOk) return { tone: "error", text: "Supabase 目前無法寫入，先不要新增交易、股息或更新資產。" };
@@ -156,12 +157,12 @@
 
       function renderDataHealth(payload, pricePayload = null) {
         const backup = payload.lastAutoBackup || payload.backup || {};
-        const formalDataOk = payload.status?.currentDb === "supabase" && !payload.status?.fallbackActive;
+        const formalDataOk = payload.status?.dataStatus === "正式資料" && !payload.status?.fallbackActive;
         const advice = healthAdvice(payload, pricePayload);
         const items = [
           ["登入狀態", healthLabel(payload.authOk)],
-          ["Supabase 可讀", healthLabel(payload.readOk)],
-          ["Supabase 可寫", healthLabel(payload.writeOk)],
+          ["資料可讀", healthLabel(payload.readOk)],
+          ["資料可寫", healthLabel(payload.writeOk)],
           ["正式資料", formalDataOk ? "正常" : "請確認"],
           ["股價更新", pricePayload?.updating ? "更新中" : (pricePayload?.ok ? "正常" : healthLabel(payload.priceApiOk))],
           ["最近成功保存", formatHealthValue(payload.lastSuccessfulSave)],
