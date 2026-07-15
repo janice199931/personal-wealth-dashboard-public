@@ -589,11 +589,26 @@ function totalDividendIncomeTwd() {
   return Math.round(data.dividends.reduce((sum, dividend) => sum + dividendNetTwd(dividend), 0));
 }
 
-function cumulativeReturnMetrics() {
+function totalInvestmentCostTwdFromTransactions() {
+  return Math.round(data.transactions
+    .filter((transaction) => String(transaction.action || "").toUpperCase() === "BUY")
+    .reduce((sum, transaction) => sum + transactionInvestmentAmount(transaction), 0));
+}
+
+function cumulativeReturnMetrics(unrealizedGain = 0, currentInvestmentCost = 0) {
   const realizedGain = realizedGainTwdFromTransactions();
   const dividendIncome = totalDividendIncomeTwd();
-  const total = realizedGain + dividendIncome;
-  return { realizedGain, dividendIncome, total };
+  const totalGain = unrealizedGain + realizedGain + dividendIncome;
+  const transactionCost = totalInvestmentCostTwdFromTransactions();
+  const investedCost = transactionCost > 0 ? transactionCost : currentInvestmentCost;
+  return {
+    unrealizedGain,
+    realizedGain,
+    dividendIncome,
+    totalGain,
+    investedCost,
+    returnRate: percent(totalGain, investedCost, 2),
+  };
 }
 
 function normalizeFinanceMonth(month) {
@@ -1165,34 +1180,31 @@ function renderKpis() {
     return;
   }
   const metrics = getPortfolioMetrics();
-  const next = getNextMilestone();
-  const cumulativeReturn = cumulativeReturnMetrics();
-  const calculatedScore = financialHealthScore(metrics);
-  const score = Number.isFinite(Number(calculatedScore)) && Number(calculatedScore) > 0 ? Number(calculatedScore) : 0;
+  const cumulativeReturn = cumulativeReturnMetrics(metrics.investmentGainTwd, metrics.investmentCostTwd);
   const rows = [
     {
-      label: "財務健康度",
-      value: `${score}分`,
-      note: healthScoreText(score),
-      progress: score,
+      label: "總損益",
+      value: money.format(cumulativeReturn.totalGain),
+      valueTone: gainTone(cumulativeReturn.totalGain),
+      note: `含股息收入 ${money.format(cumulativeReturn.dividendIncome)}`,
     },
     {
-      label: "投資總損益",
-      value: money.format(metrics.investmentGainTwd),
-      valueTone: gainTone(metrics.investmentGainTwd),
-      note: `報酬率 ${metrics.investmentReturnRate}`,
+      label: "未實現損益",
+      value: money.format(cumulativeReturn.unrealizedGain),
+      valueTone: gainTone(cumulativeReturn.unrealizedGain),
+      note: `持倉報酬率 ${metrics.investmentReturnRate}`,
     },
     {
-      label: "累積總報酬",
-      value: money.format(cumulativeReturn.total),
-      valueTone: gainTone(cumulativeReturn.total),
-      noteHtml: `<span class="kpi-split-line">已實現損益 ${money.format(cumulativeReturn.realizedGain)}</span><span class="kpi-split-line">股息收入 ${money.format(cumulativeReturn.dividendIncome)}</span>`,
+      label: "已實現損益",
+      value: money.format(cumulativeReturn.realizedGain),
+      valueTone: gainTone(cumulativeReturn.realizedGain),
+      note: `股息收入 ${money.format(cumulativeReturn.dividendIncome)}（另計）`,
     },
     {
-      label: "財富目標進度",
-      value: `${next.progress}%`,
-      note: `距離 ${number.format(next.target / 10000)} 萬還差 ${money.format(next.remaining)}`,
-      progress: next.progress,
+      label: "累積報酬率",
+      value: cumulativeReturn.returnRate,
+      valueTone: gainTone(cumulativeReturn.totalGain),
+      note: `累積投入 ${money.format(cumulativeReturn.investedCost)}`,
     },
   ];
 
