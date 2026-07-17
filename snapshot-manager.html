@@ -57,14 +57,6 @@
           <summary>進階欄位</summary>
           <div>
             <label>
-              緊急預備金
-              <input name="emergencyFund" type="number" step="1" min="0" placeholder="100000" />
-            </label>
-            <label>
-              投資預備金
-              <input name="investmentReserve" type="number" step="1" min="0" placeholder="150000" />
-            </label>
-            <label>
               其他銀行餘額
               <input name="otherBankBalance" type="number" step="1" min="0" placeholder="不含郵局與永豐" />
             </label>
@@ -170,8 +162,6 @@
             ["郵局餘額", money.format(payload.accountBreakdown.postOfficeBalance || 0)],
             ["永豐餘額", money.format(payload.accountBreakdown.sinopacBalance || 0)],
             ["其他銀行餘額", money.format(payload.accountBreakdown.otherBankBalance || payload.bank || 0)],
-            ["緊急預備金", money.format(payload.accountBreakdown.emergencyFund || 0)],
-            ["投資預備金", money.format(payload.accountBreakdown.investmentReserve || 0)],
             ["現金", money.format(payload.accountBreakdown.availableCash || 0)],
           );
         }

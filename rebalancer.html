@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入首頁台股、美股與現金，先排除緊急預備金，再依 40% / 40% / 20% 檢查配置。</p>
+          <p>自動帶入首頁台股、美股與全部現金，依 40% / 40% / 20% 檢查配置；現金內先保留緊急預備金 10 萬。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -28,7 +28,7 @@
           <input name="usStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
         </label>
         <label>
-          配置現金（含投資預備金）
+          全部現金（含緊急與投資預備金）
           <input name="cash" type="number" step="1" min="0" placeholder="例如 200000" required />
         </label>
         <label>
@@ -139,12 +139,11 @@
           && breakdown.sinopacBalance !== "";
         const cashBase = hasSinopacBalance ? sinopac : totalCash;
         const protectedCash = Math.min(EMERGENCY_FUND_TARGET, cashBase);
-        const investmentReserve = Math.min(150000, Math.max(0, cashBase - protectedCash));
         return {
           totalCash,
           sinopac,
           protectedCash,
-          allocationCash: Math.max(0, cashBase - protectedCash),
+          allocationCash: cashBase,
         };
       }
 
@@ -158,7 +157,7 @@
           : {
               totalCash: Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0),
               protectedCash: Math.min(Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0), EMERGENCY_FUND_TARGET),
-              allocationCash: Math.max(0, Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0) - EMERGENCY_FUND_TARGET),
+              allocationCash: Math.max(0, Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0)),
             };
         form.elements.twStocks.value = twValue;
         form.elements.usStocks.value = usValue;
@@ -167,7 +166,7 @@
         calculate();
         setStatus(
           twValue || usValue
-            ? "已帶入首頁台股、美股與現金；緊急預備金已先排除。"
+            ? "已帶入首頁台股、美股與全部現金；緊急預備金已包含在現金 20% 內。"
             : "首頁目前找不到投資持倉，已帶入現金，持倉金額可手動輸入。",
           twValue || usValue ? "success" : "working",
         );
