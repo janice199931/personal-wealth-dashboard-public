@@ -153,6 +153,81 @@ form {
   margin-bottom: 18px;
 }
 
+.form-section {
+  padding: 4px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.form-section:last-of-type {
+  border-bottom: 0;
+}
+
+.form-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.form-section-heading span {
+  color: #d17f87;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.form-section-heading h2 {
+  margin: 3px 0 0;
+  font-size: 21px;
+}
+
+.form-section-heading > strong {
+  font-size: 17px;
+}
+
+.form-field-grid,
+.calculation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.calculation-grid article {
+  display: grid;
+  gap: 5px;
+  min-height: 92px;
+  padding: 15px 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  background: rgba(255, 253, 250, 0.68);
+}
+
+.calculation-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.calculation-grid strong {
+  font-size: 22px;
+}
+
+.calculation-grid small {
+  font-size: 11px;
+}
+
+.month-selectors {
+  display: flex;
+  gap: 8px;
+}
+
+.month-selectors select {
+  min-height: 40px;
+  padding: 8px 34px 8px 12px;
+}
+
 label {
   display: grid;
   gap: 8px;
@@ -730,6 +805,8 @@ th {
 
   .hero-card,
   form,
+  .form-field-grid,
+  .calculation-grid,
   .filters,
   .quick-filters,
   .summary-grid,
@@ -741,6 +818,20 @@ th {
   .audit-summary {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .form-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .month-selectors {
+    width: 100%;
+  }
+
+  .month-selectors select {
+    flex: 1;
+    min-width: 0;
   }
 
   .rule-card.wide {
