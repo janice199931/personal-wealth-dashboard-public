@@ -830,11 +830,10 @@ function renderAssetPie() {
       </div>`;
     }),
     debtRow ? (() => {
-      const debtPct = assetTotal ? ((debtRow.value / assetTotal) * 100).toFixed(1) : "0.0";
       return `<div class="asset-pie-row muted">
-        <span><i style="background:${debtRow.color}"></i>負債率 ${debtPct}%</span>
+        <span><i style="background:${debtRow.color}"></i>負債（不納入配置）</span>
         <strong>${money.format(debtRow.value)}</strong>
-        <em>${debtPct}%</em>
+        <em>獨立顯示</em>
       </div>`;
     })() : "",
   ]
@@ -1072,9 +1071,9 @@ function renderHero() {
 
   document.getElementById("heroMilestone").innerHTML = `
     <div class="decision-side">
-      <span>淨資產</span>
-      <strong>${money.format(metrics.netWorth)}</strong>
-      <small>本月增加 ${money.format(metrics.monthNet)}</small>
+      <span>投資資產</span>
+      <strong>${money.format(metrics.totalAssets)}</strong>
+      <small>台股＋美股＋投資現金</small>
     </div>
   `;
 }
@@ -1463,7 +1462,7 @@ function renderInitialLoading() {
     heroOverview.innerHTML = '<strong class="decision-result watch">正在載入正式資產...</strong>';
   }
   if (heroMilestone) {
-    heroMilestone.innerHTML = '<div class="decision-side"><span>淨資產</span><strong>確認中</strong><small>不會以 0 元取代正式資料</small></div>';
+    heroMilestone.innerHTML = '<div class="decision-side"><span>投資資產</span><strong>確認中</strong><small>台股＋美股＋投資現金</small></div>';
   }
   renderKpis();
   renderVaults();
