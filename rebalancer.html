@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入首頁台股、美股與全部現金，依 40% / 40% / 20% 檢查配置；現金內先保留緊急預備金 10 萬。</p>
+          <p>自動帶入首頁台股、美股與投資預備金，依 40% / 40% / 20% 檢查配置；緊急預備金 10 萬完全排除。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -28,7 +28,7 @@
           <input name="usStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
         </label>
         <label>
-          全部現金（含緊急與投資預備金）
+          投資預備金（不含緊急預備金）
           <input name="cash" type="number" step="1" min="0" placeholder="例如 200000" required />
         </label>
         <label>
@@ -89,7 +89,7 @@
       const cashBar = document.getElementById("cashBar");
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
       const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
-      const STORAGE_KEY = "wealthDashboardRebalanceDraft";
+      const STORAGE_KEY = "wealthDashboardRebalanceDraftV2ExcludeEmergencyFund";
       const EMERGENCY_FUND_TARGET = 100000;
 
       function numberValue(name) {
@@ -109,7 +109,7 @@
         resultGrid.innerHTML = [
           resultBox("目前台股比例", "0%"),
           resultBox("目前美股比例", "0%"),
-          resultBox("目前現金比例", "0%"),
+          resultBox("目前投資預備金比例", "0%"),
           resultBox("建議調整金額", money.format(0)),
         ].join("");
         twBar.style.width = "40%";
@@ -134,7 +134,7 @@
         return {
           totalCash,
           protectedCash,
-          allocationCash: totalCash,
+          allocationCash: Math.max(0, totalCash - protectedCash),
         };
       }
 
@@ -148,7 +148,7 @@
           : {
               totalCash: Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0),
               protectedCash: Math.min(Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0), EMERGENCY_FUND_TARGET),
-              allocationCash: Math.max(0, Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0)),
+              allocationCash: Math.max(0, Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0) - Math.min(Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0), EMERGENCY_FUND_TARGET)),
             };
         form.elements.twStocks.value = twValue;
         form.elements.usStocks.value = usValue;
@@ -157,7 +157,7 @@
         calculate();
         setStatus(
           twValue || usValue
-            ? "已帶入首頁台股、美股與全部現金；緊急預備金已包含在現金 20% 內。"
+            ? "已帶入首頁台股、美股與投資預備金；緊急預備金已排除。"
             : "首頁目前找不到投資持倉，已帶入現金，持倉金額可手動輸入。",
           twValue || usValue ? "success" : "working",
         );
@@ -185,8 +185,8 @@
         const twStocks = numberValue("twStocks");
         const usStocks = numberValue("usStocks");
         const cash = numberValue("cash");
-        const protectedCash = Math.min(EMERGENCY_FUND_TARGET, cash);
-        const investmentReserve = Math.max(0, cash - protectedCash);
+        const protectedCash = EMERGENCY_FUND_TARGET;
+        const investmentReserve = cash;
         form.elements.protectedCash.value = protectedCash;
         const twTarget = numberValue("twTarget");
         const usTarget = numberValue("usTarget");
@@ -213,7 +213,7 @@
         const targets = [
           { name: "台股 00685L", current: twStocks, ratio: twRatio, target: twTarget },
           { name: "美股 QQQM", current: usStocks, ratio: usRatio, target: usTarget },
-          { name: "現金", current: cash, ratio: cashRatio, target: cashTarget },
+          { name: "投資預備金", current: cash, ratio: cashRatio, target: cashTarget },
         ].map((item) => ({ ...item, targetAmount: total * item.target / 100, drift: item.ratio - item.target }));
         const largestDrift = targets.reduce((largest, item) => Math.abs(item.drift) > Math.abs(largest.drift) ? item : largest, targets[0]);
         const mostUnderweight = targets.reduce((lowest, item) => item.drift < lowest.drift ? item : lowest, targets[0]);
@@ -228,7 +228,7 @@
         resultGrid.innerHTML = [
           resultBox("目前台股比例", `${pct.format(twRatio)}%`),
           resultBox("目前美股比例", `${pct.format(usRatio)}%`),
-          resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
+          resultBox("目前投資預備金比例", `${pct.format(cashRatio)}%`),
           ...targets.map((item) => resultBox(`${item.name}目標金額`, money.format(Math.round(item.targetAmount)))),
           resultBox("已保留緊急預備金", money.format(protectedCash)),
           resultBox("投資預備金", money.format(investmentReserve)),

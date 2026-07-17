@@ -42,7 +42,7 @@
           <div class="rule-steps">
             <div><strong>台股 40%</strong><p>以 00685L 為主要配置標的。</p></div>
             <div><strong>美股 40%</strong><p>以 QQQM 為主要配置標的。</p></div>
-            <div><strong>全部現金 20%</strong><p>先保留緊急預備金至少 10 萬，剩餘才是投資預備金。</p></div>
+            <div><strong>投資預備金 20%</strong><p>緊急預備金完全排除於 40／40／20 配置之外。</p></div>
           </div>
         </article>
 
@@ -65,7 +65,7 @@
           <h2>資金優先順序</h2>
           <ol>
             <li>先補滿緊急預備金。</li>
-            <li>再把全部現金維持在總金融資產 20%。</li>
+            <li>再把投資預備金維持在投資配置資產 20%。</li>
             <li>新增資金依 40% / 40% / 20% 配置差距優先投入。</li>
             <li>最後再看 00685L 是否達額外加碼條件。</li>
           </ol>
@@ -85,7 +85,7 @@
         <article class="card rule-card wide">
           <span>Do Not Touch</span>
           <h2>不動用原則</h2>
-          <p>不要為了加碼動到緊急預備金。若全部現金尚未達總金融資產 20%，首頁的加碼提醒只作觀察，不視為必須買進。</p>
+          <p>不要為了加碼動到緊急預備金。40／40／20 只計算台股、美股與投資預備金；若投資預備金尚未達 20%，首頁的加碼提醒只作觀察。</p>
         </article>
       </section>
     </main>
@@ -97,7 +97,7 @@
       const strategyGrid = document.getElementById("strategyGrid");
       const strategyAdvice = document.getElementById("strategyAdvice");
       const refreshStrategyButton = document.getElementById("refreshStrategyButton");
-      const STRATEGY_CACHE_KEY = "wealthDashboardStrategySnapshot";
+      const STRATEGY_CACHE_KEY = "wealthDashboardStrategySnapshotV2ExcludeEmergencyFund";
       const SIGNAL_CACHE_KEY = "wealthDashboardLeveragedSignal";
 
       function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
@@ -175,11 +175,12 @@
           : {};
         const totalCash = numberValue(payload.portfolio?.allocation?.cash ?? payload.portfolio?.summary?.cash ?? accounts.cashTWD);
         const sinopac = numberValue(breakdown.sinopacBalance);
-        const totalAssets = numberValue(payload.portfolio?.summary?.totalAssets);
-        const cashTarget = Math.max(EMERGENCY_FUND_TARGET, Math.round(totalAssets * CASH_TARGET_RATIO));
         const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, totalCash);
         const investmentReserve = Math.max(0, totalCash - emergencyFund);
-        const investmentReserveTarget = Math.max(0, cashTarget - EMERGENCY_FUND_TARGET);
+        const allocation = payload.portfolio?.allocation || {};
+        const stockAssets = numberValue(allocation.taiwanStocks) + numberValue(allocation.usStocks);
+        const investmentReserveTarget = Math.round(stockAssets * CASH_TARGET_RATIO / (1 - CASH_TARGET_RATIO));
+        const cashTarget = EMERGENCY_FUND_TARGET + investmentReserveTarget;
         const availableForExtra = investmentReserve;
         const month = financeMonth(payload);
         const monthlyTransfer = numberValue(month?.sinopacTransfer);
@@ -226,11 +227,11 @@
             text: `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.emergencyFund)}，先補安全水位。`,
           };
         }
-        if (metrics.totalCash < metrics.cashTarget) {
+        if (metrics.investmentReserve < metrics.investmentReserveTarget) {
           return {
             tone: "",
-            title: "先把全部現金補到 20%",
-            text: `全部現金還差 ${money.format(metrics.cashTarget - metrics.totalCash)}，00685L 訊號先作觀察。`,
+            title: "先把投資預備金補到 20%",
+            text: `投資預備金還差 ${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)}，00685L 訊號先作觀察。`,
           };
         }
         if (!signal.ok) {
@@ -270,8 +271,8 @@
           : "先維持固定投入";
         strategyGrid.innerHTML = [
           resultBox("緊急預備金", money.format(metrics.emergencyFund), `${pct.format((metrics.emergencyFund / EMERGENCY_FUND_TARGET) * 100)}% / 目標 ${money.format(EMERGENCY_FUND_TARGET)}`),
-          resultBox("全部現金", money.format(metrics.totalCash), `${pct.format((metrics.totalCash / Math.max(1, metrics.cashTarget)) * 100)}% / 20% 目標 ${money.format(metrics.cashTarget)}`),
-          resultBox("投資預備金", money.format(metrics.investmentReserve), `全部現金扣除緊急預備金`),
+          resultBox("投資預備金", money.format(metrics.investmentReserve), `${pct.format((metrics.investmentReserve / Math.max(1, metrics.investmentReserveTarget)) * 100)}% / 20% 目標 ${money.format(metrics.investmentReserveTarget)}`),
+          resultBox("配置範圍", "排除緊急預備金", "台股＋美股＋投資預備金"),
           resultBox("00685L 回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signalNote),
         ].join("");
         strategyAdvice.classList.toggle("editing", conclusion.tone === "editing");

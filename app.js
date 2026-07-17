@@ -816,7 +816,11 @@ function drawPieChart(canvas, rows) {
 }
 
 function renderAssetPie() {
-  const assetRows = data.assetPie.filter((row) => row.label !== "負債");
+  const totalCash = assetValue("現金");
+  const { investmentReserve } = cashBuckets(totalCash);
+  const assetRows = data.assetPie
+    .filter((row) => row.label !== "負債")
+    .map((row) => row.label === "現金" ? { ...row, label: "投資預備金", value: investmentReserve } : row);
   const assetTotal = assetRows.reduce((sum, row) => sum + row.value, 0);
   drawPieChart(document.getElementById("assetPieChart"), assetRows);
   document.getElementById("assetPieLegend").innerHTML = assetRows
@@ -896,8 +900,11 @@ function getPortfolioMetrics() {
   const buckets = cashBuckets(cash);
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
-  const cashTargetAmount = Math.max(EMERGENCY_FUND_TARGET, Math.round(totalAssets * CASH_TARGET_RATIO));
-  const investmentReserveTarget = Math.max(0, cashTargetAmount - EMERGENCY_FUND_TARGET);
+  const allocationAssets = stockAssets + investmentReserve;
+  const investmentReserveTarget = Math.round(
+    stockAssets * CASH_TARGET_RATIO / Math.max(0.01, 1 - CASH_TARGET_RATIO),
+  );
+  const cashTargetAmount = EMERGENCY_FUND_TARGET + investmentReserveTarget;
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
   const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
@@ -910,6 +917,7 @@ function getPortfolioMetrics() {
     cash,
     debt,
     stockAssets,
+    allocationAssets,
     totalAssets,
     netWorth,
     latestMonth,
@@ -921,8 +929,8 @@ function getPortfolioMetrics() {
     monthNet,
     monthNetChange: monthNet - previousMonthNet,
     cashDays,
-    investmentRatio: percent(stockAssets, totalAssets),
-    cashRatio: percent(cash, totalAssets),
+    investmentRatio: percent(stockAssets, allocationAssets),
+    cashRatio: percent(investmentReserve, allocationAssets),
     debtRatio: percent(debt, totalAssets),
     twPrice: twShares ? tw.marketValue / twShares : 0,
     twUnitCost: twShares ? tw.cost / twShares : 0,
@@ -1010,8 +1018,8 @@ function financialHealthScore(metrics) {
   if (emergencyFund < EMERGENCY_FUND_TARGET) {
     score -= Math.min(28, Math.round(((EMERGENCY_FUND_TARGET - emergencyFund) / EMERGENCY_FUND_TARGET) * 28));
   }
-  if (metrics.cash < metrics.cashTargetAmount) {
-    score -= Math.min(18, Math.round(((metrics.cashTargetAmount - metrics.cash) / Math.max(1, metrics.cashTargetAmount)) * 18));
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) {
+    score -= Math.min(18, Math.round(((metrics.investmentReserveTarget - metrics.investmentReserve) / Math.max(1, metrics.investmentReserveTarget)) * 18));
   }
   if (monthNet < 0) score -= 12;
   if (debt > 0) score -= Math.min(10, Math.round(((debt / totalAssets) * 100) / 5));
@@ -1034,14 +1042,14 @@ function decisionIcon(status) {
 
 function decisionChecklist(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
-  const cashGap = Math.max(0, metrics.cashTargetAmount - Math.round(metrics.cash));
+  const cashGap = Math.max(0, metrics.investmentReserveTarget - Math.round(metrics.investmentReserve));
   return [
     metrics.emergencyFund >= EMERGENCY_FUND_TARGET
       ? "緊急預備金已達標"
       : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - Math.round(metrics.emergencyFund))}`,
     cashGap <= 0
-      ? "全部現金已達 20% 目標"
-      : `全部現金還差 ${money.format(cashGap)}`,
+      ? "投資預備金已達 20% 目標"
+      : `投資預備金還差 ${money.format(cashGap)}`,
     signal.state === "ready" && signal.pullback >= 10
       ? "00685L 進入加碼觀察區"
       : "00685L 尚未達加碼條件",
@@ -1062,7 +1070,7 @@ function renderHero() {
   document.getElementById("heroMilestone").innerHTML = `
     <div class="decision-side">
       <span>投資資產</span>
-      <strong>${money.format(metrics.totalAssets)}</strong>
+      <strong>${money.format(metrics.allocationAssets)}</strong>
       <small>台股＋美股＋投資現金</small>
     </div>
   `;
@@ -1185,13 +1193,13 @@ function cashWaterStatus(metrics) {
       text: "優先補足緊急預備金，今天先不要加碼",
     };
   }
-  if (metrics.cash < metrics.cashTargetAmount) {
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) {
     return {
       status: "watch",
-      text: "緊急預備金已達標，接下來把全部現金補到 20%",
+      text: "緊急預備金已達標，接下來把投資預備金補到 20%",
     };
   }
-  if (metrics.cash <= metrics.cashTargetAmount) {
+  if (metrics.investmentReserve <= metrics.investmentReserveTarget) {
     return {
       status: "good",
       text: "現金水位健康，可依目標配置投入",
@@ -1199,15 +1207,15 @@ function cashWaterStatus(metrics) {
   }
   return {
     status: "watch",
-    text: `全部現金高於 20% 目標 ${money.format(metrics.cash - metrics.cashTargetAmount)}，可依配置差距投入`,
+    text: `投資預備金高於 20% 目標 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)}，可依配置差距投入`,
   };
 }
 
 function fundWaterSummary(metrics) {
   return [
     `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
-    `全部現金：${money.format(metrics.cash)} / ${money.format(metrics.cashTargetAmount)} (20%)`,
-    `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(metrics.investmentReserveTarget)}`,
+    `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(metrics.investmentReserveTarget)} (20%)`,
+    "配置計算不包含緊急預備金",
     "目標配置：台股 40% / 美股 40% / 現金 20%",
   ].join("<br>");
 }
@@ -1216,11 +1224,11 @@ function investableCashSummary(metrics) {
   if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
     return `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.emergencyFund)}。`;
   }
-  if (metrics.cash < metrics.cashTargetAmount) {
-    return `全部現金還差 ${money.format(metrics.cashTargetAmount - metrics.cash)} 到 20% 目標。`;
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) {
+    return `投資預備金還差 ${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)} 到 20% 目標。`;
   }
-  if (metrics.cash > metrics.cashTargetAmount) {
-    return `全部現金超過 20% 目標 ${money.format(metrics.cash - metrics.cashTargetAmount)}，可依配置差距投入。`;
+  if (metrics.investmentReserve > metrics.investmentReserveTarget) {
+    return `投資預備金超過 20% 目標 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)}，可依配置差距投入。`;
   }
   return `投資預備金 ${money.format(metrics.investmentReserve)}，水位健康。`;
 }
@@ -1233,10 +1241,10 @@ function todayConclusion(metrics) {
       text: "先補緊急預備金，今天不要加碼",
     };
   }
-  if (metrics.cash < metrics.cashTargetAmount) {
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) {
     return {
       status: "watch",
-      text: "優先把全部現金補到 20%",
+      text: "優先把投資預備金補到 20%",
     };
   }
   if (signal.state === "ready" && signal.pullback >= 10) {
@@ -1251,8 +1259,8 @@ function todayConclusion(metrics) {
 function nextActionSummary(metrics) {
   const water = cashWaterStatus(metrics);
   if (water.status === "warn") return "今天不買，先補緊急預備金。";
-  if (metrics.cash < metrics.cashTargetAmount) return `先把全部現金補到 ${money.format(metrics.cashTargetAmount)}。`;
-  if (metrics.cash > metrics.cashTargetAmount) return `超過現金 20% 目標的 ${money.format(metrics.cash - metrics.cashTargetAmount)} 可依配置差距投入。`;
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) return `先把投資預備金補到 ${money.format(metrics.investmentReserveTarget)}。`;
+  if (metrics.investmentReserve > metrics.investmentReserveTarget) return `超過投資預備金 20% 目標的 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)} 可依配置差距投入。`;
   return "維持 40% / 40% / 20% 配置，等待 00685L 回檔條件。";
 }
 
@@ -1269,8 +1277,8 @@ function leveragedPriceSignalText(metrics) {
   if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
     return `${base} 先補緊急預備金，不加碼。`;
   }
-  if (metrics.cash < metrics.cashTargetAmount) {
-    return `${base} 全部現金還沒達 20%，不額外加碼。`;
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) {
+    return `${base} 投資預備金還沒達 20%，不額外加碼。`;
   }
   if (signal.pullback >= 30) {
     return `${base} 回檔 30%，投入投資預備金剩餘 30%，約 ${money.format(reserveDeploymentAmount(metrics, 0.3))}。`;
@@ -1364,7 +1372,7 @@ function renderTodayActions() {
       text: fundWaterSummary(metrics),
     },
     {
-      status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET && metrics.cash >= metrics.cashTargetAmount ? "good" : "watch",
+      status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET && metrics.investmentReserve >= metrics.investmentReserveTarget ? "good" : "watch",
       title: "投資預備金",
       text: investableCashSummary(metrics),
     },
