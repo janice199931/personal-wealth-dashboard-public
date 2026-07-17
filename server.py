@@ -1369,11 +1369,21 @@ def build_holding_audit() -> dict[str, Any]:
         market = str(holding.get("market", "")).upper()
         if not symbol or not market:
             continue
-        audit = position_state(transactions, market, symbol)
+        transaction_audit = position_state(transactions, market, symbol)
+        # The dashboard portfolio may include a brokerage-position correction
+        # (for example fractional US DRIP shares).  Keep the transaction steps
+        # for reconciliation, but make the backend holding summary use the same
+        # authoritative values shown on the dashboard.
+        audit = {
+            **transaction_audit,
+            "shares": holding.get("shares", transaction_audit.get("shares", 0)),
+            "averageCost": holding.get("averageCost", transaction_audit.get("averageCost", 0)),
+            "totalCost": holding.get("totalCost", transaction_audit.get("totalCost", 0)),
+        }
         holdings.append({
             **holding,
             "audit": audit,
-            "transactionCount": len(audit["steps"]),
+            "transactionCount": len(transaction_audit["steps"]),
         })
     holdings.sort(key=lambda row: (str(row.get("market", "")), str(row.get("symbol", ""))))
     return {
