@@ -908,7 +908,7 @@ function getPortfolioMetrics() {
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
   const cashTargetAmount = Math.max(EMERGENCY_FUND_TARGET, Math.round(totalAssets * CASH_TARGET_RATIO));
-  const investmentReserveTarget = cashTargetAmount;
+  const investmentReserveTarget = Math.max(0, cashTargetAmount - EMERGENCY_FUND_TARGET);
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
   const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
