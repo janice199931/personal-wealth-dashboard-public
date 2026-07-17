@@ -52,7 +52,6 @@ AUTH_REALM = "Personal Wealth Dashboard"
 AUTH_COOKIE_NAME = "wealth_dashboard_session"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 EMERGENCY_FUND_TARGET = 100000
-INVESTMENT_RESERVE_TARGET = 150000
 ETF_00685L_SPLIT_METADATA_KEY = "corporateAction00685LSplit202607"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
@@ -204,7 +203,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-06-26 stability"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-17 allocation rules"),
     }
 
 
@@ -892,27 +891,21 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
     breakdown = accounts.get("accountBreakdown") if isinstance(accounts.get("accountBreakdown"), dict) else {}
     post_office = round(float(breakdown.get("postOfficeBalance", 0) or 0))
     sinopac = round(float(breakdown.get("sinopacBalance", 0) or 0))
-    has_sinopac_balance = "sinopacBalance" in breakdown and breakdown.get("sinopacBalance") not in (None, "")
     has_fund_buckets = any(key in breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
-    emergency_fund = round(float(breakdown.get("emergencyFund", 0) or 0))
-    investment_reserve = round(float(breakdown.get("investmentReserve", 0) or 0))
     available_cash = round(float(breakdown.get("availableCash", 0) or 0))
     cash_balance = breakdown.get("cashBalance")
     other_bank = breakdown.get("otherBankBalance")
-    if has_sinopac_balance:
-        emergency_fund = min(EMERGENCY_FUND_TARGET, sinopac)
-        investment_reserve = min(INVESTMENT_RESERVE_TARGET, max(0, sinopac - emergency_fund))
     if has_fund_buckets:
         cash_balance = available_cash
     if cash_balance is None and other_bank is None:
         other_bank = max(0, round(float(accounts.get("cashTWD", 0) or 0)) - post_office - sinopac)
         cash_balance = 0
-    if not has_fund_buckets and not has_sinopac_balance:
-        total_cash = round(float(accounts.get("cashTWD", 0) or 0))
-        emergency_base = total_cash
-        emergency_fund = min(EMERGENCY_FUND_TARGET, emergency_base)
-        investment_reserve = min(INVESTMENT_RESERVE_TARGET, max(0, total_cash - emergency_fund))
-        available_cash = max(0, total_cash - emergency_fund - investment_reserve)
+    # Fund buckets are derived from all cash, never capped or maintained as
+    # independent manual targets. The first TWD 100,000 is protected and every
+    # dollar above it is automatically available as investment reserve.
+    total_cash = max(0, round(float(accounts.get("cashTWD", 0) or 0)))
+    emergency_fund = min(EMERGENCY_FUND_TARGET, total_cash)
+    investment_reserve = max(0, total_cash - emergency_fund)
     return {
         "cash": round(float(cash_balance or 0)),
         "bank": round(float(other_bank or 0)),

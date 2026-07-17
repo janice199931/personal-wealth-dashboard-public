@@ -85,7 +85,7 @@
         <article class="card rule-card wide">
           <span>Do Not Touch</span>
           <h2>不動用原則</h2>
-          <p>不要為了加碼動到緊急預備金。若投資預備金還沒補滿，首頁的加碼提醒只作觀察，不視為必須買進。</p>
+          <p>不要為了加碼動到緊急預備金。若全部現金尚未達總金融資產 20%，首頁的加碼提醒只作觀察，不視為必須買進。</p>
         </article>
       </section>
     </main>
@@ -173,7 +173,7 @@
         const breakdown = accounts.accountBreakdown && typeof accounts.accountBreakdown === "object"
           ? accounts.accountBreakdown
           : {};
-        const totalCash = numberValue(accounts.cashTWD);
+        const totalCash = numberValue(payload.portfolio?.allocation?.cash ?? payload.portfolio?.summary?.cash ?? accounts.cashTWD);
         const sinopac = numberValue(breakdown.sinopacBalance);
         const totalAssets = numberValue(payload.portfolio?.summary?.totalAssets);
         const cashTarget = Math.max(EMERGENCY_FUND_TARGET, Math.round(totalAssets * CASH_TARGET_RATIO));
