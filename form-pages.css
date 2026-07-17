@@ -575,11 +575,15 @@ small {
   transition: width 0.18s ease;
 }
 
-.rebalance-visual span:first-child {
+.rebalance-visual span:nth-child(1) {
   background: linear-gradient(90deg, rgba(155, 143, 208, 0.92), rgba(246, 183, 183, 0.88));
 }
 
-.rebalance-visual span:last-child {
+.rebalance-visual span:nth-child(2) {
+  background: linear-gradient(90deg, rgba(111, 164, 214, 0.92), rgba(137, 201, 192, 0.88));
+}
+
+.rebalance-visual span:nth-child(3) {
   background: linear-gradient(90deg, rgba(168, 196, 160, 0.92), rgba(255, 215, 168, 0.76));
 }
 

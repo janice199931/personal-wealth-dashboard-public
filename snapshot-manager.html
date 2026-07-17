@@ -26,10 +26,6 @@
           <input name="sinopacBalance" type="number" step="1" min="0" placeholder="投資扣款帳戶" />
         </label>
         <label>
-          本月轉入永豐
-          <input name="monthlySinopacTransfer" type="number" step="1" min="0" placeholder="例如 35000" />
-        </label>
-        <label>
           現金
           <input name="availableCash" type="number" step="1" min="0" />
         </label>
@@ -183,7 +179,6 @@
           rows.push(
             ["月份收入", money.format(payload.monthlyFinance.income || 0)],
             ["月份支出", money.format(payload.monthlyFinance.expense || 0)],
-            ["本月轉入永豐", money.format(payload.monthlyFinance.sinopacTransfer || 0)],
           );
         }
         resultGrid.innerHTML = rows

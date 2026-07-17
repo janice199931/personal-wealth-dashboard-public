@@ -76,7 +76,6 @@ const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
 const INVESTMENT_RESERVE_MIN = 150000;
 const INVESTMENT_RESERVE_MAX = 150000;
-const MONTHLY_INVESTMENT_TARGET = 35000;
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
 const US_DRIP_POSITION_TARGETS = {
@@ -933,8 +932,6 @@ function getPortfolioMetrics() {
   );
   const usGain = us.holdings.reduce((sum, holding) => sum + parseAmount(holding.gain), 0);
   const twShares = parseShares(tw.shares);
-  const monthlyInvestment = investmentAmountForPeriod(currentMonthKey());
-  const monthlyInvestmentRemaining = Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlyInvestment));
   const sinopacBalance = safeNumber(data.accountBreakdown.sinopacBalance);
   const postOfficeBalance = safeNumber(data.accountBreakdown.postOfficeBalance);
   const creditCardDebt = data.accountBreakdown.creditCardDebt !== undefined
@@ -948,7 +945,6 @@ function getPortfolioMetrics() {
   const livingVaultBalance = Math.max(0, livingVaultRawBalance);
   const livingVaultShortfall = Math.max(0, -livingVaultRawBalance);
   const sinopacInvestableBalance = Math.max(0, sinopacBalance - emergencyFund - investmentReserve);
-  const monthlySinopacTransfer = safeNumber(currentMonthFinance?.sinopacTransfer);
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
   const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
@@ -986,8 +982,6 @@ function getPortfolioMetrics() {
     usCostTwd,
     usGainTwd,
     usReturnRate: percent(usGain, usCost, 2),
-    monthlyInvestment,
-    monthlyInvestmentRemaining,
     sinopacBalance,
     sinopacInvestableBalance,
     postOfficeBalance,
@@ -995,8 +989,6 @@ function getPortfolioMetrics() {
     livingVaultRawBalance,
     livingVaultBalance,
     livingVaultShortfall,
-    monthlySinopacTransfer,
-    monthlySinopacTransferRemaining: Math.max(0, MONTHLY_INVESTMENT_TARGET - Math.round(monthlySinopacTransfer)),
     emergencyFund,
     investmentReserve,
     availableCash,
@@ -1089,9 +1081,6 @@ function financialHealthScore(metrics) {
   let score = 100;
   const emergencyFund = Number(metrics.emergencyFund) || 0;
   const investmentReserve = Number(metrics.investmentReserve) || 0;
-  const monthlyPlanRemaining = Number.isFinite(Number(metrics.monthlySinopacTransferRemaining))
-    ? Number(metrics.monthlySinopacTransferRemaining)
-    : Number(metrics.monthlyInvestmentRemaining) || 0;
   const monthNet = Number(metrics.monthNet) || 0;
   const debt = Number(metrics.debt) || 0;
   const totalAssets = Math.max(1, Number(metrics.totalAssets) || 0);
@@ -1103,9 +1092,6 @@ function financialHealthScore(metrics) {
     score -= Math.min(18, Math.round(((INVESTMENT_RESERVE_MIN - investmentReserve) / INVESTMENT_RESERVE_MIN) * 18));
   } else if (investmentReserve > INVESTMENT_RESERVE_MAX) {
     score -= 6;
-  }
-  if (monthlyPlanRemaining > 0) {
-    score -= Math.min(14, Math.round((monthlyPlanRemaining / MONTHLY_INVESTMENT_TARGET) * 14));
   }
   if (monthNet < 0) score -= 12;
   if (debt > 0) score -= Math.min(10, Math.round(((debt / totalAssets) * 100) / 5));
@@ -1128,15 +1114,11 @@ function decisionIcon(status) {
 
 function decisionChecklist(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
-  const monthlyTransferRemaining = Math.max(0, Math.round(metrics.monthlySinopacTransferRemaining));
   const reserveGap = Math.max(0, INVESTMENT_RESERVE_MIN - Math.round(metrics.investmentReserve));
   return [
     metrics.emergencyFund >= EMERGENCY_FUND_TARGET
       ? "緊急預備金已達標"
       : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - Math.round(metrics.emergencyFund))}`,
-    monthlyTransferRemaining <= 0
-      ? "本月已轉入永豐 35,000"
-      : `本月轉入永豐還差 ${money.format(monthlyTransferRemaining)}`,
     metrics.investmentReserve >= INVESTMENT_RESERVE_MIN
       ? "投資預備金水位足夠"
       : `投資預備金還差 ${money.format(reserveGap)}`,
@@ -1242,9 +1224,6 @@ function renderVaults() {
   const reserve = investmentReserveStatus(metrics);
   const emergencyProgress = safeProgress(metrics.emergencyFund, EMERGENCY_FUND_TARGET);
   const reserveProgress = safeProgress(metrics.investmentReserve, INVESTMENT_RESERVE_MAX);
-  const monthlySinopacTransferRounded = Math.round(metrics.monthlySinopacTransfer);
-  const monthlySinopacProgress = safeProgress(monthlySinopacTransferRounded, MONTHLY_INVESTMENT_TARGET);
-  const monthlySinopacStatus = monthlySinopacTransferRounded >= MONTHLY_INVESTMENT_TARGET ? "已達標" : "未達標";
   const rows = [
     {
       title: "🏠 生活金庫（郵局）",
@@ -1262,10 +1241,9 @@ function renderVaults() {
     {
       title: "📈 投資金庫（永豐）",
       status: "good",
-      progress: monthlySinopacProgress,
       lines: [
         ["可加碼資金", money.format(metrics.sinopacInvestableBalance)],
-        ["本月投入進度", `${money.format(monthlySinopacTransferRounded)} / ${money.format(MONTHLY_INVESTMENT_TARGET)} (${monthlySinopacStatus})`],
+        ["目標配置", "台股 40% / 美股 40% / 現金 20%"],
       ],
     },
     {
@@ -1330,7 +1308,7 @@ function cashWaterStatus(metrics) {
   if (metrics.investmentReserve <= INVESTMENT_RESERVE_MAX) {
     return {
       status: "good",
-      text: "現金水位健康，可維持每月固定投入",
+      text: "現金水位健康，可依目標配置投入",
     };
   }
   return {
@@ -1343,17 +1321,8 @@ function fundWaterSummary(metrics) {
   return [
     `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
     `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(INVESTMENT_RESERVE_MAX)}`,
-    `每月固定投入：${money.format(MONTHLY_INVESTMENT_TARGET)}`,
-    `本月已轉入永豐：${money.format(Math.round(metrics.monthlySinopacTransfer))}`,
+    "目標配置：台股 40% / 美股 40% / 現金 20%",
   ].join("<br>");
-}
-
-function monthlyTransferSummary(metrics) {
-  const transferred = Math.round(metrics.monthlySinopacTransfer);
-  const gap = MONTHLY_INVESTMENT_TARGET - transferred;
-  if (gap > 0) return `已轉入 ${money.format(transferred)}，還差 ${money.format(gap)} 到本月固定轉入目標。`;
-  if (gap < 0) return `已轉入 ${money.format(transferred)}，本月已超過固定轉入目標 ${money.format(Math.abs(gap))}。`;
-  return `已轉入 ${money.format(transferred)}，本月固定轉入已完成。`;
 }
 
 function investableCashSummary(metrics) {
@@ -1371,17 +1340,10 @@ function investableCashSummary(metrics) {
 
 function todayConclusion(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
-  const monthlyTransferRemaining = Math.max(0, Math.round(metrics.monthlySinopacTransferRemaining));
   if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
     return {
       status: "warn",
       text: "先補緊急預備金，今天不要加碼",
-    };
-  }
-  if (monthlyTransferRemaining > 0) {
-    return {
-      status: "watch",
-      text: "先完成本月轉入永豐 35,000",
     };
   }
   if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) {
@@ -1401,12 +1363,10 @@ function todayConclusion(metrics) {
 
 function nextActionSummary(metrics) {
   const water = cashWaterStatus(metrics);
-  const monthlyTransferRemaining = Math.max(0, Math.round(metrics.monthlySinopacTransferRemaining));
   if (water.status === "warn") return "今天不買，先補緊急預備金。";
-  if (monthlyTransferRemaining > 0) return `先完成本月轉入永豐，還差 ${money.format(monthlyTransferRemaining)}。`;
   if (metrics.investmentReserve < INVESTMENT_RESERVE_MIN) return "先把投資預備金補到 15 萬。";
   if (metrics.investmentReserve > INVESTMENT_RESERVE_MAX) return `超過 ${money.format(INVESTMENT_RESERVE_MAX)} 的部分可分 2-3 筆投入。`;
-  return "本月固定轉入已完成，等待 00685L 回檔條件。";
+  return "維持 40% / 40% / 20% 配置，等待 00685L 回檔條件。";
 }
 
 function reserveDeploymentAmount(metrics, ratio) {
@@ -1417,7 +1377,7 @@ function leveragedPriceSignalText(metrics) {
   const signal = data.leveragedPullbackSignal || { state: "idle" };
   if (!metrics.hasLeveragedEtfHolding) return "目前找不到 00685L 持股，這項加碼燈號先略過。";
   if (signal.state === "idle" || signal.state === "loading") return "正在讀取 00685L 近 20 個交易日價格。";
-  if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先維持每月固定投入。";
+  if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先維持目標配置。";
   const base = `回落 ${signal.pullback.toFixed(1)}%。`;
   if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
     return `${base} 先補緊急預備金，不加碼。`;
@@ -1434,7 +1394,7 @@ function leveragedPriceSignalText(metrics) {
   if (signal.pullback >= 10) {
     return `${base} 回檔 10%，可動用投資預備金 30%，約 ${money.format(reserveDeploymentAmount(metrics, 0.3))}。`;
   }
-  return `${base} 一般震盪，只做每月固定投入。`;
+  return `${base} 一般震盪，只依目標配置調整。`;
 }
 
 function leveragedPriceSignalStatus() {
@@ -1522,11 +1482,6 @@ function renderTodayActions() {
       text: investableCashSummary(metrics),
     },
     { status: leveragedPriceSignalStatus(), title: "加碼規則", text: leveragedPriceSignalText(metrics) },
-    {
-      status: metrics.monthlySinopacTransferRemaining <= 0 ? "good" : "watch",
-      title: "本月進度",
-      text: monthlyTransferSummary(metrics),
-    },
     { status: "watch", title: "下一步", text: nextActionSummary(metrics) },
   ];
 
