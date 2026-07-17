@@ -169,7 +169,12 @@ def build_portfolio_from_data(
     us_market_value = round(sum(row["marketValueTWD"] for row in us_holdings))
     tw_cost = round(sum(row["totalCostTWD"] for row in tw_holdings))
     us_cost = round(sum(row["totalCostTWD"] for row in us_holdings))
-    cash_twd = round(float(accounts.get("cashTWD", 0)) + float(accounts.get("cashUSD", 0)) * fx_rate)
+    breakdown = accounts.get("accountBreakdown") if isinstance(accounts.get("accountBreakdown"), dict) else {}
+    # Investment cash deliberately excludes postal, physical cash, and other
+    # everyday spending accounts. Only Sinopac and US brokerage cash belong to
+    # the investment dashboard.
+    investment_cash_twd = float(breakdown.get("sinopacBalance", accounts.get("cashTWD", 0)) or 0)
+    cash_twd = round(investment_cash_twd + float(accounts.get("cashUSD", 0)) * fx_rate)
     debt = round(float(accounts.get("creditCardDebt", 0)) + float(accounts.get("otherDebt", 0)))
     stock_assets = tw_market_value + us_market_value
     total_assets = stock_assets + cash_twd

@@ -28,16 +28,8 @@
           <div class="form-section-heading"><div><span>Cash Assets</span><h2>現金資產</h2></div></div>
           <div class="form-field-grid">
             <label>
-              郵局帳戶
-              <input name="postOfficeBalance" type="number" step="1" min="0" placeholder="未異動可留空" />
-            </label>
-            <label>
               永豐帳戶
               <input name="sinopacBalance" type="number" step="1" min="0" placeholder="未異動可留空" />
-            </label>
-            <label>
-              手邊現金
-              <input name="availableCash" type="number" step="1" min="0" placeholder="未異動可留空" />
             </label>
             <label>
               美股現金（USD）
@@ -126,10 +118,7 @@
 
       function renderCalculations() {
         const breakdown = currentAccounts.accountBreakdown || {};
-        const twdCash = fieldValue("postOfficeBalance", breakdown.postOfficeBalance)
-          + fieldValue("sinopacBalance", breakdown.sinopacBalance)
-          + fieldValue("availableCash", breakdown.availableCash ?? breakdown.cashBalance)
-          + Number(breakdown.otherBankBalance || 0);
+        const twdCash = fieldValue("sinopacBalance", breakdown.sinopacBalance);
         const usdCash = fieldValue("cashUSD", currentAccounts.cashUSD);
         const totalCash = Math.max(0, Math.round(twdCash + usdCash * currentFxRate));
         const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, totalCash);
@@ -204,7 +193,7 @@
 
       function renderResult(payload) {
         const rows = [
-          ["台幣流動資金", money.format(payload.cashTWD || 0)],
+          ["永豐台幣現金", money.format(payload.cashTWD || 0)],
           ["美股帳戶現金", usdMoney.format(payload.cashUSD || 0)],
           ["美元現金折合台幣", money.format(payload.cashUSDTWD || 0)],
           ["現金資產合計", money.format(payload.cashTotalTWD || 0)],
@@ -213,9 +202,7 @@
         ];
         if (payload.accountBreakdown && Object.keys(payload.accountBreakdown).length) {
           rows.push(
-            ["郵局餘額", money.format(payload.accountBreakdown.postOfficeBalance || 0)],
             ["永豐餘額", money.format(payload.accountBreakdown.sinopacBalance || 0)],
-            ["現金", money.format(payload.accountBreakdown.availableCash || 0)],
           );
         }
         if (payload.monthlyFinance) {
@@ -260,7 +247,7 @@
         }
       });
       form.addEventListener("input", (event) => {
-        if (["postOfficeBalance", "sinopacBalance", "availableCash", "cashUSD"].includes(event.target.name)) renderCalculations();
+        if (["sinopacBalance", "cashUSD"].includes(event.target.name)) renderCalculations();
       });
       document.getElementById("snapshotDate").textContent = currentTaiwanDateLabel();
       setupMonthSelectors();

@@ -900,10 +900,9 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
     if cash_balance is None and other_bank is None:
         other_bank = max(0, round(float(accounts.get("cashTWD", 0) or 0)) - post_office - sinopac)
         cash_balance = 0
-    # Fund buckets are derived from all cash, never capped or maintained as
-    # independent manual targets. The first TWD 100,000 is protected and every
-    # dollar above it is automatically available as investment reserve.
-    total_cash = max(0, round(float(accounts.get("cashTWD", 0) or 0)))
+    # Lifestyle cash stays stored for backward compatibility but is excluded
+    # from the investment dashboard. Only the Sinopac balance is TWD investment cash.
+    total_cash = max(0, sinopac)
     emergency_fund = min(EMERGENCY_FUND_TARGET, total_cash)
     investment_reserve = max(0, total_cash - emergency_fund)
     return {
@@ -918,13 +917,7 @@ def account_components(accounts: dict[str, Any]) -> dict[str, int]:
 
 
 def cash_total_from_amounts(amounts: dict[str, Any]) -> int:
-    cash = round(float(amounts.get("cash", 0) or 0))
-    bank = round(float(amounts.get("bank", 0) or 0))
-    post_office = round(float(amounts.get("postOfficeBalance", 0) or 0))
-    sinopac = round(float(amounts.get("sinopacBalance", 0) or 0))
-    if post_office or sinopac or bank:
-        return cash + bank + post_office + sinopac
-    return round(float(amounts.get("bucketCash", cash) or cash))
+    return round(float(amounts.get("sinopacBalance", 0) or 0))
 
 
 def save_manual_monthly_finance(
@@ -1558,7 +1551,9 @@ def data_consistency_checks(
         f"已檢查 {checked_positions} 檔持股" if not mismatches else "；".join(mismatches[:4]),
     )
 
-    account_cash = round(to_float(accounts.get("cashTWD")))
+    account_breakdown = accounts.get("accountBreakdown") if isinstance(accounts.get("accountBreakdown"), dict) else {}
+    investment_cash_twd = to_float(account_breakdown.get("sinopacBalance", accounts.get("cashTWD")))
+    account_cash = round(investment_cash_twd + to_float(accounts.get("cashUSD")) * to_float(portfolio.get("fxRate")))
     add(
         "金庫現金",
         abs(account_cash - cash) <= 5,
@@ -2673,16 +2668,7 @@ async def update_asset_snapshot(
             )
     else:
         accounts = db_store.read_accounts({})
-        accounts["cashTWD"] = (
-            cash_total_from_amounts(amounts)
-            if has_fund_buckets
-            else (
-                amounts["cash"]
-                + amounts["bank"]
-                + round(float(amounts.get("postOfficeBalance", 0) or 0))
-                + round(float(amounts.get("sinopacBalance", 0) or 0))
-            )
-        )
+        accounts["cashTWD"] = round(float(amounts.get("sinopacBalance", 0) or 0))
         accounts["creditCardDebt"] = amounts["debt"]
         accounts.setdefault("cashUSD", 0)
         accounts.setdefault("otherDebt", 0)
@@ -2712,11 +2698,8 @@ async def update_asset_snapshot(
         or amounts["source"] == "manual"
     ):
         parts = account_components(accounts)
-        next_cash = round(float(account_breakdown.get("cashBalance", parts["cash"]) or 0))
-        next_bank = round(float(account_breakdown.get("otherBankBalance", parts["bank"]) or 0))
-        next_post_office = round(float(account_breakdown.get("postOfficeBalance", parts["postOfficeBalance"]) or 0))
         next_sinopac = round(float(account_breakdown.get("sinopacBalance", parts["sinopacBalance"]) or 0))
-        accounts["cashTWD"] = next_cash + next_bank + next_post_office + next_sinopac
+        accounts["cashTWD"] = next_sinopac
         account_breakdown["updatedAt"] = datetime.now().isoformat(timespec="seconds")
         accounts["accountBreakdown"] = account_breakdown
         db_store.write_accounts(accounts)
@@ -2757,16 +2740,7 @@ async def update_asset_snapshot(
     if manual_cash_usd is not None and float(verified_accounts.get("cashUSD", -1) or 0) != float(manual_cash_usd):
         raise HTTPException(status_code=503, detail="美股帳戶現金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if amounts["source"] not in {"supplement_only", "existing_accounts"}:
-        expected_cash_twd = (
-            cash_total_from_amounts(amounts)
-            if any(key in verified_breakdown for key in ["emergencyFund", "investmentReserve", "availableCash"])
-            else (
-                round(float(amounts["cash"]))
-                + round(float(verified_breakdown.get("otherBankBalance", amounts["bank"]) or 0))
-                + round(float(verified_breakdown.get("postOfficeBalance", 0) or 0))
-                + round(float(verified_breakdown.get("sinopacBalance", 0) or 0))
-            )
-        )
+        expected_cash_twd = round(float(verified_breakdown.get("sinopacBalance", 0) or 0))
         if round(float(verified_accounts.get("cashTWD", -1) or 0)) != expected_cash_twd:
             raise HTTPException(status_code=503, detail="資產已送出，但重新讀取後流動資金合計沒有對上，請重新整理確認。")
         if round(float(verified_accounts.get("creditCardDebt", -1) or 0)) != round(float(amounts["debt"])):

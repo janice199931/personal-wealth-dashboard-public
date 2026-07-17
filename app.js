@@ -74,7 +74,6 @@ const PRICE_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
-const INVESTMENT_RESERVE_CURRENT = 267183;
 const CASH_TARGET_RATIO = 0.2;
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
@@ -721,7 +720,7 @@ function applyCurrentMonthFinance(month = null) {
 function cashBuckets(totalCash = 0) {
   const cash = Math.max(0, Math.round(Number(totalCash) || 0));
   const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, cash);
-  return { emergencyFund, investmentReserve: INVESTMENT_RESERVE_CURRENT };
+  return { emergencyFund, investmentReserve: Math.max(0, cash - emergencyFund) };
 }
 
 function fitCanvas(canvas) {
