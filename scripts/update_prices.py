@@ -122,6 +122,56 @@ def price_result(ok: bool, symbol: str, market: str, row: dict[str, Any] | None 
     }
 
 
+def fetch_tw_realtime_price(symbol: str) -> dict[str, Any] | None:
+    """Read the latest traded price from TWSE MIS (works for TWSE and TPEx)."""
+    channels = f"tse_{quote(symbol)}.tw|otc_{quote(symbol)}.tw"
+    url = f"https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch={channels}&json=1&delay=0"
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": f"https://mis.twse.com.tw/stock/fibest.jsp?stock={quote(symbol)}",
+        },
+    )
+    try:
+        with urlopen(request, timeout=PRICE_FETCH_TIMEOUT) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except URLError as error:
+        if not isinstance(error.reason, ssl.SSLCertVerificationError):
+            raise
+        context = ssl._create_unverified_context()
+        with urlopen(request, timeout=PRICE_FETCH_TIMEOUT, context=context) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+
+    rows = payload.get("msgArray") or []
+    row = next((item for item in rows if str(item.get("c", "")) == symbol), None)
+    if not row:
+        return None
+
+    # z is the latest matched price. It remains the day's final price after close.
+    price = parse_number(row.get("z"))
+    previous = parse_number(row.get("y"))
+    if price <= 0:
+        return None
+
+    price_date_raw = str(row.get("d") or "")
+    price_date = (
+        f"{price_date_raw[:4]}/{price_date_raw[4:6]}/{price_date_raw[6:8]}"
+        if len(price_date_raw) == 8 and price_date_raw.isdigit()
+        else ""
+    )
+    trade_time = str(row.get("t") or row.get("%") or "").strip()
+    updated_at = " ".join(part for part in (price_date, trade_time[:5]) if part) or now_text()
+    change = price - previous if previous > 0 else 0
+    return {
+        "price": price,
+        "change": round(change, 4),
+        "changePercent": round((change / previous * 100) if previous else 0, 2),
+        "updatedAt": updated_at,
+        "priceDate": price_date,
+    }
+
+
 def fetch_tw_prices(symbols: set[str]) -> dict[str, dict[str, Any]]:
     if not symbols:
         return {}
@@ -209,11 +259,15 @@ def fetch_prices(holdings: list[dict[str, Any]]) -> tuple[dict[str, dict[str, An
     for symbol in sorted(tw_symbols):
         key = f"TW:{symbol}"
         try:
-            row = fetch_tw_price_fallback(symbol)
+            row = fetch_tw_realtime_price(symbol)
+            source = "twse-realtime"
+            if not row:
+                row = fetch_tw_price_fallback(symbol)
+                source = "twse-close"
             if row:
                 prices[key] = row
                 tw_result["updatedSymbols"].append(key)
-                tw_result["symbols"][key] = price_result(True, symbol, "TW", row, source="twse-symbol")
+                tw_result["symbols"][key] = price_result(True, symbol, "TW", row, source=source)
             else:
                 message = f"{key} 更新失敗，資料來源沒有回傳可用價格"
                 warnings.append(message)
