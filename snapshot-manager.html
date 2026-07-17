@@ -72,23 +72,6 @@
             </label>
           </div>
         </section>
-        <details class="advanced-fields full">
-          <summary>進階欄位</summary>
-          <div>
-            <label>
-              其他銀行餘額
-              <input name="otherBankBalance" type="number" step="1" min="0" placeholder="不含郵局與永豐" />
-            </label>
-            <label>
-              MOZE CSV
-              <input name="csv" type="file" accept=".csv,text/csv" />
-            </label>
-            <label class="full">
-              帳戶總覽截圖
-              <input name="image" type="file" accept="image/*" />
-            </label>
-          </div>
-        </details>
         <div class="actions full">
           <span class="status" id="statusText">可只填有異動的欄位；空白欄位會維持原資料，不會歸零。</span>
           <button id="submitButton" type="submit">儲存並重新計算今日建議</button>
@@ -146,7 +129,7 @@
         const twdCash = fieldValue("postOfficeBalance", breakdown.postOfficeBalance)
           + fieldValue("sinopacBalance", breakdown.sinopacBalance)
           + fieldValue("availableCash", breakdown.availableCash ?? breakdown.cashBalance)
-          + fieldValue("otherBankBalance", breakdown.otherBankBalance);
+          + Number(breakdown.otherBankBalance || 0);
         const usdCash = fieldValue("cashUSD", currentAccounts.cashUSD);
         const totalCash = Math.max(0, Math.round(twdCash + usdCash * currentFxRate));
         const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, totalCash);
@@ -232,7 +215,6 @@
           rows.push(
             ["郵局餘額", money.format(payload.accountBreakdown.postOfficeBalance || 0)],
             ["永豐餘額", money.format(payload.accountBreakdown.sinopacBalance || 0)],
-            ["其他銀行餘額", money.format(payload.accountBreakdown.otherBankBalance || payload.bank || 0)],
             ["現金", money.format(payload.accountBreakdown.availableCash || 0)],
           );
         }
@@ -278,7 +260,7 @@
         }
       });
       form.addEventListener("input", (event) => {
-        if (["postOfficeBalance", "sinopacBalance", "availableCash", "cashUSD", "otherBankBalance"].includes(event.target.name)) renderCalculations();
+        if (["postOfficeBalance", "sinopacBalance", "availableCash", "cashUSD"].includes(event.target.name)) renderCalculations();
       });
       document.getElementById("snapshotDate").textContent = currentTaiwanDateLabel();
       setupMonthSelectors();
