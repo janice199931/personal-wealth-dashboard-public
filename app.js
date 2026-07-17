@@ -74,6 +74,7 @@ const PRICE_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
+const INVESTMENT_RESERVE_CURRENT = 267183;
 const CASH_TARGET_RATIO = 0.2;
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
@@ -711,9 +712,6 @@ function applyAccountData(accounts = {}) {
     ? accounts.accountBreakdown
     : {};
   data.accountBreakdown = { ...accountBreakdown };
-  if (data.accountBreakdown.creditCardDebt === undefined && accounts.creditCardDebt !== undefined) {
-    data.accountBreakdown.creditCardDebt = accounts.creditCardDebt;
-  }
 }
 
 function applyCurrentMonthFinance(month = null) {
@@ -721,12 +719,9 @@ function applyCurrentMonthFinance(month = null) {
 }
 
 function cashBuckets(totalCash = 0) {
-  const breakdown = data.accountBreakdown || {};
   const cash = Math.max(0, Math.round(Number(totalCash) || 0));
   const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, cash);
-  const investmentReserve = Math.max(0, cash - emergencyFund);
-  const availableCash = Math.max(0, Math.round(Number(breakdown.availableCash) || 0));
-  return { emergencyFund, investmentReserve, availableCash };
+  return { emergencyFund, investmentReserve: INVESTMENT_RESERVE_CURRENT };
 }
 
 function fitCanvas(canvas) {
@@ -910,21 +905,11 @@ function getPortfolioMetrics() {
   );
   const usGain = us.holdings.reduce((sum, holding) => sum + parseAmount(holding.gain), 0);
   const twShares = parseShares(tw.shares);
-  const sinopacBalance = safeNumber(data.accountBreakdown.sinopacBalance);
-  const postOfficeBalance = safeNumber(data.accountBreakdown.postOfficeBalance);
-  const creditCardDebt = data.accountBreakdown.creditCardDebt !== undefined
-    ? safeNumber(data.accountBreakdown.creditCardDebt)
-    : debt;
   const buckets = cashBuckets(cash);
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
   const cashTargetAmount = Math.max(EMERGENCY_FUND_TARGET, Math.round(totalAssets * CASH_TARGET_RATIO));
-  const investmentReserveTarget = Math.max(0, cashTargetAmount - EMERGENCY_FUND_TARGET);
-  const availableCash = buckets.availableCash;
-  const livingVaultRawBalance = postOfficeBalance + availableCash - creditCardDebt;
-  const livingVaultBalance = Math.max(0, livingVaultRawBalance);
-  const livingVaultShortfall = Math.max(0, -livingVaultRawBalance);
-  const sinopacInvestableBalance = investmentReserve;
+  const investmentReserveTarget = cashTargetAmount;
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
   const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
@@ -962,18 +947,10 @@ function getPortfolioMetrics() {
     usCostTwd,
     usGainTwd,
     usReturnRate: percent(usGain, usCost, 2),
-    sinopacBalance,
-    sinopacInvestableBalance,
-    postOfficeBalance,
-    creditCardDebt,
-    livingVaultRawBalance,
-    livingVaultBalance,
-    livingVaultShortfall,
     emergencyFund,
     investmentReserve,
     cashTargetAmount,
     investmentReserveTarget,
-    availableCash,
     investmentCostTwd,
     investmentGainTwd,
     investmentReturnRate: percent(investmentGainTwd, investmentCostTwd, 2),
@@ -1029,33 +1006,9 @@ function formatEtaDate(date) {
   return `${rocYear(date.getFullYear())} 年 ${date.getMonth() + 1} 月`;
 }
 
-function postOfficeStatus(metrics) {
-  const recentExpenses = financeMonths()
-    .map((month) => Number(month.expense))
-    .filter((expense) => Number.isFinite(expense) && expense > 0)
-    .slice(-6);
-  const averageExpense = recentExpenses.length
-    ? recentExpenses.reduce((sum, expense) => sum + expense, 0) / recentExpenses.length
-    : 0;
-  const suggested = Math.round(averageExpense * 1.2);
-  if (!suggested) return { status: "watch", suggested, text: "待記錄" };
-  if (metrics.livingVaultShortfall > 0) {
-    return {
-      status: "warn",
-      suggested,
-      text: `⚠️ 短缺 ${money.format(metrics.livingVaultShortfall)}`,
-    };
-  }
-  return {
-    status: metrics.livingVaultBalance >= suggested ? "good" : "warn",
-    suggested,
-    text: metrics.livingVaultBalance >= suggested ? '<span class="status-dot good"></span>充足' : "⚠️ 偏低",
-  };
-}
-
 function investmentReserveStatus(metrics) {
-  if (metrics.cash < metrics.cashTargetAmount) return { status: "warn", text: "現金低於目標" };
-  if (metrics.cash > metrics.cashTargetAmount) return { status: "watch", text: "現金高於目標" };
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) return { status: "warn", text: "低於動態目標" };
+  if (metrics.investmentReserve > metrics.investmentReserveTarget) return { status: "watch", text: "高於動態目標" };
   return { status: "good", text: "正常" };
 }
 
@@ -1186,7 +1139,7 @@ function renderVaults() {
   const target = document.getElementById("vaultGrid");
   if (!target) return;
   if (!dashboardDataLoaded) {
-    target.innerHTML = Array.from({ length: 4 })
+    target.innerHTML = Array.from({ length: 2 })
       .map(() => `<article class="vault-card skeleton-card animate-pulse">
         <div class="vault-title"><span class="skeleton-icon"></span><strong class="skeleton-line medium"></strong></div>
         <div class="vault-lines">
@@ -1199,32 +1152,10 @@ function renderVaults() {
     return;
   }
   const metrics = getPortfolioMetrics();
-  const postOffice = postOfficeStatus(metrics);
   const reserve = investmentReserveStatus(metrics);
   const emergencyProgress = safeProgress(metrics.emergencyFund, EMERGENCY_FUND_TARGET);
   const reserveProgress = safeProgress(metrics.investmentReserve, Math.max(1, metrics.investmentReserveTarget));
   const rows = [
-    {
-      title: "🏠 生活金庫（郵局）",
-      status: postOffice.status,
-      lines: [
-        [
-          "目前餘額",
-          metrics.livingVaultShortfall > 0 ? `短缺 ${money.format(metrics.livingVaultShortfall)}` : money.format(metrics.livingVaultBalance),
-          `郵局: ${money.format(metrics.postOfficeBalance)} + 現金: ${money.format(metrics.availableCash)} - 信用卡: ${money.format(metrics.creditCardDebt)} = ${money.format(metrics.livingVaultRawBalance)}`,
-        ],
-        ["建議保留金額", postOffice.suggested ? money.format(postOffice.suggested) : "待記錄"],
-        ["狀態", postOffice.text],
-      ],
-    },
-    {
-      title: "📈 投資金庫（永豐）",
-      status: "good",
-      lines: [
-        ["可加碼資金", money.format(metrics.sinopacInvestableBalance)],
-        ["目標配置", "台股 40% / 美股 40% / 現金 20%"],
-      ],
-    },
     {
       title: "🚨 緊急預備金",
       status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "good" : "warn",
@@ -1236,7 +1167,7 @@ function renderVaults() {
       ],
     },
     {
-      title: "💰 投資預備金",
+      title: "💰 投資預備金（永豐）",
       status: reserve.status,
       progress: reserveProgress,
       lines: [
