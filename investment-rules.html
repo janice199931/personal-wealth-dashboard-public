@@ -179,7 +179,8 @@
         const investmentReserve = Math.max(0, totalCash - emergencyFund);
         const allocation = payload.portfolio?.allocation || {};
         const stockAssets = numberValue(allocation.taiwanStocks) + numberValue(allocation.usStocks);
-        const investmentReserveTarget = Math.round(stockAssets * CASH_TARGET_RATIO / (1 - CASH_TARGET_RATIO));
+        const allocationAssets = stockAssets + investmentReserve;
+        const investmentReserveTarget = Math.round(allocationAssets * CASH_TARGET_RATIO);
         const cashTarget = EMERGENCY_FUND_TARGET + investmentReserveTarget;
         const availableForExtra = investmentReserve;
         const month = financeMonth(payload);
