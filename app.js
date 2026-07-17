@@ -817,27 +817,17 @@ function drawPieChart(canvas, rows) {
 
 function renderAssetPie() {
   const assetRows = data.assetPie.filter((row) => row.label !== "負債");
-  const debtRow = data.assetPie.find((row) => row.label === "負債");
   const assetTotal = assetRows.reduce((sum, row) => sum + row.value, 0);
   drawPieChart(document.getElementById("assetPieChart"), assetRows);
-  document.getElementById("assetPieLegend").innerHTML = [
-    ...assetRows.map((row) => {
+  document.getElementById("assetPieLegend").innerHTML = assetRows
+    .map((row) => {
       const pct = assetTotal ? ((row.value / assetTotal) * 100).toFixed(1) : "0.0";
       return `<div class="asset-pie-row">
         <span><i style="background:${row.color}"></i>${row.label} ${pct}%</span>
         <strong>${money.format(row.value)}</strong>
         <em>${pct}%</em>
       </div>`;
-    }),
-    debtRow ? (() => {
-      return `<div class="asset-pie-row muted">
-        <span><i style="background:${debtRow.color}"></i>負債（不納入配置）</span>
-        <strong>${money.format(debtRow.value)}</strong>
-        <em>獨立顯示</em>
-      </div>`;
-    })() : "",
-  ]
-    .filter(Boolean)
+    })
     .join("");
 }
 
