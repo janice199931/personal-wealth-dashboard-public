@@ -1084,7 +1084,7 @@ function renderKpis() {
   const target = document.getElementById("kpiGrid");
   if (!target) return;
   if (!dashboardDataLoaded) {
-    target.innerHTML = Array.from({ length: 4 })
+    target.innerHTML = Array.from({ length: 2 })
       .map(() => `<article class="kpi-card skeleton-card animate-pulse">
         <span class="skeleton-line short"></span>
         <strong class="skeleton-line wide"></strong>
@@ -1107,18 +1107,6 @@ function renderKpis() {
       value: money.format(cumulativeReturn.unrealizedGain),
       valueTone: gainTone(cumulativeReturn.unrealizedGain),
       note: `持倉報酬率 ${metrics.investmentReturnRate}`,
-    },
-    {
-      label: "已實現損益",
-      value: money.format(cumulativeReturn.realizedGain),
-      valueTone: gainTone(cumulativeReturn.realizedGain),
-      note: `股息收入 ${money.format(cumulativeReturn.dividendIncome)}（另計）`,
-    },
-    {
-      label: "累積報酬率",
-      value: cumulativeReturn.returnRate,
-      valueTone: gainTone(cumulativeReturn.totalGain),
-      note: `累積投入 ${money.format(cumulativeReturn.investedCost)}`,
     },
   ];
 
