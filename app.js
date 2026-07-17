@@ -1007,8 +1007,8 @@ function formatEtaDate(date) {
 }
 
 function investmentReserveStatus(metrics) {
-  if (metrics.investmentReserve < metrics.investmentReserveTarget) return { status: "warn", text: "低於動態目標" };
-  if (metrics.investmentReserve > metrics.investmentReserveTarget) return { status: "watch", text: "高於動態目標" };
+  if (metrics.investmentReserve < metrics.investmentReserveTarget) return { status: "warn", text: "低於目標" };
+  if (metrics.investmentReserve > metrics.investmentReserveTarget) return { status: "watch", text: "高於目標" };
   return { status: "good", text: "正常" };
 }
 
@@ -1159,7 +1159,7 @@ function renderVaults() {
       status: reserve.status,
       progress: reserveProgress,
       lines: [
-        ["動態目標", money.format(metrics.investmentReserveTarget)],
+        ["目標", money.format(metrics.investmentReserveTarget)],
         ["目前", money.format(metrics.investmentReserve)],
         ["狀態", reserve.text],
       ],
