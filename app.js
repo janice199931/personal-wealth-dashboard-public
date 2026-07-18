@@ -77,7 +77,6 @@ const AUTO_PRICE_UPDATE_AT_KEY = "wealthDashboardLastAutoPriceUpdateAt";
 const PRICE_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
-const MILESTONE_BASE_DATE = new Date("2026-07-18T00:00:00+08:00");
 const MILESTONE_BASE_ASSET = 2452171;
 const MILESTONE_INITIAL_MONTHLY_DEPOSIT = 40000;
 const MILESTONE_REAL_ANNUAL_RETURN = 0.07;
@@ -1006,8 +1005,10 @@ function financeMonths() {
 }
 
 function estimateMilestoneDate(currentNetWorth, target) {
-  if (currentNetWorth >= target) return new Date(MILESTONE_BASE_DATE);
-  const monthlyReturn = MILESTONE_REAL_ANNUAL_RETURN / 12;
+  const projectionDate = new Date();
+  projectionDate.setHours(0, 0, 0, 0);
+  if (currentNetWorth >= target) return projectionDate;
+  const monthlyReturn = Math.pow(1 + MILESTONE_REAL_ANNUAL_RETURN, 1 / 12) - 1;
   let projected = Math.max(0, Number(currentNetWorth) || 0);
   let monthlySaving = MILESTONE_INITIAL_MONTHLY_DEPOSIT;
   let monthsNeeded = 0;
@@ -1021,9 +1022,8 @@ function estimateMilestoneDate(currentNetWorth, target) {
   }
 
   if (!Number.isFinite(projected) || projected < target) return null;
-  const date = new Date(MILESTONE_BASE_DATE);
-  date.setMonth(MILESTONE_BASE_DATE.getMonth() + monthsNeeded);
-  return date;
+  projectionDate.setMonth(projectionDate.getMonth() + monthsNeeded);
+  return projectionDate;
 }
 
 function ageOnDate(date) {
@@ -1353,7 +1353,7 @@ function leveragedPriceSignalText(metrics) {
   if (!metrics.hasLeveragedEtfHolding) return "目前找不到 00685L 持股，這項加碼燈號先略過。";
   if (signal.state === "idle" || signal.state === "loading") return "正在讀取 00685L 近 20 個交易日價格。";
   if (signal.state === "error") return "00685L 歷史價格暫時無法讀取，先維持目標配置。";
-  const base = `回落 ${signal.pullback.toFixed(1)}%。`;
+  const base = `較20個交易日高點回檔 ${signal.pullback.toFixed(1)}%。`;
   if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
     return `${base} 先補緊急預備金，不加碼。`;
   }

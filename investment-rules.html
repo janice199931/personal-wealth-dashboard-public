@@ -65,7 +65,7 @@
           <h2>資金優先順序</h2>
           <ol>
             <li>先補滿緊急預備金。</li>
-            <li>再把投資預備金維持在投資配置資產 15%。</li>
+            <li>再把全部現金補到投資配置資產的 15%；其中扣除 10 萬緊急預備金後，才是投資預備金目標。</li>
             <li>新增資金依 50% / 35% / 15% 配置差距優先投入。</li>
             <li>最後再看 00685L 是否達額外加碼條件。</li>
           </ol>
@@ -76,9 +76,9 @@
           <h2>分批加碼規則</h2>
           <div class="rule-steps">
             <div><strong>一般震盪</strong><p>依目標配置調整，不額外動用投資預備金。</p></div>
-            <div><strong>回檔 10%</strong><p>可動用投資預備金 30%。</p></div>
-            <div><strong>回檔 20%</strong><p>再動用投資預備金 40%。</p></div>
-            <div><strong>回檔 30%</strong><p>投入剩餘 30%。</p></div>
+            <div><strong>較20個交易日高點回檔 10%</strong><p>可動用投資預備金 30%。</p></div>
+            <div><strong>較20個交易日高點回檔 20%</strong><p>再動用投資預備金 40%。</p></div>
+            <div><strong>較20個交易日高點回檔 30%</strong><p>投入剩餘 30%。</p></div>
           </div>
         </article>
 
@@ -294,18 +294,18 @@
           };
         }
         if (signal.pullback >= 30) {
-          return { tone: "editing", title: "回檔 30% 條件", text: `可投入本輪基準的剩餘金額，約 ${money.format(deployment(metrics, signal, 30))}。` };
+          return { tone: "editing", title: "較20日高點回檔 30% 條件", text: `可投入本輪基準的剩餘金額，約 ${money.format(deployment(metrics, signal, 30))}。` };
         }
         if (signal.pullback >= 20) {
-          return { tone: "editing", title: "回檔 20% 條件", text: `可再動用本輪基準約 40%，約 ${money.format(deployment(metrics, signal, 20))}。` };
+          return { tone: "editing", title: "較20日高點回檔 20% 條件", text: `可再動用本輪基準約 40%，約 ${money.format(deployment(metrics, signal, 20))}。` };
         }
         if (signal.pullback >= 10) {
-          return { tone: "editing", title: "回檔 10% 條件", text: `可動用本輪基準約 30%，約 ${money.format(deployment(metrics, signal, 10))}。` };
+          return { tone: "editing", title: "較20日高點回檔 10% 條件", text: `可動用本輪基準約 30%，約 ${money.format(deployment(metrics, signal, 10))}。` };
         }
         return {
           tone: "",
           title: "今天不用額外加碼",
-          text: `00685L 近 20 日回檔 ${pct.format(signal.pullback)}%，未達 10% 加碼條件。`,
+          text: `00685L 較20個交易日高點回檔 ${pct.format(signal.pullback)}%，未達 10% 加碼條件。`,
         };
       }
 
@@ -318,7 +318,7 @@
           resultBox("緊急預備金", money.format(metrics.emergencyFund), `${pct.format((metrics.emergencyFund / EMERGENCY_FUND_TARGET) * 100)}% / 目標 ${money.format(EMERGENCY_FUND_TARGET)}`),
           resultBox("投資預備金", money.format(metrics.investmentReserve), `${pct.format((metrics.investmentReserve / Math.max(1, metrics.investmentReserveTarget)) * 100)}% / 15% 目標 ${money.format(metrics.investmentReserveTarget)}`),
           resultBox("配置範圍", "全部台股＋全部美股＋全部現金", `現金目標 ${money.format(metrics.cashTarget)}｜在途交割款 ${money.format(metrics.pendingSettlement)}`),
-          resultBox("00685L 回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signalNote),
+          resultBox("00685L 較20日高點回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signalNote),
         ].join("");
         strategyAdvice.classList.toggle("editing", conclusion.tone === "editing");
         strategyAdvice.innerHTML = `<span><strong>${conclusion.title}</strong> ${conclusion.text}</span>`;
