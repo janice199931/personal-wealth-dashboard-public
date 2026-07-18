@@ -39,6 +39,7 @@ const data = {
   assetTrend: [],
   transactions: [],
   accountBreakdown: {},
+  pendingSettlement: 0,
   currentMonthFinance: null,
   leveragedPullbackSignal: { state: "idle" },
   rebalancer: {
@@ -79,7 +80,6 @@ const EMERGENCY_FUND_TARGET = 100000;
 const CASH_TARGET_RATIO = 0.2;
 const TOTAL_NET_WORTH = 2299896;
 const TOTAL_CASH_TARGET = Math.round(TOTAL_NET_WORTH * CASH_TARGET_RATIO);
-const ACTUAL_BANK_BALANCE_FALLBACK = 156199;
 const ETF_00685L_SPLIT_RATIO = 24;
 const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
 const EXPECTED_RETURN = 0.07;
@@ -725,6 +725,10 @@ function applyAccountData(accounts = {}) {
   data.accountBreakdown = { ...accountBreakdown };
 }
 
+function applyPendingSettlement(value) {
+  data.pendingSettlement = Math.max(0, safeNumber(value, 0));
+}
+
 function applyCurrentMonthFinance(month = null) {
   data.currentMonthFinance = month && typeof month === "object" ? month : null;
 }
@@ -739,7 +743,7 @@ function actualBankBalance() {
   const balance = Number(data.accountBreakdown?.sinopacBalance);
   return Number.isFinite(balance) && balance >= 0
     ? Math.round(balance)
-    : ACTUAL_BANK_BALANCE_FALLBACK;
+    : 0;
 }
 
 function fitCanvas(canvas) {
@@ -1153,23 +1157,31 @@ function renderVaults() {
     return;
   }
   const metrics = getPortfolioMetrics();
-  const cashProgress = safeProgress(metrics.cash, metrics.cashTargetAmount);
+  const actualBankBalanceCurrent = actualBankBalance();
+  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, actualBankBalanceCurrent);
+  const baseInvestmentReserve = actualBankBalanceCurrent - emergencyFund;
+  const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement, 0));
+  const pureInvestmentReserveCurrent = baseInvestmentReserve - pendingSettlement;
+  const cashProgress = safeProgress(actualBankBalanceCurrent, metrics.cashTargetAmount);
   const rows = [
     {
       title: "💰 永豐現金總庫 (20%)",
-      status: metrics.cash >= metrics.cashTargetAmount ? "good" : "watch",
+      status: actualBankBalanceCurrent >= metrics.cashTargetAmount ? "good" : "watch",
       progress: cashProgress,
       lines: [
         ["目標", money.format(metrics.cashTargetAmount)],
-        ["目前", money.format(metrics.cash)],
+        ["目前", money.format(actualBankBalanceCurrent)],
       ],
     },
     {
       title: "🔍 永豐現金拆解",
       status: "watch",
       lines: [
-        ["緊急預備金：", `${money.format(metrics.emergencyFund)} 🟢 已鎖定`],
-        ["投資預備金：", `${money.format(metrics.investmentReserve)} 🟡 補彈中`],
+        ["緊急預備金：", `${money.format(emergencyFund)} 🟢 已鎖定`],
+        ...(pendingSettlement > 0
+          ? [["⏳ 證券在途交割：", `-${money.format(pendingSettlement)}`]]
+          : []),
+        ["實質可用子彈：", `${money.format(pureInvestmentReserveCurrent)} 🟡 補彈中`],
       ],
     },
   ];
@@ -2244,6 +2256,7 @@ async function loadExternalData() {
     localStorage.removeItem("wealthDashboardUpdateWarning");
     applyPortfolioData(core.portfolio, core.history || []);
     applyAccountData(core.accounts || {});
+    applyPendingSettlement(core.pendingSettlement);
     applyCurrentMonthFinance(core.currentMonthFinance || null);
     dashboardDataLoaded = true;
     renderCoreDashboard();

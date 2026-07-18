@@ -217,6 +217,10 @@ curl -u admin:local-password -X POST http://127.0.0.1:8000/api/db/rebuild-portfo
 
 ## Supabase Cloud Database
 
+### T+2 在途交割
+
+新建台股交易會保存 `amount`、`status`、`createdAt` 與 `settleAt`；`settleAt` 是建立時間後 48 小時。首頁的 `/api/dashboard-core` 與 `/api/pending-settlement` 會先自動完成已到期交易，再由資料庫聚合尚未到期的淨交割款。舊交易在資料庫升級時預設為 `completed`，不會被誤列為在途款。
+
 Supabase 版會優先使用 PostgreSQL。若 Supabase 連線失敗、環境變數錯誤或服務暫時不可用，網站會自動改用 SQLite，不會影響既有 Render 網站開啟。
 
 支援的環境變數，擇一設定即可：

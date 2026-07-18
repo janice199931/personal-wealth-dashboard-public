@@ -121,6 +121,10 @@ def _sqlite_script() -> str:
         date TEXT NOT NULL,
         market TEXT NOT NULL,
         symbol TEXT NOT NULL,
+        amount REAL NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed')),
+        created_at TEXT,
+        settle_at TEXT,
         payload TEXT NOT NULL,
         updated_at TEXT NOT NULL
     );
@@ -175,10 +179,19 @@ def _postgres_statements() -> list[str]:
             date TEXT NOT NULL,
             market TEXT NOT NULL,
             symbol TEXT NOT NULL,
+            amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'completed' CHECK (status IN ('pending', 'completed')),
+            created_at TIMESTAMPTZ,
+            settle_at TIMESTAMPTZ,
             payload TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
         """,
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS amount DOUBLE PRECISION NOT NULL DEFAULT 0",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'completed'",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+        "ALTER TABLE transactions ADD COLUMN IF NOT EXISTS settle_at TIMESTAMPTZ",
+        "CREATE INDEX IF NOT EXISTS idx_transactions_pending_settlement ON transactions (status, settle_at)",
         """
         CREATE TABLE IF NOT EXISTS dividends (
             id TEXT PRIMARY KEY,
@@ -294,6 +307,19 @@ def init_sqlite() -> None:
         return
     with _connect_sqlite() as connection:
         connection.executescript(_sqlite_script())
+        columns = {row["name"] for row in connection.execute("PRAGMA table_info(transactions)")}
+        migrations = {
+            "amount": "ALTER TABLE transactions ADD COLUMN amount REAL NOT NULL DEFAULT 0",
+            "status": "ALTER TABLE transactions ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'",
+            "created_at": "ALTER TABLE transactions ADD COLUMN created_at TEXT",
+            "settle_at": "ALTER TABLE transactions ADD COLUMN settle_at TEXT",
+        }
+        for column, statement in migrations.items():
+            if column not in columns:
+                connection.execute(statement)
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_transactions_pending_settlement ON transactions (status, settle_at)"
+        )
         connection.commit()
     _SQLITE_READY_PATH = path
 
@@ -624,8 +650,20 @@ def clear_all() -> None:
 
 
 def read_transactions() -> list[dict[str, Any]]:
-    rows, _ = _execute_read("SELECT payload FROM transactions ORDER BY date, id")
-    return [decode(_row_value(row, "payload"), {}) for row in rows]
+    rows, _ = _execute_read(
+        "SELECT payload, amount, status, created_at, settle_at FROM transactions ORDER BY date, id"
+    )
+    output = []
+    for row in rows:
+        payload = decode(_row_value(row, "payload"), {})
+        payload.update({
+            "amount": float(_row_value(row, "amount") or 0),
+            "status": str(_row_value(row, "status") or "completed"),
+            "createdAt": _row_value(row, "created_at"),
+            "settleAt": _row_value(row, "settle_at"),
+        })
+        output.append(payload)
+    return output
 
 
 def write_transactions(transactions: list[dict[str, Any]]) -> None:
@@ -636,6 +674,10 @@ def write_transactions(transactions: list[dict[str, Any]]) -> None:
             str(row.get("date", "")),
             str(row.get("market", "")).upper(),
             str(row.get("symbol", "")).upper(),
+            float(row.get("amount", 0) or 0),
+            str(row.get("status", "completed")),
+            row.get("createdAt"),
+            row.get("settleAt"),
             encode(row),
             timestamp,
         )
@@ -643,10 +685,32 @@ def write_transactions(transactions: list[dict[str, Any]]) -> None:
     ]
     _replace_rows(
         "transactions",
-        "INSERT INTO transactions (id, date, market, symbol, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-        "INSERT INTO transactions (id, date, market, symbol, payload, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+        "INSERT INTO transactions (id, date, market, symbol, amount, status, created_at, settle_at, payload, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO transactions (id, date, market, symbol, amount, status, created_at, settle_at, payload, updated_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         rows,
     )
+
+
+def settle_expired_transactions_and_sum_pending(now: datetime | None = None) -> float:
+    """Atomically expire T+2 rows, then aggregate the remaining cash outflow."""
+    current = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    timestamp = current.isoformat(timespec="seconds")
+    backend = active_backend()
+    # A read-only fallback must still render the correct available cash. Once the
+    # primary database reconnects, the normal request persists completed states.
+    if not _using_supabase_fallback(backend):
+        _execute_write(
+            "UPDATE transactions SET status = 'completed', updated_at = ? WHERE status = 'pending' AND settle_at IS NOT NULL AND settle_at <= ?",
+            "UPDATE transactions SET status = 'completed', updated_at = %s WHERE status = 'pending' AND settle_at IS NOT NULL AND settle_at <= %s::timestamptz",
+            (timestamp, timestamp),
+        )
+    rows, _ = _execute_read(
+        "SELECT COALESCE(SUM(amount), 0) AS pending_settlement FROM transactions WHERE status = 'pending' AND settle_at IS NOT NULL AND settle_at > ?",
+        "SELECT COALESCE(SUM(amount), 0) AS pending_settlement FROM transactions WHERE status = 'pending' AND settle_at IS NOT NULL AND settle_at > %s::timestamptz",
+        (timestamp,),
+    )
+    value = float(_row_value(rows[0], "pending_settlement") or 0) if rows else 0.0
+    return max(0.0, value)
 
 
 def read_dividends() -> list[dict[str, Any]]:

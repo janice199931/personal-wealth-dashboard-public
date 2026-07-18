@@ -13,7 +13,7 @@ import time
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from pathlib import Path
 from typing import Any, Optional
@@ -203,7 +203,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-07-18 allocation logic fixes"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-18 T+2 settlement automation"),
     }
 
 
@@ -388,6 +388,33 @@ def normalize_transaction(payload: dict[str, Any]) -> dict[str, Any]:
         "purpose": purpose,
         "note": note,
     }
+
+
+def with_settlement_fields(
+    transaction: dict[str, Any],
+    existing: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Add immutable T+2 metadata; legacy rows remain completed unless newly created."""
+    output = dict(transaction)
+    gross = float(output["shares"]) * float(output["price"])
+    fee = float(output.get("fee", 0) or 0)
+    output["amount"] = round(gross + fee if output["action"] == "BUY" else -(gross - fee), 6)
+
+    if existing and existing.get("createdAt") and existing.get("market") == output["market"]:
+        output["createdAt"] = existing["createdAt"]
+        output["settleAt"] = existing.get("settleAt")
+        output["status"] = existing.get("status", "completed")
+        return output
+
+    created_at = datetime.now(timezone.utc)
+    output["createdAt"] = created_at.isoformat(timespec="seconds")
+    if output["market"] == "TW":
+        output["status"] = "pending"
+        output["settleAt"] = (created_at + timedelta(hours=48)).isoformat(timespec="seconds")
+    else:
+        output["status"] = "completed"
+        output["settleAt"] = None
+    return output
 
 
 def normalize_dividend(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1927,6 +1954,7 @@ def get_dashboard_core(fast: bool = False) -> Response:
                     break
             if current_month_finance:
                 break
+    pending_settlement = db_store.settle_expired_transactions_and_sum_pending()
     return utf8_json({
         "ok": True,
         "portfolio": portfolio,
@@ -1934,10 +1962,26 @@ def get_dashboard_core(fast: bool = False) -> Response:
         "transactions": None if fast else transactions,
         "dividends": None if fast else dividends,
         "accounts": accounts,
+        "pendingSettlement": pending_settlement,
         "currentMonthFinance": current_month_finance,
         "correction": correction,
         "fast": fast,
         "source": db_store.active_backend() if portfolio else "example",
+    })
+
+
+@app.get("/api/pending-settlement")
+def get_pending_settlement() -> Response:
+    accounts = db_store.read_accounts({})
+    breakdown = accounts.get("accountBreakdown") if isinstance(accounts, dict) else {}
+    if not isinstance(breakdown, dict):
+        breakdown = {}
+    actual_bank_balance = max(0, round(float(breakdown.get("sinopacBalance", 0) or 0)))
+    return utf8_json({
+        "ok": True,
+        "actualBankBalance": actual_bank_balance,
+        "pendingSettlement": db_store.settle_expired_transactions_and_sum_pending(),
+        "asOf": db_store.now_iso(),
     })
 
 
@@ -2312,6 +2356,7 @@ def restore_backup(backup_name: str) -> dict:
 
 @app.get("/api/transactions")
 def get_transactions() -> dict:
+    db_store.settle_expired_transactions_and_sum_pending()
     transactions = read_transactions(use_examples=False)
     transactions, changed = ensure_transaction_ids(transactions)
     if changed:
@@ -2343,7 +2388,7 @@ async def create_transaction(request: Request) -> dict:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="交易資料格式錯誤。")
 
-    transaction = normalize_transaction(payload)
+    transaction = with_settlement_fields(normalize_transaction(payload))
     transaction["id"] = f"tx-{uuid4().hex[:12]}"
     transactions, changed = ensure_transaction_ids(read_transactions())
     if changed:
@@ -2374,7 +2419,7 @@ async def update_transaction(transaction_id: str, request: Request) -> dict:
     if index is None:
         raise HTTPException(status_code=404, detail="找不到交易紀錄。")
 
-    transaction = normalize_transaction({**payload, "id": transaction_id})
+    transaction = with_settlement_fields(normalize_transaction({**payload, "id": transaction_id}), transactions[index])
     next_transactions = transactions[:]
     next_transactions[index] = transaction
     validate_positions(next_transactions)
