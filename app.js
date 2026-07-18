@@ -40,6 +40,7 @@ const data = {
   transactions: [],
   accountBreakdown: {},
   pendingSettlement: 0,
+  usBrokerCash: 0,
   currentMonthFinance: null,
   leveragedPullbackSignal: { state: "idle" },
   rebalancer: {
@@ -78,12 +79,10 @@ const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
 const CASH_TARGET_RATIO = 0.2;
-const TOTAL_NET_WORTH = 2299896;
-const TOTAL_CASH_TARGET = Math.round(TOTAL_NET_WORTH * CASH_TARGET_RATIO);
 const ETF_00685L_SPLIT_RATIO = 24;
 const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
-const EXPECTED_RETURN = 0.07;
-const ANNUAL_SAVING = 550000;
+const EXPECTED_RETURN = 0.05;
+const FALLBACK_ANNUAL_SAVING = 550000;
 const US_DRIP_POSITION_TARGETS = {
   MU: { shares: 26.00282, averageCost: 499.87617 },
   VOO: { shares: 9.07725, averageCost: 602.22 },
@@ -721,11 +720,14 @@ function applyPortfolioData(portfolio, history = []) {
   }
 }
 
-function applyAccountData(accounts = {}) {
+function applyAccountData(accounts = {}, usBrokerCash = null) {
   const accountBreakdown = accounts.accountBreakdown && typeof accounts.accountBreakdown === "object"
     ? accounts.accountBreakdown
     : {};
   data.accountBreakdown = { ...accountBreakdown };
+  const apiCash = Number(usBrokerCash);
+  const calculatedCash = Number(accounts.cashUSD) * usdToTwd;
+  data.usBrokerCash = Math.max(0, Math.round(Number.isFinite(apiCash) ? apiCash : calculatedCash || 0));
 }
 
 function applyPendingSettlement(value) {
@@ -738,8 +740,9 @@ function applyCurrentMonthFinance(month = null) {
 
 function cashBuckets(totalCash = 0) {
   const cash = Math.max(0, Math.round(Number(totalCash) || 0));
-  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, cash);
-  return { emergencyFund, investmentReserve: Math.max(0, cash - emergencyFund) };
+  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, actualBankBalance());
+  const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement));
+  return { emergencyFund, investmentReserve: Math.max(0, cash - emergencyFund - pendingSettlement) };
 }
 
 function actualBankBalance() {
@@ -747,6 +750,10 @@ function actualBankBalance() {
   return Number.isFinite(balance) && balance >= 0
     ? Math.round(balance)
     : 0;
+}
+
+function totalInvestmentCash() {
+  return actualBankBalance() + Math.max(0, Math.round(safeNumber(data.usBrokerCash)));
 }
 
 function fitCanvas(canvas) {
@@ -842,7 +849,7 @@ function drawPieChart(canvas, rows) {
 }
 
 function renderAssetPie() {
-  const cash = actualBankBalance();
+  const cash = totalInvestmentCash();
   const assetRows = data.assetPie
     .filter((row) => row.label !== "負債")
     .map((row) => row.label === "現金" ? { ...row, value: cash } : row);
@@ -893,7 +900,7 @@ function getPortfolioMetrics() {
   const us = data.investments.us;
   const taiwanStocks = assetValue("台股");
   const usStocks = assetValue("美股");
-  const cash = actualBankBalance();
+  const cash = totalInvestmentCash();
   const debt = assetValue("負債");
   const stockAssets = taiwanStocks + usStocks;
   const totalAssets = safeNumber(data.metrics.totalAssets, stockAssets + cash);
@@ -926,7 +933,7 @@ function getPortfolioMetrics() {
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
   const allocationAssets = stockAssets + cash;
-  const cashTargetAmount = TOTAL_CASH_TARGET;
+  const cashTargetAmount = Math.round(allocationAssets * CASH_TARGET_RATIO);
   const investmentReserveTarget = cashTargetAmount - EMERGENCY_FUND_TARGET;
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
@@ -997,7 +1004,7 @@ function financeMonths() {
 function estimateMilestoneDate(currentNetWorth, target) {
   if (currentNetWorth >= target) return new Date();
   const monthlyReturn = Math.pow(1 + EXPECTED_RETURN, 1 / 12) - 1;
-  const monthlySaving = ANNUAL_SAVING / 12;
+  const monthlySaving = estimatedAnnualSaving() / 12;
   let projected = Math.max(0, Number(currentNetWorth) || 0);
   let monthsNeeded = 0;
 
@@ -1010,6 +1017,13 @@ function estimateMilestoneDate(currentNetWorth, target) {
   const date = new Date();
   date.setMonth(date.getMonth() + monthsNeeded);
   return date;
+}
+
+function estimatedAnnualSaving() {
+  const recentMonths = financeMonths().slice(-12);
+  if (!recentMonths.length) return FALLBACK_ANNUAL_SAVING;
+  const totalNet = recentMonths.reduce((sum, month) => sum + monthNetValue(month), 0);
+  return Math.max(0, Math.round((totalNet / recentMonths.length) * 12));
 }
 
 function ageOnDate(date) {
@@ -1159,27 +1173,30 @@ function renderVaults() {
   }
   const metrics = getPortfolioMetrics();
   const actualBankBalanceCurrent = actualBankBalance();
+  const usBrokerCash = Math.max(0, Math.round(safeNumber(data.usBrokerCash)));
+  const totalCashCurrent = actualBankBalanceCurrent + usBrokerCash;
   const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, actualBankBalanceCurrent);
   const baseInvestmentReserve = actualBankBalanceCurrent - emergencyFund;
   const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement, 0));
-  const pureInvestmentReserveCurrent = baseInvestmentReserve - pendingSettlement;
-  const cashProgress = safeProgress(actualBankBalanceCurrent, metrics.cashTargetAmount);
+  const pureInvestmentReserveCurrent = Math.max(0, baseInvestmentReserve - pendingSettlement) + usBrokerCash;
+  const cashProgress = safeProgress(totalCashCurrent, metrics.cashTargetAmount);
   const rows = [
     {
-      title: "💰 永豐現金總庫 (20%)",
-      status: actualBankBalanceCurrent >= metrics.cashTargetAmount ? "good" : "watch",
+      title: "💰 投資現金總庫 (20%)",
+      status: totalCashCurrent >= metrics.cashTargetAmount ? "good" : "watch",
       progress: cashProgress,
       lines: [
         ["目標", money.format(metrics.cashTargetAmount)],
-        ["目前", money.format(actualBankBalanceCurrent)],
+        ["目前", money.format(totalCashCurrent)],
       ],
     },
     {
-      title: "🔍 永豐現金拆解",
+      title: "🔍 投資現金拆解",
       status: "watch",
       lines: [
         ["緊急預備金：", money.format(emergencyFund)],
         ["在途交割款：", pendingSettlement > 0 ? `-${money.format(pendingSettlement)} ⏳` : money.format(0)],
+        ["Firstrade 現金：", money.format(usBrokerCash)],
         ["投資預備金：", money.format(pureInvestmentReserveCurrent)],
       ],
     },
@@ -2254,7 +2271,7 @@ async function loadExternalData() {
   if (core?.portfolio) {
     localStorage.removeItem("wealthDashboardUpdateWarning");
     applyPortfolioData(core.portfolio, core.history || []);
-    applyAccountData(core.accounts || {});
+    applyAccountData(core.accounts || {}, core.usBrokerCash);
     applyPendingSettlement(core.pendingSettlement);
     applyCurrentMonthFinance(core.currentMonthFinance || null);
     dashboardDataLoaded = true;

@@ -1955,6 +1955,9 @@ def get_dashboard_core(fast: bool = False) -> Response:
             if current_month_finance:
                 break
     pending_settlement = db_store.settle_expired_transactions_and_sum_pending()
+    us_broker_cash = round(
+        float(accounts.get("cashUSD", 0) or 0) * float(portfolio.get("fxRate", 0) or 0)
+    )
     return utf8_json({
         "ok": True,
         "portfolio": portfolio,
@@ -1962,6 +1965,7 @@ def get_dashboard_core(fast: bool = False) -> Response:
         "transactions": None if fast else transactions,
         "dividends": None if fast else dividends,
         "accounts": accounts,
+        "usBrokerCash": us_broker_cash,
         "pendingSettlement": pending_settlement,
         "currentMonthFinance": current_month_finance,
         "correction": correction,
@@ -1977,9 +1981,14 @@ def get_pending_settlement() -> Response:
     if not isinstance(breakdown, dict):
         breakdown = {}
     actual_bank_balance = max(0, round(float(breakdown.get("sinopacBalance", 0) or 0)))
+    portfolio = read_portfolio(use_examples=False)
+    us_broker_cash = round(
+        float(accounts.get("cashUSD", 0) or 0) * float(portfolio.get("fxRate", 0) or 0)
+    )
     return utf8_json({
         "ok": True,
         "actualBankBalance": actual_bank_balance,
+        "usBrokerCash": us_broker_cash,
         "pendingSettlement": db_store.settle_expired_transactions_and_sum_pending(),
         "asOf": db_store.now_iso(),
     })
@@ -2576,7 +2585,7 @@ async def update_asset_snapshot(
     manual_post_office = parse_manual_amount(postOfficeBalance, "郵局餘額")
     manual_sinopac = parse_manual_amount(sinopacBalance, "永豐餘額")
     manual_debt = parse_manual_amount(creditCardDebt, "信用卡負債")
-    manual_cash_usd = parse_manual_decimal(cashUSD, "美股帳戶現金（USD）")
+    manual_cash_usd = parse_manual_decimal(cashUSD, "Firstrade 現金（USD）")
     manual_income = parse_manual_amount(monthlyIncome, "月份收入")
     manual_expense = parse_manual_amount(monthlyExpense, "月份支出")
     manual_sinopac_transfer = parse_manual_amount(monthlySinopacTransfer, "本月轉入永豐")
@@ -2783,7 +2792,7 @@ async def update_asset_snapshot(
     if manual_bank is not None and float(verified_breakdown.get("otherBankBalance", -1) or 0) != float(manual_bank):
         raise HTTPException(status_code=503, detail="其他銀行餘額已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if manual_cash_usd is not None and float(verified_accounts.get("cashUSD", -1) or 0) != float(manual_cash_usd):
-        raise HTTPException(status_code=503, detail="美股帳戶現金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
+        raise HTTPException(status_code=503, detail="Firstrade 現金已送出，但重新讀取後內容沒有對上，請重新整理確認。")
     if amounts["source"] not in {"supplement_only", "existing_accounts"}:
         expected_cash_twd = round(float(verified_breakdown.get("sinopacBalance", 0) or 0))
         if round(float(verified_accounts.get("cashTWD", -1) or 0)) != expected_cash_twd:
