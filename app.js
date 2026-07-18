@@ -5,6 +5,8 @@ const data = {
   year: 2026,
   metrics: {
     totalAssets: 0,
+    netWorth: 0,
+    debt: 0,
   },
   dividends: [],
   investments: {
@@ -75,6 +77,7 @@ const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
 const CASH_TARGET_RATIO = 0.2;
+const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
 const US_DRIP_POSITION_TARGETS = {
@@ -637,11 +640,16 @@ function applyPortfolioData(portfolio, history = []) {
   const twHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "TW").sort(byMarketValueDesc);
   const usHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "US").sort(byMarketValueDesc);
   const leveragedHolding = (portfolio.holdings ?? []).find((holding) => String(holding.symbol || "").toUpperCase() === "00685L");
+  const qqqmHolding = (portfolio.holdings ?? []).find((holding) => String(holding.symbol || "").toUpperCase() === "QQQM");
+  const leveragedValue = Number(leveragedHolding?.marketValueTWD ?? leveragedHolding?.marketValue ?? 0) || 0;
+  const qqqmValue = Number(qqqmHolding?.marketValueTWD ?? qqqmHolding?.marketValue ?? 0) || 0;
 
   usdToTwd = Number(portfolio.fxRate) || usdToTwd;
   data.updatedAt = portfolio.updatedAt || "";
   data.fxNote = `美股以 1 USD = ${portfolio.fxRate} TWD 換算`;
   data.metrics.totalAssets = portfolio.summary.totalAssets;
+  data.metrics.netWorth = portfolio.summary.netWorth;
+  data.metrics.debt = portfolio.summary.debt;
   data.investments.tw = {
     ...data.investments.tw,
     title: twHoldings[0]?.name ? `${twHoldings[0].name} ${twHoldings[0].symbol}` : data.investments.tw.title,
@@ -689,8 +697,8 @@ function applyPortfolioData(portfolio, history = []) {
   };
 
   data.assetPie = [
-    { label: "台股", value: portfolio.allocation?.taiwanStocks ?? 0, color: "#e9a3ad" },
-    { label: "美股", value: portfolio.allocation?.usStocks ?? 0, color: "#f0bd76" },
+    { label: "台股", value: leveragedValue, color: "#e9a3ad" },
+    { label: "美股", value: qqqmValue, color: "#f0bd76" },
     { label: "現金", value: portfolio.allocation?.cash ?? 0, color: "#a8c4a0" },
     { label: "負債", value: portfolio.allocation?.debt ?? 0, color: "#b8acd3" },
   ];
@@ -871,8 +879,8 @@ function getPortfolioMetrics() {
   const cash = assetValue("現金");
   const debt = assetValue("負債");
   const stockAssets = taiwanStocks + usStocks;
-  const totalAssets = stockAssets + cash;
-  const netWorth = totalAssets - debt;
+  const totalAssets = safeNumber(data.metrics.totalAssets, stockAssets + cash);
+  const netWorth = safeNumber(data.metrics.netWorth, totalAssets - debt);
   const monthlyRows = monthlyMetricRows();
   const currentMonthFinance = currentFinanceMonth();
   const currentMonth = currentMonthFinance || currentMonthFallback();
@@ -901,7 +909,9 @@ function getPortfolioMetrics() {
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
   const allocationAssets = stockAssets + investmentReserve;
-  const investmentReserveTarget = Math.round(allocationAssets * CASH_TARGET_RATIO);
+  const investmentReserveTarget = Math.round(
+    stockAssets * CASH_TARGET_RATIO / Math.max(0.01, 1 - CASH_TARGET_RATIO),
+  );
   const cashTargetAmount = EMERGENCY_FUND_TARGET + investmentReserveTarget;
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
@@ -1069,7 +1079,7 @@ function renderHero() {
     <div class="decision-side">
       <span>投資資產</span>
       <strong>${money.format(metrics.allocationAssets)}</strong>
-      <small>台股＋美股＋投資現金</small>
+      <small>00685L＋QQQM＋投資預備金</small>
     </div>
   `;
 }
@@ -1213,8 +1223,8 @@ function fundWaterSummary(metrics) {
   return [
     `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
     `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(metrics.investmentReserveTarget)} (20%)`,
-    "配置計算不包含緊急預備金",
-    "目標配置：台股 40% / 美股 40% / 現金 20%",
+    "配置計算不包含緊急預備金與其他持股",
+    "目標配置：00685L 40% / QQQM 40% / 投資預備金 20%",
   ].join("<br>");
 }
 
@@ -1262,8 +1272,32 @@ function nextActionSummary(metrics) {
   return "維持 40% / 40% / 20% 配置，等待 00685L 回檔條件。";
 }
 
-function reserveDeploymentAmount(metrics, ratio) {
-  return Math.max(0, Math.round((Number(metrics.investmentReserve) || 0) * ratio));
+function reserveDeploymentBase(metrics) {
+  const signal = data.leveragedPullbackSignal || {};
+  const currentReserve = Math.max(0, Math.round(Number(metrics.investmentReserve) || 0));
+  try {
+    if (signal.state === "ready" && signal.pullback < 10) {
+      localStorage.removeItem(LEVERAGED_DEPLOYMENT_BASE_KEY);
+      return currentReserve;
+    }
+    const saved = JSON.parse(localStorage.getItem(LEVERAGED_DEPLOYMENT_BASE_KEY) || "null");
+    if (saved?.amount > 0) return Math.round(saved.amount);
+    if (signal.state === "ready" && signal.pullback >= 10) {
+      localStorage.setItem(LEVERAGED_DEPLOYMENT_BASE_KEY, JSON.stringify({ amount: currentReserve, startedAt: new Date().toISOString() }));
+    }
+  } catch {
+    // Storage is optional; the current reserve remains a safe fallback.
+  }
+  return currentReserve;
+}
+
+function reserveDeploymentAmount(metrics, stage) {
+  const base = reserveDeploymentBase(metrics);
+  const first = Math.round(base * 0.3);
+  const firstTwo = Math.round(base * 0.7);
+  if (stage === 10) return first;
+  if (stage === 20) return Math.max(0, firstTwo - first);
+  return Math.max(0, base - firstTwo);
 }
 
 function leveragedPriceSignalText(metrics) {
@@ -1279,13 +1313,13 @@ function leveragedPriceSignalText(metrics) {
     return `${base} 投資預備金還沒達 20%，不額外加碼。`;
   }
   if (signal.pullback >= 30) {
-    return `${base} 回檔 30%，投入投資預備金剩餘 30%，約 ${money.format(reserveDeploymentAmount(metrics, 0.3))}。`;
+    return `${base} 回檔 30%，投入本輪投資預備金的剩餘金額，約 ${money.format(reserveDeploymentAmount(metrics, 30))}。`;
   }
   if (signal.pullback >= 20) {
-    return `${base} 回檔 20%，再動用投資預備金 40%，約 ${money.format(reserveDeploymentAmount(metrics, 0.4))}。`;
+    return `${base} 回檔 20%，再動用本輪基準約 40%，約 ${money.format(reserveDeploymentAmount(metrics, 20))}。`;
   }
   if (signal.pullback >= 10) {
-    return `${base} 回檔 10%，可動用投資預備金 30%，約 ${money.format(reserveDeploymentAmount(metrics, 0.3))}。`;
+    return `${base} 回檔 10%，可動用本輪基準約 30%，約 ${money.format(reserveDeploymentAmount(metrics, 10))}。`;
   }
   return `${base} 一般震盪，只依目標配置調整。`;
 }
@@ -1298,27 +1332,36 @@ function leveragedPriceSignalStatus() {
   return "good";
 }
 
+function twseHistoryMonthKeys(reference = new Date()) {
+  return Array.from({ length: 3 }, (_, offset) => {
+    const month = new Date(reference.getFullYear(), reference.getMonth() - offset, 1);
+    return `${month.getFullYear()}${String(month.getMonth() + 1).padStart(2, "0")}01`;
+  });
+}
+
 function loadLeveragedPullbackSignal() {
   const signal = data.leveragedPullbackSignal || {};
   const today = todayKey();
   if (signal.state === "loading" || signal.checkedKey === today) return;
   data.leveragedPullbackSignal = { state: "loading", checkedKey: today };
-  const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${today}&stockNo=00685L&response=json`;
-  fetchWithTimeout(url, { cache: "no-store" }, 8000)
-    .then((response) => {
+  Promise.all(twseHistoryMonthKeys().map((monthKey) => {
+    const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${monthKey}&stockNo=00685L&response=json`;
+    return fetchWithTimeout(url, { cache: "no-store" }, 8000).then((response) => {
       if (!response.ok) throw new Error("TWSE history unavailable");
       return response.json();
-    })
-    .then((payload) => {
-      const rows = (payload.data || [])
+    });
+  }))
+    .then((payloads) => {
+      const rows = payloads.flatMap((payload) => payload.data || [])
         .map((row) => ({
           date: row[0],
           high: parseAmount(row[4]),
           price: parseAmount(row[6]),
         }))
         .filter((row) => Number.isFinite(row.high) && row.high > 0 && Number.isFinite(row.price) && row.price > 0)
+        .sort((a, b) => a.date.localeCompare(b.date))
         .slice(-20);
-      if (!rows.length) throw new Error("TWSE history empty");
+      if (rows.length < 20) throw new Error("TWSE history incomplete");
       const latest = rows[rows.length - 1];
       const high = Math.max(...rows.map((row) => row.high));
       data.leveragedPullbackSignal = {

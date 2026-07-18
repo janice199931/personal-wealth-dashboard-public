@@ -20,11 +20,11 @@
 
       <form id="rebalanceForm">
         <label>
-          台股目前總金額（規劃標的 00685L）
+          00685L 目前市值
           <input name="twStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
         </label>
         <label>
-          美股目前總金額（規劃標的 QQQM，台幣）
+          QQQM 目前市值（台幣）
           <input name="usStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
         </label>
         <label>
@@ -33,7 +33,7 @@
         </label>
         <label>
           已保留緊急預備金
-          <input name="protectedCash" type="number" step="1" min="0" value="100000" readonly />
+          <input name="protectedCash" type="number" step="1" min="0" value="0" readonly />
         </label>
         <label>
           台股目標比例
@@ -141,8 +141,12 @@
       function applyPortfolio(portfolio, accounts = null) {
         const allocation = portfolio?.allocation || {};
         const summary = portfolio?.summary || {};
-        const twValue = Math.round(Number(allocation.taiwanStocks ?? 0) || 0);
-        const usValue = Math.round(Number(allocation.usStocks ?? 0) || 0);
+        const holdings = portfolio?.holdings || [];
+        const targetValue = (symbol) => Math.round(Number(
+          holdings.find((holding) => String(holding.symbol || "").toUpperCase() === symbol)?.marketValueTWD ?? 0,
+        ) || 0);
+        const twValue = targetValue("00685L");
+        const usValue = targetValue("QQQM");
         const cashInfo = accounts
           ? accountBreakdown(accounts, allocation.cash ?? summary.cash)
           : {
@@ -185,9 +189,8 @@
         const twStocks = numberValue("twStocks");
         const usStocks = numberValue("usStocks");
         const cash = numberValue("cash");
-        const protectedCash = EMERGENCY_FUND_TARGET;
+        const protectedCash = Math.max(0, Math.min(EMERGENCY_FUND_TARGET, Number(form.elements.protectedCash.value) || 0));
         const investmentReserve = cash;
-        form.elements.protectedCash.value = protectedCash;
         const twTarget = numberValue("twTarget");
         const usTarget = numberValue("usTarget");
         const cashTarget = numberValue("cashTarget");

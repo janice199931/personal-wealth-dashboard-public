@@ -203,7 +203,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-07-17 allocation rules"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-18 allocation logic fixes"),
     }
 
 
