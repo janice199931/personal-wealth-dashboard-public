@@ -12,7 +12,7 @@ import tempfile
 import time
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
+from threading import Event, Lock, Thread
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from pathlib import Path
@@ -1373,16 +1373,30 @@ def ensure_corporate_action_corrections() -> dict[str, Any]:
         CORPORATE_ACTION_LOCK.release()
 
 
+def retry_pending_us_drip_transaction_corrections() -> None:
+    """Finish known DRIP ledger corrections after the cloud DB becomes ready."""
+    retry_wait = Event()
+    for attempt in range(1, 5):
+        if attempt > 1:
+            retry_wait.wait(20)
+        try:
+            result = apply_us_drip_position_corrections()
+            status = result.get("status", "unknown")
+            print(f"Startup US DRIP correction attempt {attempt}: {status}")
+            if status == "applied":
+                return
+        except Exception as error:
+            # A database outage must not prevent the dashboard from starting.
+            print(f"Startup US DRIP correction attempt {attempt} skipped: {error}")
+
+
 @app.on_event("startup")
-def complete_pending_us_drip_transaction_corrections() -> None:
-    """Finish known DRIP ledger corrections once after a deployment starts."""
-    try:
-        result = apply_us_drip_position_corrections()
-        print(f"Startup US DRIP correction: {result.get('status', 'unknown')}")
-    except Exception as error:
-        # A database outage must not prevent the dashboard from starting. The
-        # normal data-health check will continue to report any remaining gap.
-        print(f"Startup US DRIP correction skipped: {error}")
+def schedule_pending_us_drip_transaction_corrections() -> None:
+    Thread(
+        target=retry_pending_us_drip_transaction_corrections,
+        name="us-drip-ledger-correction",
+        daemon=True,
+    ).start()
 
 
 def build_holding_audit() -> dict[str, Any]:
