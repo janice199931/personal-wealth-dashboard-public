@@ -78,6 +78,7 @@ const PRICE_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const MILESTONE_BASE_DATE = new Date("2026-07-18T00:00:00+08:00");
+const MILESTONE_BASE_ASSET = 2452171;
 const MILESTONE_INITIAL_MONTHLY_DEPOSIT = 40000;
 const MILESTONE_REAL_ANNUAL_RETURN = 0.07;
 const MILESTONE_ANNUAL_DEPOSIT_INCREASE = 1500 * 0.7;
@@ -988,10 +989,11 @@ function getPortfolioMetrics() {
 
 function getNextMilestone() {
   const { netWorth } = getPortfolioMetrics();
-  const target = [5000000, 10000000, 15000000, 20000000].find((item) => item > netWorth) ?? 20000000;
-  const progress = Math.min(100, Number(((netWorth / target) * 100).toFixed(1)));
-  const remaining = Math.max(0, target - netWorth);
-  const etaDate = estimateMilestoneDate(netWorth, target);
+  const milestoneAsset = netWorth > 0 ? netWorth : MILESTONE_BASE_ASSET;
+  const target = [5000000, 10000000, 15000000, 20000000].find((item) => item > milestoneAsset) ?? 20000000;
+  const progress = Math.min(100, Number(((milestoneAsset / target) * 100).toFixed(1)));
+  const remaining = Math.max(0, target - milestoneAsset);
+  const etaDate = estimateMilestoneDate(milestoneAsset, target);
   const age = etaDate ? ageOnDate(etaDate) : null;
   return { target, progress, remaining, etaDate, age };
 }
@@ -1653,12 +1655,13 @@ function setupChartHover() {
 
 function renderMilestones() {
   const { netWorth } = getPortfolioMetrics();
+  const milestoneAsset = netWorth > 0 ? netWorth : MILESTONE_BASE_ASSET;
   const targets = [5000000, 10000000, 15000000, 20000000];
   document.getElementById("milestones").innerHTML = targets
     .map((target) => {
-      const progress = Math.min(100, Math.round((netWorth / target) * 100));
-      const remaining = Math.max(0, target - netWorth);
-      const etaDate = estimateMilestoneDate(netWorth, target);
+      const progress = Math.min(100, Math.round((milestoneAsset / target) * 100));
+      const remaining = Math.max(0, target - milestoneAsset);
+      const etaDate = estimateMilestoneDate(milestoneAsset, target);
       const age = etaDate ? ageOnDate(etaDate) : null;
       const etaText = age === null ? "持續追蹤中" : `${formatEtaDate(etaDate)}（${age}歲）`;
       return `<div class="milestone-row">
