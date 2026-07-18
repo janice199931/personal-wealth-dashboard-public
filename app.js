@@ -1192,7 +1192,7 @@ function renderVaults() {
       ],
     },
     {
-      title: "🔍 <span>投資現金拆解</span>",
+      title: "🔍 投資現金拆解",
       status: "watch",
       cardClass: "cash-breakdown-card",
       contentHtml: `<div class="vault-cash-breakdown">
