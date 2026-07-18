@@ -1364,7 +1364,11 @@ function loadLeveragedPullbackSignal() {
       const latestRaw = rawRows.at(-1);
       const rows = rawRows.map((row) => (
         latestRaw?.price > 0 && latestRaw.price < 50 && row.price > latestRaw.price * 10
-          ? { ...row, high: row.high / ETF_00685L_SPLIT_RATIO, price: row.price / ETF_00685L_SPLIT_RATIO }
+          ? {
+              ...row,
+              high: Number((row.high / ETF_00685L_SPLIT_RATIO).toFixed(4)),
+              price: Number((row.price / ETF_00685L_SPLIT_RATIO).toFixed(4)),
+            }
           : row
       )).slice(-20);
       if (rows.length < 20) throw new Error("TWSE history incomplete");
