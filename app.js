@@ -644,9 +644,12 @@ function applyPortfolioData(portfolio, history = []) {
   const twHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "TW").sort(byMarketValueDesc);
   const usHoldings = (portfolio.holdings ?? []).filter((holding) => holding.market === "US").sort(byMarketValueDesc);
   const leveragedHolding = (portfolio.holdings ?? []).find((holding) => String(holding.symbol || "").toUpperCase() === "00685L");
-  const qqqmHolding = (portfolio.holdings ?? []).find((holding) => String(holding.symbol || "").toUpperCase() === "QQQM");
-  const leveragedValue = Number(leveragedHolding?.marketValueTWD ?? leveragedHolding?.marketValue ?? 0) || 0;
-  const qqqmValue = Number(qqqmHolding?.marketValueTWD ?? qqqmHolding?.marketValue ?? 0) || 0;
+  const marketValueTwd = (holdings) => holdings.reduce(
+    (sum, holding) => sum + (Number(holding.marketValueTWD ?? holding.marketValue) || 0),
+    0,
+  );
+  const taiwanStocksValue = marketValueTwd(twHoldings);
+  const usStocksValue = marketValueTwd(usHoldings);
 
   usdToTwd = Number(portfolio.fxRate) || usdToTwd;
   data.updatedAt = portfolio.updatedAt || "";
@@ -701,8 +704,8 @@ function applyPortfolioData(portfolio, history = []) {
   };
 
   data.assetPie = [
-    { label: "台股", value: leveragedValue, color: "#e9a3ad" },
-    { label: "美股", value: qqqmValue, color: "#f0bd76" },
+    { label: "台股", value: taiwanStocksValue, color: "#e9a3ad" },
+    { label: "美股", value: usStocksValue, color: "#f0bd76" },
     { label: "現金", value: portfolio.allocation?.cash ?? 0, color: "#a8c4a0" },
     { label: "負債", value: portfolio.allocation?.debt ?? 0, color: "#b8acd3" },
   ];
@@ -839,11 +842,10 @@ function drawPieChart(canvas, rows) {
 }
 
 function renderAssetPie() {
-  const totalCash = actualBankBalance();
-  const { investmentReserve } = cashBuckets(totalCash);
+  const cash = actualBankBalance();
   const assetRows = data.assetPie
     .filter((row) => row.label !== "負債")
-    .map((row) => row.label === "現金" ? { ...row, label: "投資預備金", value: investmentReserve } : row);
+    .map((row) => row.label === "現金" ? { ...row, value: cash } : row);
   const assetTotal = assetRows.reduce((sum, row) => sum + row.value, 0);
   drawPieChart(document.getElementById("assetPieChart"), assetRows);
   document.getElementById("assetPieLegend").innerHTML = assetRows
@@ -923,7 +925,7 @@ function getPortfolioMetrics() {
   const buckets = cashBuckets(cash);
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
-  const allocationAssets = stockAssets + investmentReserve;
+  const allocationAssets = stockAssets + cash;
   const cashTargetAmount = TOTAL_CASH_TARGET;
   const investmentReserveTarget = cashTargetAmount - EMERGENCY_FUND_TARGET;
   const twCostTwd = safeNumber(tw.cost);
@@ -951,7 +953,7 @@ function getPortfolioMetrics() {
     monthNetChange: monthNet - previousMonthNet,
     cashDays,
     investmentRatio: percent(stockAssets, allocationAssets),
-    cashRatio: percent(investmentReserve, allocationAssets),
+    cashRatio: percent(cash, allocationAssets),
     debtRatio: percent(debt, totalAssets),
     twPrice: twShares ? tw.marketValue / twShares : 0,
     twUnitCost: twShares ? tw.cost / twShares : 0,
@@ -1092,7 +1094,7 @@ function renderHero() {
     <div class="decision-side">
       <span>投資資產</span>
       <strong>${money.format(metrics.allocationAssets)}</strong>
-      <small>00685L＋QQQM＋投資預備金</small>
+      <small>全部台股＋全部美股＋永豐現金</small>
     </div>
   `;
 }
@@ -1177,9 +1179,9 @@ function renderVaults() {
       title: "🔍 永豐現金拆解",
       status: "watch",
       lines: [
-        ["緊急預備金：", `${money.format(emergencyFund)} 🟢 已鎖定`],
+        ["緊急預備金：", money.format(emergencyFund)],
         ["在途交割款：", pendingSettlement > 0 ? `-${money.format(pendingSettlement)} ⏳` : money.format(0)],
-        ["投資預備金：", `${money.format(pureInvestmentReserveCurrent)} 🟡 補彈中`],
+        ["投資預備金：", money.format(pureInvestmentReserveCurrent)],
       ],
     },
   ];
