@@ -1178,8 +1178,8 @@ function renderVaults() {
       status: "watch",
       lines: [
         ["緊急預備金：", `${money.format(emergencyFund)} 🟢 已鎖定`],
-        ["投資預備金：", `${money.format(pureInvestmentReserveCurrent)} 🟡 補彈中`],
         ["在途交割款：", pendingSettlement > 0 ? `-${money.format(pendingSettlement)} ⏳` : money.format(0)],
+        ["投資預備金：", `${money.format(pureInvestmentReserveCurrent)} 🟡 補彈中`],
       ],
     },
   ];
