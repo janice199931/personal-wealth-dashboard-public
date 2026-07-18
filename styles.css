@@ -813,6 +813,88 @@ main {
   text-align: left;
 }
 
+.vault-cash-breakdown {
+  display: grid;
+  gap: 9px;
+}
+
+.vault-cash-row,
+.vault-reserve-total,
+.vault-reserve-accounts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vault-cash-row {
+  padding: 9px 10px;
+  border-radius: 11px;
+}
+
+.vault-cash-row span,
+.vault-reserve-total span {
+  color: #6f625b;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.vault-cash-row strong,
+.vault-reserve-total strong {
+  font-size: 14px;
+  text-align: right;
+}
+
+.vault-cash-row.emergency {
+  background: rgba(232, 247, 230, 0.68);
+}
+
+.vault-cash-row.emergency strong {
+  color: #568552;
+}
+
+.vault-cash-row.pending {
+  background: rgba(244, 237, 251, 0.82);
+}
+
+.vault-cash-row.pending span,
+.vault-cash-row.pending strong {
+  color: #8b66a5;
+}
+
+.vault-reserve-group {
+  padding: 9px 10px;
+  border-radius: 11px;
+  background: rgba(255, 246, 220, 0.72);
+}
+
+.vault-reserve-total {
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(209, 166, 83, 0.28);
+}
+
+.vault-reserve-total strong {
+  color: #a66f21;
+  font-weight: 950;
+}
+
+.vault-reserve-accounts {
+  padding: 7px 0 0 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.vault-reserve-accounts span,
+.vault-reserve-accounts strong {
+  color: rgba(111, 85, 74, 0.72);
+  font-size: 11px;
+}
+
+.vault-reserve-accounts strong {
+  color: #6f554a;
+  text-align: right;
+}
+
 .vault-progress {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

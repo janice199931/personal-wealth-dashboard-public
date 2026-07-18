@@ -1179,6 +1179,7 @@ function renderVaults() {
   const baseInvestmentReserve = actualBankBalanceCurrent - emergencyFund;
   const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement, 0));
   const yongfengCash = Math.max(0, baseInvestmentReserve - pendingSettlement);
+  const pureInvestmentReserveCurrent = yongfengCash + usBrokerCash;
   const cashProgress = safeProgress(totalCashCurrent, metrics.cashTargetAmount);
   const rows = [
     {
@@ -1193,25 +1194,39 @@ function renderVaults() {
     {
       title: "🔍 投資現金拆解",
       status: "watch",
-      lines: [
-        ["緊急預備金：", money.format(emergencyFund)],
-        ["在途交割款：", pendingSettlement > 0 ? `-${money.format(pendingSettlement)} ⏳` : money.format(0)],
-        ["永豐現金：", money.format(yongfengCash)],
-        ["Firstrade 現金：", money.format(usBrokerCash)],
-      ],
+      contentHtml: `<div class="vault-cash-breakdown">
+        <div class="vault-cash-row emergency">
+          <span>緊急預備金</span>
+          <strong>${money.format(emergencyFund)} 🟢</strong>
+        </div>
+        <div class="vault-cash-row pending">
+          <span>${pendingSettlement > 0 ? "⏳ " : ""}在途交割款</span>
+          <strong>${pendingSettlement > 0 ? `-${money.format(pendingSettlement)}` : money.format(0)}</strong>
+        </div>
+        <div class="vault-reserve-group">
+          <div class="vault-reserve-total">
+            <span>投資預備金</span>
+            <strong>${money.format(pureInvestmentReserveCurrent)} 🟡</strong>
+          </div>
+          <div class="vault-reserve-accounts">
+            <div><span>├ 永豐現金</span><strong>${money.format(yongfengCash)}</strong></div>
+            <div><span>└ Firstrade 現金</span><strong>${money.format(usBrokerCash)}</strong></div>
+          </div>
+        </div>
+      </div>`,
     },
   ];
 
   target.innerHTML = rows
     .map((row) => `<article class="vault-card ${row.status}">
       <div class="vault-title"><strong>${row.title}</strong></div>
-      <div class="vault-lines">
+      ${row.contentHtml || `<div class="vault-lines">
         ${row.lines.map(([label, value, detail]) => `<div>
           <span>${label}</span>
           <strong>${value}</strong>
           ${detail ? `<small class="vault-detail">${detail}</small>` : ""}
         </div>`).join("")}
-      </div>
+      </div>`}
       ${Number.isFinite(row.progress) ? `<div class="vault-progress">
         <span class="mini-progress"><i style="width:${row.progress}%"></i></span>
         <strong>${row.progress.toFixed(1)}%</strong>
