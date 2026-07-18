@@ -78,7 +78,7 @@ const PRICE_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
-const CASH_TARGET_RATIO = 0.2;
+const CASH_TARGET_RATIO = 0.15;
 const ETF_00685L_SPLIT_RATIO = 24;
 const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
 const EXPECTED_RETURN = 0.05;
@@ -1085,7 +1085,7 @@ function decisionChecklist(metrics) {
       ? `緊急預備金已達標 (${money.format(EMERGENCY_FUND_TARGET)})`
       : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - Math.round(metrics.emergencyFund))}`,
     cashGap <= 0
-      ? "投資預備金已達 20% 目標"
+      ? "投資預備金已達 15% 目標"
       : `投資預備金還差 ${money.format(cashGap)}`,
     signal.state === "ready" && signal.pullback >= 10
       ? "00685L 進入加碼觀察區"
@@ -1183,7 +1183,7 @@ function renderVaults() {
   const cashProgress = safeProgress(totalCashCurrent, metrics.cashTargetAmount);
   const rows = [
     {
-      title: "💰 投資現金總庫 (20%)",
+      title: "💰 投資現金總庫 (15%)",
       status: totalCashCurrent >= metrics.cashTargetAmount ? "good" : "watch",
       progress: cashProgress,
       lines: [
@@ -1252,7 +1252,7 @@ function cashWaterStatus(metrics) {
   if (metrics.investmentReserve < metrics.investmentReserveTarget) {
     return {
       status: "watch",
-      text: "緊急預備金已達標，接下來把投資預備金補到 20%",
+      text: "緊急預備金已達標，接下來把投資預備金補到 15%",
     };
   }
   if (metrics.investmentReserve <= metrics.investmentReserveTarget) {
@@ -1263,16 +1263,16 @@ function cashWaterStatus(metrics) {
   }
   return {
     status: "watch",
-    text: `投資預備金高於 20% 目標 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)}，可依配置差距投入`,
+    text: `投資預備金高於 15% 目標 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)}，可依配置差距投入`,
   };
 }
 
 function fundWaterSummary(metrics) {
   return [
     `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
-    `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(metrics.investmentReserveTarget)} (20%)`,
+    `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(metrics.investmentReserveTarget)} (15%)`,
     "配置計算不包含緊急預備金與其他持股",
-    "目標配置：00685L 40% / QQQM 40% / 投資預備金 20%",
+    "目標配置：00685L 50% / QQQM 35% / 投資預備金 15%",
   ].join("<br>");
 }
 
@@ -1281,10 +1281,10 @@ function investableCashSummary(metrics) {
     return `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - metrics.emergencyFund)}。`;
   }
   if (metrics.investmentReserve < metrics.investmentReserveTarget) {
-    return `投資預備金還差 ${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)} 到 20% 目標。`;
+    return `投資預備金還差 ${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)} 到 15% 目標。`;
   }
   if (metrics.investmentReserve > metrics.investmentReserveTarget) {
-    return `投資預備金超過 20% 目標 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)}，可依配置差距投入。`;
+    return `投資預備金超過 15% 目標 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)}，可依配置差距投入。`;
   }
   return `投資預備金 ${money.format(metrics.investmentReserve)}，水位健康。`;
 }
@@ -1316,8 +1316,8 @@ function nextActionSummary(metrics) {
   const water = cashWaterStatus(metrics);
   if (water.status === "warn") return "今天不買，先補緊急預備金。";
   if (metrics.investmentReserve < metrics.investmentReserveTarget) return `先把投資預備金補到 ${money.format(metrics.investmentReserveTarget)}。`;
-  if (metrics.investmentReserve > metrics.investmentReserveTarget) return `超過投資預備金 20% 目標的 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)} 可依配置差距投入。`;
-  return "維持 40% / 40% / 20% 配置，等待 00685L 回檔條件。";
+  if (metrics.investmentReserve > metrics.investmentReserveTarget) return `超過投資預備金 15% 目標的 ${money.format(metrics.investmentReserve - metrics.investmentReserveTarget)} 可依配置差距投入。`;
+  return "維持 50% / 35% / 15% 配置，等待 00685L 回檔條件。";
 }
 
 function reserveDeploymentBase(metrics) {
@@ -1358,7 +1358,7 @@ function leveragedPriceSignalText(metrics) {
     return `${base} 先補緊急預備金，不加碼。`;
   }
   if (metrics.investmentReserve < metrics.investmentReserveTarget) {
-    return `${base} 投資預備金還沒達 20%，不額外加碼。`;
+    return `${base} 投資預備金還沒達 15%，不額外加碼。`;
   }
   if (signal.pullback >= 30) {
     return `${base} 回檔 30%，投入本輪投資預備金的剩餘金額，約 ${money.format(reserveDeploymentAmount(metrics, 30))}。`;
