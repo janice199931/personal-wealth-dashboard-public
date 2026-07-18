@@ -1373,6 +1373,18 @@ def ensure_corporate_action_corrections() -> dict[str, Any]:
         CORPORATE_ACTION_LOCK.release()
 
 
+@app.on_event("startup")
+def complete_pending_us_drip_transaction_corrections() -> None:
+    """Finish known DRIP ledger corrections once after a deployment starts."""
+    try:
+        result = apply_us_drip_position_corrections()
+        print(f"Startup US DRIP correction: {result.get('status', 'unknown')}")
+    except Exception as error:
+        # A database outage must not prevent the dashboard from starting. The
+        # normal data-health check will continue to report any remaining gap.
+        print(f"Startup US DRIP correction skipped: {error}")
+
+
 def build_holding_audit() -> dict[str, Any]:
     transactions = read_transactions(use_examples=False)
     portfolio = read_portfolio(use_examples=False) or rebuild_portfolio_outputs()
