@@ -1300,7 +1300,7 @@ function todayConclusion(metrics) {
   if (metrics.investmentReserve < metrics.investmentReserveTarget) {
     return {
       status: "watch",
-      text: `今日進度：純投資預備金缺口仍有 ${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)}`,
+      text: `今日進度：投資預備金缺少${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)}`,
     };
   }
   if (signal.state === "ready" && signal.pullback >= 10) {
