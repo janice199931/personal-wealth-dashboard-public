@@ -815,7 +815,7 @@ main {
 
 .vault-cash-breakdown {
   display: grid;
-  gap: 9px;
+  gap: 0;
 }
 
 .vault-cash-row,
@@ -828,53 +828,52 @@ main {
 }
 
 .vault-cash-row {
-  padding: 9px 10px;
-  border-radius: 11px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(111, 85, 74, 0.1);
 }
 
 .vault-cash-row span,
 .vault-reserve-total span {
-  color: #6f625b;
+  color: rgba(111, 85, 74, 0.68);
   font-size: 12px;
-  font-weight: 850;
+  font-weight: 750;
 }
 
 .vault-cash-row strong,
 .vault-reserve-total strong {
+  color: #6f625b;
   font-size: 14px;
   text-align: right;
 }
 
-.vault-cash-row.emergency {
-  background: rgba(232, 247, 230, 0.68);
-}
-
-.vault-cash-row.emergency strong {
-  color: #568552;
-}
-
 .vault-cash-row.pending {
-  background: rgba(244, 237, 251, 0.82);
+  color: rgba(111, 85, 74, 0.42);
 }
 
 .vault-cash-row.pending span,
 .vault-cash-row.pending strong {
-  color: #8b66a5;
+  color: inherit;
+  font-weight: 500;
+}
+
+.vault-cash-row.pending.active,
+.vault-cash-row.pending.active span,
+.vault-cash-row.pending.active strong {
+  color: #c86f7d;
+  font-weight: 800;
 }
 
 .vault-reserve-group {
-  padding: 9px 10px;
-  border-radius: 11px;
-  background: rgba(255, 246, 220, 0.72);
+  padding: 11px 0 0;
 }
 
 .vault-reserve-total {
-  padding-bottom: 7px;
-  border-bottom: 1px solid rgba(209, 166, 83, 0.28);
+  padding-bottom: 8px;
 }
 
 .vault-reserve-total strong {
-  color: #a66f21;
+  color: #d37575;
+  font-size: 16px;
   font-weight: 950;
 }
 
@@ -886,12 +885,35 @@ main {
 
 .vault-reserve-accounts span,
 .vault-reserve-accounts strong {
-  color: rgba(111, 85, 74, 0.72);
+  color: rgba(111, 85, 74, 0.48);
   font-size: 11px;
 }
 
 .vault-reserve-accounts strong {
-  color: #6f554a;
+  color: rgba(111, 85, 74, 0.82);
+  font-weight: 750;
+  text-align: right;
+}
+
+.cash-breakdown-card .vault-title strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.cash-breakdown-card .vault-title span {
+  color: rgba(111, 85, 74, 0.66);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.vault-footer {
+  color: rgba(111, 85, 74, 0.48);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
   text-align: right;
 }
 

@@ -1192,16 +1192,17 @@ function renderVaults() {
       ],
     },
     {
-      title: "🔍 投資現金拆解",
+      title: "🔍 <span>投資現金拆解</span>",
       status: "watch",
+      cardClass: "cash-breakdown-card",
       contentHtml: `<div class="vault-cash-breakdown">
-        <div class="vault-cash-row emergency">
+        <div class="vault-cash-row">
           <span>緊急預備金</span>
-          <strong>${money.format(emergencyFund)} 🟢</strong>
+          <strong>${money.format(emergencyFund)}</strong>
         </div>
-        <div class="vault-cash-row pending">
-          <span>${pendingSettlement > 0 ? "⏳ " : ""}在途交割款</span>
-          <strong>${pendingSettlement > 0 ? `-${money.format(pendingSettlement)}` : money.format(0)}</strong>
+        <div class="vault-cash-row pending ${pendingSettlement > 0 ? "active" : ""}">
+          <span>在途交割款</span>
+          <strong>${money.format(pendingSettlement)}</strong>
         </div>
         <div class="vault-reserve-group">
           <div class="vault-reserve-total">
@@ -1214,11 +1215,12 @@ function renderVaults() {
           </div>
         </div>
       </div>`,
+      footer: "全球子彈即時連線中",
     },
   ];
 
   target.innerHTML = rows
-    .map((row) => `<article class="vault-card ${row.status}">
+    .map((row) => `<article class="vault-card ${row.status} ${row.cardClass || ""}">
       <div class="vault-title"><strong>${row.title}</strong></div>
       ${row.contentHtml || `<div class="vault-lines">
         ${row.lines.map(([label, value, detail]) => `<div>
@@ -1231,6 +1233,7 @@ function renderVaults() {
         <span class="mini-progress"><i style="width:${row.progress}%"></i></span>
         <strong>${row.progress.toFixed(1)}%</strong>
       </div>` : ""}
+      ${row.footer ? `<small class="vault-footer">${row.footer}</small>` : ""}
     </article>`)
     .join("");
 }
