@@ -1178,7 +1178,7 @@ function renderVaults() {
   const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, actualBankBalanceCurrent);
   const baseInvestmentReserve = actualBankBalanceCurrent - emergencyFund;
   const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement, 0));
-  const pureInvestmentReserveCurrent = Math.max(0, baseInvestmentReserve - pendingSettlement) + usBrokerCash;
+  const yongfengCash = Math.max(0, baseInvestmentReserve - pendingSettlement);
   const cashProgress = safeProgress(totalCashCurrent, metrics.cashTargetAmount);
   const rows = [
     {
@@ -1196,8 +1196,8 @@ function renderVaults() {
       lines: [
         ["緊急預備金：", money.format(emergencyFund)],
         ["在途交割款：", pendingSettlement > 0 ? `-${money.format(pendingSettlement)} ⏳` : money.format(0)],
+        ["永豐現金：", money.format(yongfengCash)],
         ["Firstrade 現金：", money.format(usBrokerCash)],
-        ["投資預備金：", money.format(pureInvestmentReserveCurrent)],
       ],
     },
   ];
