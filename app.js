@@ -743,7 +743,7 @@ function applyCurrentMonthFinance(month = null) {
 
 function cashBuckets(totalCash = 0) {
   const cash = Math.max(0, Math.round(Number(totalCash) || 0));
-  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, actualBankBalance());
+  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, cash);
   const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement));
   return { emergencyFund, investmentReserve: Math.max(0, cash - emergencyFund - pendingSettlement) };
 }
@@ -1271,8 +1271,8 @@ function fundWaterSummary(metrics) {
   return [
     `緊急預備金：${money.format(metrics.emergencyFund)} / ${money.format(EMERGENCY_FUND_TARGET)}`,
     `投資預備金：${money.format(metrics.investmentReserve)} / ${money.format(metrics.investmentReserveTarget)} (15%)`,
-    "配置計算不包含緊急預備金與其他持股",
-    "目標配置：00685L 50% / QQQM 35% / 投資預備金 15%",
+    "配置計算包含全部台股、全部美股與全部現金",
+    "目標配置：台股 50% / 美股 35% / 現金 15%",
   ].join("<br>");
 }
 

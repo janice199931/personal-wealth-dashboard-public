@@ -40,9 +40,9 @@
           <span>Target Allocation</span>
           <h2>目標資產配置</h2>
           <div class="rule-steps">
-            <div><strong>00685L 50%</strong><p>只計入 00685L 市值，不含其他台股。</p></div>
-            <div><strong>QQQM 35%</strong><p>只計入 QQQM 市值，不含其他美股。</p></div>
-            <div><strong>投資預備金 15%</strong><p>緊急預備金完全排除於 50／35／15 配置之外。</p></div>
+            <div><strong>全部台股 50%</strong><p>計入投資組合內的全部台股市值。</p></div>
+            <div><strong>全部美股 35%</strong><p>計入投資組合內的全部美股市值。</p></div>
+            <div><strong>全部現金 15%</strong><p>現金目標為投資資產 × 15%。</p></div>
           </div>
         </article>
 
@@ -57,7 +57,7 @@
           <span>Investment Reserve</span>
           <h2>投資預備金</h2>
           <strong>動態計算</strong>
-          <p>全部現金中先留 10 萬緊急預備金，超過的部分才作為市場回檔時可動用的投資預備金。</p>
+          <p>投資預備金＝全部現金 − 10 萬緊急預備金 − 在途交割款。</p>
         </article>
 
         <article class="card rule-card">
@@ -85,7 +85,7 @@
         <article class="card rule-card wide">
           <span>Do Not Touch</span>
           <h2>不動用原則</h2>
-          <p>不要為了加碼動到緊急預備金。50／35／15 只計算 00685L、QQQM 與投資預備金，其他持股完全排除；若投資預備金尚未達 15%，首頁的加碼提醒只作觀察。</p>
+          <p>不要為了加碼動到緊急預備金。50／35／15 統一計算全部台股、全部美股與全部現金；若可動用投資預備金尚未達目標，首頁的加碼提醒只作觀察。</p>
         </article>
       </section>
     </main>
@@ -185,18 +185,16 @@
         const totalCash = numberValue(payload.portfolio?.allocation?.cash ?? payload.portfolio?.summary?.cash ?? accounts.cashTWD);
         const sinopac = numberValue(breakdown.sinopacBalance);
         const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, totalCash);
-        const investmentReserve = Math.max(0, totalCash - emergencyFund);
-        const holdings = payload.portfolio?.holdings || [];
-        const targetValue = (symbol) => numberValue(
-          holdings.find((holding) => String(holding.symbol || "").toUpperCase() === symbol)?.marketValueTWD,
-        );
-        const stockAssets = targetValue("00685L") + targetValue("QQQM");
-        const investmentReserveTarget = Math.round(stockAssets * CASH_TARGET_RATIO / (1 - CASH_TARGET_RATIO));
-        const cashTarget = EMERGENCY_FUND_TARGET + investmentReserveTarget;
+        const pendingSettlement = numberValue(payload.pendingSettlement);
+        const investmentReserve = Math.max(0, totalCash - emergencyFund - pendingSettlement);
+        const totalAssets = numberValue(payload.portfolio?.summary?.totalAssets)
+          || numberValue(payload.portfolio?.summary?.stockAssets) + totalCash;
+        const cashTarget = Math.round(totalAssets * CASH_TARGET_RATIO);
+        const investmentReserveTarget = Math.max(0, cashTarget - EMERGENCY_FUND_TARGET);
         const availableForExtra = investmentReserve;
         const month = financeMonth(payload);
         const monthlyTransfer = numberValue(month?.sinopacTransfer);
-        return { totalCash, sinopac, cashTarget, emergencyFund, investmentReserve, investmentReserveTarget, availableForExtra, monthlyTransfer };
+        return { totalCash, sinopac, cashTarget, emergencyFund, pendingSettlement, investmentReserve, investmentReserveTarget, availableForExtra, monthlyTransfer };
       }
 
       async function fetchLeveragedSignal() {
@@ -319,7 +317,7 @@
         strategyGrid.innerHTML = [
           resultBox("緊急預備金", money.format(metrics.emergencyFund), `${pct.format((metrics.emergencyFund / EMERGENCY_FUND_TARGET) * 100)}% / 目標 ${money.format(EMERGENCY_FUND_TARGET)}`),
           resultBox("投資預備金", money.format(metrics.investmentReserve), `${pct.format((metrics.investmentReserve / Math.max(1, metrics.investmentReserveTarget)) * 100)}% / 15% 目標 ${money.format(metrics.investmentReserveTarget)}`),
-          resultBox("配置範圍", "排除緊急預備金與其他持股", "00685L＋QQQM＋投資預備金"),
+          resultBox("配置範圍", "全部台股＋全部美股＋全部現金", `現金目標 ${money.format(metrics.cashTarget)}｜在途交割款 ${money.format(metrics.pendingSettlement)}`),
           resultBox("00685L 回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signalNote),
         ].join("");
         strategyAdvice.classList.toggle("editing", conclusion.tone === "editing");

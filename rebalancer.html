@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入首頁台股、美股與投資預備金，依 50% / 35% / 15% 檢查配置；緊急預備金 10 萬完全排除。</p>
+          <p>自動帶入全部台股、全部美股與全部現金，依 50% / 35% / 15% 檢查配置。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -20,20 +20,24 @@
 
       <form id="rebalanceForm">
         <label>
-          00685L 目前市值
+          全部台股市值
           <input name="twStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
         </label>
         <label>
-          QQQM 目前市值（台幣）
+          全部美股市值（台幣）
           <input name="usStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
         </label>
         <label>
-          投資預備金（不含緊急預備金）
+          全部現金
           <input name="cash" type="number" step="1" min="0" placeholder="例如 200000" required />
         </label>
         <label>
           已保留緊急預備金
           <input name="protectedCash" type="number" step="1" min="0" value="0" readonly />
+        </label>
+        <label>
+          在途交割款
+          <input name="pendingSettlement" type="number" step="1" min="0" value="0" readonly />
         </label>
         <label>
           台股目標比例
@@ -109,7 +113,7 @@
         resultGrid.innerHTML = [
           resultBox("目前台股比例", "0%"),
           resultBox("目前美股比例", "0%"),
-          resultBox("目前投資預備金比例", "0%"),
+          resultBox("目前現金比例", "0%"),
           resultBox("建議調整金額", money.format(0)),
         ].join("");
         twBar.style.width = "50%";
@@ -138,15 +142,11 @@
         };
       }
 
-      function applyPortfolio(portfolio, accounts = null) {
+      function applyPortfolio(portfolio, accounts = null, pendingSettlement = 0) {
         const allocation = portfolio?.allocation || {};
         const summary = portfolio?.summary || {};
-        const holdings = portfolio?.holdings || [];
-        const targetValue = (symbol) => Math.round(Number(
-          holdings.find((holding) => String(holding.symbol || "").toUpperCase() === symbol)?.marketValueTWD ?? 0,
-        ) || 0);
-        const twValue = targetValue("00685L");
-        const usValue = targetValue("QQQM");
+        const twValue = Math.round(Number(allocation.taiwanStocks ?? portfolio?.markets?.TW?.marketValue ?? 0) || 0);
+        const usValue = Math.round(Number(allocation.usStocks ?? portfolio?.markets?.US?.marketValue ?? 0) || 0);
         const cashInfo = accounts
           ? accountBreakdown(accounts, allocation.cash ?? summary.cash)
           : {
@@ -156,12 +156,13 @@
             };
         form.elements.twStocks.value = twValue;
         form.elements.usStocks.value = usValue;
-        form.elements.cash.value = cashInfo.allocationCash;
+        form.elements.cash.value = cashInfo.totalCash;
         form.elements.protectedCash.value = cashInfo.protectedCash;
+        form.elements.pendingSettlement.value = Math.max(0, Math.round(Number(pendingSettlement) || 0));
         calculate();
         setStatus(
           twValue || usValue
-            ? "已帶入首頁台股、美股與投資預備金；緊急預備金已排除。"
+            ? "已帶入首頁的全部台股、全部美股與全部現金。"
             : "首頁目前找不到投資持倉，已帶入現金，持倉金額可手動輸入。",
           twValue || usValue ? "success" : "working",
         );
@@ -175,7 +176,7 @@
           const payload = await readApiPayload(response, "首頁資料讀取失敗，請重新整理或確認登入狀態。");
           if (!response.ok) throw new Error(payload.detail || "首頁資料讀取失敗，請重新整理或確認登入狀態。");
           if (!payload.portfolio) throw new Error("目前沒有可帶入的首頁資料。");
-          applyPortfolio(payload.portfolio, payload.accounts || null);
+          applyPortfolio(payload.portfolio, payload.accounts || null, payload.pendingSettlement);
         } catch (error) {
           setStatus(error.message || "首頁資料讀取失敗，可先手動輸入。", "error");
           loadDraft();
@@ -190,7 +191,8 @@
         const usStocks = numberValue("usStocks");
         const cash = numberValue("cash");
         const protectedCash = Math.max(0, Math.min(EMERGENCY_FUND_TARGET, Number(form.elements.protectedCash.value) || 0));
-        const investmentReserve = cash;
+        const pendingSettlement = Math.max(0, Number(form.elements.pendingSettlement.value) || 0);
+        const investmentReserve = Math.max(0, cash - protectedCash - pendingSettlement);
         const twTarget = numberValue("twTarget");
         const usTarget = numberValue("usTarget");
         const cashTarget = numberValue("cashTarget");
@@ -214,9 +216,9 @@
         const usRatio = (usStocks / total) * 100;
         const cashRatio = (cash / total) * 100;
         const targets = [
-          { name: "台股 00685L", current: twStocks, ratio: twRatio, target: twTarget },
-          { name: "美股 QQQM", current: usStocks, ratio: usRatio, target: usTarget },
-          { name: "投資預備金", current: cash, ratio: cashRatio, target: cashTarget },
+          { name: "全部台股", current: twStocks, ratio: twRatio, target: twTarget },
+          { name: "全部美股", current: usStocks, ratio: usRatio, target: usTarget },
+          { name: "全部現金", current: cash, ratio: cashRatio, target: cashTarget },
         ].map((item) => ({ ...item, targetAmount: total * item.target / 100, drift: item.ratio - item.target }));
         const largestDrift = targets.reduce((largest, item) => Math.abs(item.drift) > Math.abs(largest.drift) ? item : largest, targets[0]);
         const mostUnderweight = targets.reduce((lowest, item) => item.drift < lowest.drift ? item : lowest, targets[0]);
@@ -231,9 +233,10 @@
         resultGrid.innerHTML = [
           resultBox("目前台股比例", `${pct.format(twRatio)}%`),
           resultBox("目前美股比例", `${pct.format(usRatio)}%`),
-          resultBox("目前投資預備金比例", `${pct.format(cashRatio)}%`),
+          resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
           ...targets.map((item) => resultBox(`${item.name}目標金額`, money.format(Math.round(item.targetAmount)))),
           resultBox("已保留緊急預備金", money.format(protectedCash)),
+          resultBox("在途交割款", money.format(pendingSettlement)),
           resultBox("投資預備金", money.format(investmentReserve)),
           resultBox("總檢查金額", money.format(total)),
         ].join("");
