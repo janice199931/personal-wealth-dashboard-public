@@ -1207,7 +1207,7 @@ function renderVaults() {
         <div class="vault-reserve-group">
           <div class="vault-reserve-total">
             <span>投資預備金</span>
-            <strong>${money.format(pureInvestmentReserveCurrent)} 🟡</strong>
+            <strong>${money.format(pureInvestmentReserveCurrent)}</strong>
           </div>
           <div class="vault-reserve-accounts">
             <div><span>├ 永豐現金</span><strong>${money.format(yongfengCash)}</strong></div>
@@ -1215,7 +1215,6 @@ function renderVaults() {
           </div>
         </div>
       </div>`,
-      footer: "全球子彈即時連線中",
     },
   ];
 
@@ -1233,7 +1232,6 @@ function renderVaults() {
         <span class="mini-progress"><i style="width:${row.progress}%"></i></span>
         <strong>${row.progress.toFixed(1)}%</strong>
       </div>` : ""}
-      ${row.footer ? `<small class="vault-footer">${row.footer}</small>` : ""}
     </article>`)
     .join("");
 }

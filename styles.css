@@ -909,14 +909,6 @@ main {
   letter-spacing: 0.08em;
 }
 
-.vault-footer {
-  color: rgba(111, 85, 74, 0.48);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-align: right;
-}
-
 .vault-progress {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
