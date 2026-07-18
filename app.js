@@ -77,6 +77,9 @@ const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
 const CASH_TARGET_RATIO = 0.2;
+const TOTAL_NET_WORTH = 2299896;
+const TOTAL_CASH_TARGET = Math.round(TOTAL_NET_WORTH * CASH_TARGET_RATIO);
+const ACTUAL_BANK_BALANCE_FALLBACK = 156199;
 const ETF_00685L_SPLIT_RATIO = 24;
 const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
 const EXPECTED_RETURN = 0.07;
@@ -732,6 +735,13 @@ function cashBuckets(totalCash = 0) {
   return { emergencyFund, investmentReserve: Math.max(0, cash - emergencyFund) };
 }
 
+function actualBankBalance() {
+  const balance = Number(data.accountBreakdown?.sinopacBalance);
+  return Number.isFinite(balance) && balance >= 0
+    ? Math.round(balance)
+    : ACTUAL_BANK_BALANCE_FALLBACK;
+}
+
 function fitCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
@@ -825,7 +835,7 @@ function drawPieChart(canvas, rows) {
 }
 
 function renderAssetPie() {
-  const totalCash = assetValue("現金");
+  const totalCash = actualBankBalance();
   const { investmentReserve } = cashBuckets(totalCash);
   const assetRows = data.assetPie
     .filter((row) => row.label !== "負債")
@@ -877,7 +887,7 @@ function getPortfolioMetrics() {
   const us = data.investments.us;
   const taiwanStocks = assetValue("台股");
   const usStocks = assetValue("美股");
-  const cash = assetValue("現金");
+  const cash = actualBankBalance();
   const debt = assetValue("負債");
   const stockAssets = taiwanStocks + usStocks;
   const totalAssets = safeNumber(data.metrics.totalAssets, stockAssets + cash);
@@ -910,10 +920,8 @@ function getPortfolioMetrics() {
   const emergencyFund = buckets.emergencyFund;
   const investmentReserve = buckets.investmentReserve;
   const allocationAssets = stockAssets + investmentReserve;
-  const investmentReserveTarget = Math.round(
-    stockAssets * CASH_TARGET_RATIO / Math.max(0.01, 1 - CASH_TARGET_RATIO),
-  );
-  const cashTargetAmount = EMERGENCY_FUND_TARGET + investmentReserveTarget;
+  const cashTargetAmount = TOTAL_CASH_TARGET;
+  const investmentReserveTarget = cashTargetAmount - EMERGENCY_FUND_TARGET;
   const twCostTwd = safeNumber(tw.cost);
   const usCostTwd = us.costTwd ?? Math.round(usCost * usdToTwd);
   const usGainTwd = us.gainTwd ?? Math.round(usGain * usdToTwd);
@@ -1054,7 +1062,7 @@ function decisionChecklist(metrics) {
   const cashGap = Math.max(0, metrics.investmentReserveTarget - Math.round(metrics.investmentReserve));
   return [
     metrics.emergencyFund >= EMERGENCY_FUND_TARGET
-      ? "緊急預備金已達標"
+      ? `緊急預備金已達標 (${money.format(EMERGENCY_FUND_TARGET)})`
       : `緊急預備金還差 ${money.format(EMERGENCY_FUND_TARGET - Math.round(metrics.emergencyFund))}`,
     cashGap <= 0
       ? "投資預備金已達 20% 目標"
@@ -1145,28 +1153,23 @@ function renderVaults() {
     return;
   }
   const metrics = getPortfolioMetrics();
-  const reserve = investmentReserveStatus(metrics);
-  const emergencyProgress = safeProgress(metrics.emergencyFund, EMERGENCY_FUND_TARGET);
-  const reserveProgress = safeProgress(metrics.investmentReserve, Math.max(1, metrics.investmentReserveTarget));
+  const cashProgress = safeProgress(metrics.cash, metrics.cashTargetAmount);
   const rows = [
     {
-      title: "🚨 緊急預備金",
-      status: metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? "good" : "warn",
-      progress: emergencyProgress,
+      title: "💰 永豐現金總庫 (20%)",
+      status: metrics.cash >= metrics.cashTargetAmount ? "good" : "watch",
+      progress: cashProgress,
       lines: [
-        ["目標", money.format(EMERGENCY_FUND_TARGET)],
-        ["目前", money.format(metrics.emergencyFund)],
-        ["狀態", metrics.emergencyFund >= EMERGENCY_FUND_TARGET ? '<span class="status-dot good"></span>充足' : "🔴 偏低"],
+        ["目標", money.format(metrics.cashTargetAmount)],
+        ["目前", money.format(metrics.cash)],
       ],
     },
     {
-      title: "💰 投資預備金（永豐）",
-      status: reserve.status,
-      progress: reserveProgress,
+      title: "🔍 永豐現金拆解",
+      status: "watch",
       lines: [
-        ["目標", money.format(metrics.investmentReserveTarget)],
-        ["目前", money.format(metrics.investmentReserve)],
-        ["狀態", reserve.text],
+        ["緊急預備金：", `${money.format(metrics.emergencyFund)} 🟢 已鎖定`],
+        ["投資預備金：", `${money.format(metrics.investmentReserve)} 🟡 補彈中`],
       ],
     },
   ];
@@ -1253,7 +1256,7 @@ function todayConclusion(metrics) {
   if (metrics.investmentReserve < metrics.investmentReserveTarget) {
     return {
       status: "watch",
-      text: "優先把投資預備金補到 20%",
+      text: `今日進度：純投資預備金缺口仍有 ${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)}`,
     };
   }
   if (signal.state === "ready" && signal.pullback >= 10) {
