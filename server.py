@@ -12,7 +12,7 @@ import tempfile
 import time
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event, Lock, Thread
+from threading import Lock
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from pathlib import Path
@@ -1373,54 +1373,6 @@ def ensure_corporate_action_corrections() -> dict[str, Any]:
         CORPORATE_ACTION_LOCK.release()
 
 
-def retry_pending_us_drip_transaction_corrections() -> None:
-    """Finish known DRIP ledger corrections after the cloud DB becomes ready."""
-    retry_wait = Event()
-    for attempt in range(1, 5):
-        if attempt > 1:
-            retry_wait.wait(20)
-        try:
-            transactions, changed = ensure_transaction_ids(read_transactions(use_examples=False))
-            tsm_state = position_state(transactions, "US", "TSM")
-            target = US_DRIP_POSITION_TARGETS["TSM"]
-            if _matches_us_position_target(tsm_state, target):
-                status = "applied"
-            elif abs(float(tsm_state.get("shares") or 0) - 2.00397) <= 0.000001:
-                corrected = [dict(row) for row in transactions]
-                tsm_buy = next(
-                    row for row in corrected
-                    if str(row.get("market", "")).upper() == "US"
-                    and str(row.get("symbol", "")).upper() == "TSM"
-                    and str(row.get("action", "")).upper() == "BUY"
-                )
-                tsm_buy["shares"] = target["shares"]
-                tsm_buy["price"] = target["averageCost"]
-                tsm_buy["note"] = "含 0.00343 股股息再投入持股校正"
-                write_pre_change_backup("TSM 股息再投入持股校正")
-                write_transactions(corrected)
-                rebuild_portfolio_outputs()
-                mark_successful_save()
-                status = "applied"
-            else:
-                result = apply_us_drip_position_corrections()
-                status = result.get("status", "unknown")
-            print(f"Startup US DRIP correction attempt {attempt}: {status}")
-            if status == "applied":
-                return
-        except Exception as error:
-            # A database outage must not prevent the dashboard from starting.
-            print(f"Startup US DRIP correction attempt {attempt} skipped: {error}")
-
-
-@app.on_event("startup")
-def schedule_pending_us_drip_transaction_corrections() -> None:
-    Thread(
-        target=retry_pending_us_drip_transaction_corrections,
-        name="us-drip-ledger-correction",
-        daemon=True,
-    ).start()
-
-
 def build_holding_audit() -> dict[str, Any]:
     transactions = read_transactions(use_examples=False)
     portfolio = read_portfolio(use_examples=False) or rebuild_portfolio_outputs()
@@ -2774,6 +2726,7 @@ async def update_asset_snapshot(
         accounts["creditCardDebt"] = amounts["debt"]
         accounts.setdefault("cashUSD", 0)
         accounts.setdefault("otherDebt", 0)
+    accounts_changed = False
     account_breakdown = accounts.get("accountBreakdown")
     if not isinstance(account_breakdown, dict):
         account_breakdown = {}
@@ -2804,14 +2757,16 @@ async def update_asset_snapshot(
         accounts["cashTWD"] = next_sinopac
         account_breakdown["updatedAt"] = datetime.now().isoformat(timespec="seconds")
         accounts["accountBreakdown"] = account_breakdown
-        db_store.write_accounts(accounts)
+        accounts_changed = True
     elif amounts["source"] not in {"supplement_only", "existing_accounts"}:
-        db_store.write_accounts(accounts)
+        accounts_changed = True
     if manual_cash_usd is not None:
         accounts["cashUSD"] = manual_cash_usd
         accounts.setdefault("cashTWD", 0)
         accounts.setdefault("creditCardDebt", 0)
         accounts.setdefault("otherDebt", 0)
+        accounts_changed = True
+    if accounts_changed:
         db_store.write_accounts(accounts)
     portfolio = rebuild_portfolio_outputs()
     if has_any_monthly and monthly_finance is None:
