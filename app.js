@@ -77,6 +77,7 @@ const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
 const EMERGENCY_FUND_TARGET = 100000;
 const CASH_TARGET_RATIO = 0.2;
+const ETF_00685L_SPLIT_RATIO = 24;
 const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
 const EXPECTED_RETURN = 0.07;
 const ANNUAL_SAVING = 550000;
@@ -1352,15 +1353,20 @@ function loadLeveragedPullbackSignal() {
     });
   }))
     .then((payloads) => {
-      const rows = payloads.flatMap((payload) => payload.data || [])
+      const rawRows = payloads.flatMap((payload) => payload.data || [])
         .map((row) => ({
           date: row[0],
           high: parseAmount(row[4]),
           price: parseAmount(row[6]),
         }))
         .filter((row) => Number.isFinite(row.high) && row.high > 0 && Number.isFinite(row.price) && row.price > 0)
-        .sort((a, b) => a.date.localeCompare(b.date))
-        .slice(-20);
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const latestRaw = rawRows.at(-1);
+      const rows = rawRows.map((row) => (
+        latestRaw?.price > 0 && latestRaw.price < 50 && row.price > latestRaw.price * 10
+          ? { ...row, high: row.high / ETF_00685L_SPLIT_RATIO, price: row.price / ETF_00685L_SPLIT_RATIO }
+          : row
+      )).slice(-20);
       if (rows.length < 20) throw new Error("TWSE history incomplete");
       const latest = rows[rows.length - 1];
       const high = Math.max(...rows.map((row) => row.high));
