@@ -1094,7 +1094,6 @@ function renderHero() {
     <div class="decision-side">
       <span>投資資產</span>
       <strong>${money.format(metrics.allocationAssets)}</strong>
-      <small>全部台股＋全部美股＋永豐現金</small>
     </div>
   `;
 }
@@ -1526,7 +1525,7 @@ function renderInitialLoading() {
     heroOverview.innerHTML = '<strong class="decision-result watch">正在載入正式資產...</strong>';
   }
   if (heroMilestone) {
-    heroMilestone.innerHTML = '<div class="decision-side"><span>投資資產</span><strong>確認中</strong><small>台股＋美股＋投資現金</small></div>';
+    heroMilestone.innerHTML = '<div class="decision-side"><span>投資資產</span><strong>確認中</strong></div>';
   }
   renderKpis();
   renderVaults();
