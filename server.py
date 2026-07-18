@@ -203,7 +203,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-07-18 投資配置 50／35／15"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-18 精準里程碑預估"),
     }
 
 

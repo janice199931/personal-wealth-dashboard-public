@@ -77,12 +77,14 @@ const AUTO_PRICE_UPDATE_AT_KEY = "wealthDashboardLastAutoPriceUpdateAt";
 const PRICE_AUTO_REFRESH_MS = 30 * 60 * 1000;
 const AUTO_PRICE_UPDATE_COOLDOWN_MS = 5 * 60 * 1000;
 const BIRTH_DATE = new Date("1999-08-31T00:00:00+08:00");
+const MILESTONE_BASE_DATE = new Date("2026-07-18T00:00:00+08:00");
+const MILESTONE_INITIAL_MONTHLY_DEPOSIT = 40000;
+const MILESTONE_REAL_ANNUAL_RETURN = 0.07;
+const MILESTONE_ANNUAL_DEPOSIT_INCREASE = 1500 * 0.7;
 const EMERGENCY_FUND_TARGET = 100000;
 const CASH_TARGET_RATIO = 0.15;
 const ETF_00685L_SPLIT_RATIO = 24;
 const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
-const EXPECTED_RETURN = 0.05;
-const FALLBACK_ANNUAL_SAVING = 550000;
 const US_DRIP_POSITION_TARGETS = {
   MU: { shares: 26.00282, averageCost: 499.87617 },
   VOO: { shares: 9.07725, averageCost: 602.22 },
@@ -1002,28 +1004,24 @@ function financeMonths() {
 }
 
 function estimateMilestoneDate(currentNetWorth, target) {
-  if (currentNetWorth >= target) return new Date();
-  const monthlyReturn = Math.pow(1 + EXPECTED_RETURN, 1 / 12) - 1;
-  const monthlySaving = estimatedAnnualSaving() / 12;
+  if (currentNetWorth >= target) return new Date(MILESTONE_BASE_DATE);
+  const monthlyReturn = MILESTONE_REAL_ANNUAL_RETURN / 12;
   let projected = Math.max(0, Number(currentNetWorth) || 0);
+  let monthlySaving = MILESTONE_INITIAL_MONTHLY_DEPOSIT;
   let monthsNeeded = 0;
 
-  while (projected < target && monthsNeeded <= 600) {
+  while (projected < target && monthsNeeded < 600) {
     projected = projected * (1 + monthlyReturn) + monthlySaving;
     monthsNeeded += 1;
+    if (monthsNeeded % 12 === 0) {
+      monthlySaving += MILESTONE_ANNUAL_DEPOSIT_INCREASE;
+    }
   }
 
-  if (!Number.isFinite(projected) || monthsNeeded > 600) return null;
-  const date = new Date();
-  date.setMonth(date.getMonth() + monthsNeeded);
+  if (!Number.isFinite(projected) || projected < target) return null;
+  const date = new Date(MILESTONE_BASE_DATE);
+  date.setMonth(MILESTONE_BASE_DATE.getMonth() + monthsNeeded);
   return date;
-}
-
-function estimatedAnnualSaving() {
-  const recentMonths = financeMonths().slice(-12);
-  if (!recentMonths.length) return FALLBACK_ANNUAL_SAVING;
-  const totalNet = recentMonths.reduce((sum, month) => sum + monthNetValue(month), 0);
-  return Math.max(0, Math.round((totalNet / recentMonths.length) * 12));
 }
 
 function ageOnDate(date) {
@@ -1036,7 +1034,7 @@ function ageOnDate(date) {
 
 function formatEtaDate(date) {
   if (!date) return "持續追蹤中";
-  return `${rocYear(date.getFullYear())} 年 ${date.getMonth() + 1} 月`;
+  return `${rocYear(date.getFullYear())} 年 ${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
 function investmentReserveStatus(metrics) {
