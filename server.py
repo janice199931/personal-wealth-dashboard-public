@@ -1380,8 +1380,30 @@ def retry_pending_us_drip_transaction_corrections() -> None:
         if attempt > 1:
             retry_wait.wait(20)
         try:
-            result = apply_us_drip_position_corrections()
-            status = result.get("status", "unknown")
+            transactions, changed = ensure_transaction_ids(read_transactions(use_examples=False))
+            tsm_state = position_state(transactions, "US", "TSM")
+            target = US_DRIP_POSITION_TARGETS["TSM"]
+            if _matches_us_position_target(tsm_state, target):
+                status = "applied"
+            elif abs(float(tsm_state.get("shares") or 0) - 2.00397) <= 0.000001:
+                corrected = [dict(row) for row in transactions]
+                tsm_buy = next(
+                    row for row in corrected
+                    if str(row.get("market", "")).upper() == "US"
+                    and str(row.get("symbol", "")).upper() == "TSM"
+                    and str(row.get("action", "")).upper() == "BUY"
+                )
+                tsm_buy["shares"] = target["shares"]
+                tsm_buy["price"] = target["averageCost"]
+                tsm_buy["note"] = "含 0.00343 股股息再投入持股校正"
+                write_pre_change_backup("TSM 股息再投入持股校正")
+                write_transactions(corrected)
+                rebuild_portfolio_outputs()
+                mark_successful_save()
+                status = "applied"
+            else:
+                result = apply_us_drip_position_corrections()
+                status = result.get("status", "unknown")
             print(f"Startup US DRIP correction attempt {attempt}: {status}")
             if status == "applied":
                 return
