@@ -709,7 +709,11 @@ main {
 
 .summary-vault-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns:
+    minmax(0, 20fr)
+    minmax(0, 20fr)
+    minmax(0, 27fr)
+    minmax(0, 33fr);
   gap: 10px;
   margin-bottom: 0;
 }
