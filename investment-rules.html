@@ -126,6 +126,12 @@
         });
       }
 
+      function twseDateToIso(value) {
+        const [year, month, day] = String(value || "").split("/").map(Number);
+        if (!year || !month || !day) return "";
+        return `${year + 1911}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+
       function currentMonthKey() {
         return new Intl.DateTimeFormat("en-CA", {
           timeZone: "Asia/Taipei",
@@ -215,7 +221,7 @@
             .filter((row) => row.high > 0 && row.price > 0)
             .sort((a, b) => a.date.localeCompare(b.date));
           const latestRaw = rawRows.at(-1);
-          const rows = rawRows.map((row) => (
+          const adjustedRows = rawRows.map((row) => (
             latestRaw?.price > 0 && latestRaw.price < 50 && row.price > latestRaw.price * 10
               ? {
                   ...row,
@@ -223,12 +229,20 @@
                   price: Number((row.price / ETF_00685L_SPLIT_RATIO).toFixed(4)),
                 }
               : row
-          )).slice(-20);
+          ));
+          const rows = adjustedRows.slice(-20);
           if (rows.length < 20) throw new Error("incomplete price rows");
           const latest = rows[rows.length - 1];
           const high = Math.max(...rows.map((row) => row.high));
           const pullback = high ? ((high - latest.price) / high) * 100 : 0;
-          const signal = { ok: true, price: latest.price, high, pullback, date: latest.date, cached: false, savedAt: new Date().toISOString() };
+          let cycleStartDate = "";
+          for (let index = 19; index < adjustedRows.length; index += 1) {
+            const windowRows = adjustedRows.slice(index - 19, index + 1);
+            const rollingHigh = Math.max(...windowRows.map((row) => row.high));
+            const rollingPullback = rollingHigh ? ((rollingHigh - adjustedRows[index].price) / rollingHigh) * 100 : 0;
+            cycleStartDate = rollingPullback >= 10 ? (cycleStartDate || twseDateToIso(adjustedRows[index].date)) : "";
+          }
+          const signal = { ok: true, price: latest.price, high, pullback, date: latest.date, cycleStartDate, cached: false, savedAt: new Date().toISOString() };
           writeCache(SIGNAL_CACHE_KEY, signal);
           return signal;
         } catch {
@@ -255,16 +269,34 @@
         return currentReserve;
       }
 
-      function deployment(metrics, signal, stage) {
-        const base = deploymentBase(metrics, signal);
-        const first = Math.round(base * 0.3);
-        const firstTwo = Math.round(base * 0.7);
-        if (stage === 10) return first;
-        if (stage === 20) return Math.max(0, firstTwo - first);
-        return Math.max(0, base - firstTwo);
+      function transactionAmount(transaction) {
+        return numberValue(transaction.shares) * numberValue(transaction.price) + numberValue(transaction.fee);
       }
 
-      function strategyConclusion(metrics, signal) {
+      function deploymentProgress(metrics, signal, transactions, stage) {
+        const cycleStartDate = String(signal.cycleStartDate || "");
+        const spent = cycleStartDate ? transactions
+          .filter((transaction) => (
+            String(transaction.market || "").toUpperCase() === "TW"
+            && String(transaction.symbol || "").toUpperCase() === "00685L"
+            && String(transaction.action || "").toUpperCase() === "BUY"
+            && String(transaction.purpose || "").toLowerCase() === "extra"
+            && String(transaction.date || "") >= cycleStartDate
+          ))
+          .reduce((sum, transaction) => sum + transactionAmount(transaction), 0) : 0;
+        const base = Math.max(deploymentBase(metrics, signal), Math.round(metrics.investmentReserve + spent));
+        const targetRatio = stage >= 30 ? 1 : stage >= 20 ? 0.7 : 0.3;
+        const target = Math.round(base * targetRatio);
+        return { spent: Math.round(spent), target, remaining: Math.max(0, target - Math.round(spent)) };
+      }
+
+      function deploymentAdvice(metrics, signal, transactions, stage) {
+        const progress = deploymentProgress(metrics, signal, transactions, stage);
+        if (progress.remaining <= 0) return `本輪已投入 ${money.format(progress.spent)}，已達本階段累計上限 ${money.format(progress.target)}，不用重複加碼。`;
+        return `本階段累計應投入 ${money.format(progress.target)}；已投入 ${money.format(progress.spent)}，尚可投入 ${money.format(progress.remaining)}。`;
+      }
+
+      function strategyConclusion(metrics, signal, transactions) {
         if (metrics.emergencyFund < EMERGENCY_FUND_TARGET) {
           return {
             tone: "editing",
@@ -294,13 +326,13 @@
           };
         }
         if (signal.pullback >= 30) {
-          return { tone: "editing", title: "較20日高點回檔 30% 條件", text: `可投入本輪基準的剩餘金額，約 ${money.format(deployment(metrics, signal, 30))}。` };
+          return { tone: "editing", title: "較20日高點回檔 30% 條件", text: deploymentAdvice(metrics, signal, transactions, 30) };
         }
         if (signal.pullback >= 20) {
-          return { tone: "editing", title: "較20日高點回檔 20% 條件", text: `可再動用本輪基準約 40%，約 ${money.format(deployment(metrics, signal, 20))}。` };
+          return { tone: "editing", title: "較20日高點回檔 20% 條件", text: deploymentAdvice(metrics, signal, transactions, 20) };
         }
         if (signal.pullback >= 10) {
-          return { tone: "editing", title: "較20日高點回檔 10% 條件", text: `可動用本輪基準約 30%，約 ${money.format(deployment(metrics, signal, 10))}。` };
+          return { tone: "editing", title: "較20日高點回檔 10% 條件", text: deploymentAdvice(metrics, signal, transactions, 10) };
         }
         return {
           tone: "",
@@ -309,8 +341,8 @@
         };
       }
 
-      function renderStrategy(metrics, signal) {
-        const conclusion = strategyConclusion(metrics, signal);
+      function renderStrategy(metrics, signal, transactions = []) {
+        const conclusion = strategyConclusion(metrics, signal, transactions);
         const signalNote = signal.ok
           ? `${signal.cached ? "上次成功資料｜" : ""}現價 ${signal.price} / 20 日高點 ${signal.high}`
           : "先維持固定投入";
@@ -338,8 +370,9 @@
         strategyAdvice.innerHTML = "<strong>正在讀取首頁資料...</strong>";
         renderCachedStrategy();
         try {
-          const [coreResponse, signal] = await Promise.all([
+          const [coreResponse, transactionsResponse, signal] = await Promise.all([
             fetchWithTimeout("/api/dashboard-core?fast=1", { cache: "no-store" }, 10000),
+            fetchWithTimeout("/api/transactions", { cache: "no-store" }, 10000),
             fetchLeveragedSignal(),
           ]);
           if (coreResponse.status === 401) {
@@ -348,8 +381,11 @@
           }
           const payload = await readJson(coreResponse, "首頁資料讀取失敗。");
           if (!coreResponse.ok) throw new Error(payload.detail || "首頁資料讀取失敗。");
+          const transactionPayload = await readJson(transactionsResponse, "交易紀錄讀取失敗。");
+          if (!transactionsResponse.ok) throw new Error(transactionPayload.detail || "交易紀錄讀取失敗。");
           const metrics = accountMetrics(payload);
-          renderStrategy(metrics, signal);
+          const transactions = Array.isArray(transactionPayload.transactions) ? transactionPayload.transactions : [];
+          renderStrategy(metrics, signal, transactions);
           writeCache(STRATEGY_CACHE_KEY, { metrics, signal, savedAt: new Date().toISOString() });
         } catch (error) {
           if (!renderCachedStrategy()) {

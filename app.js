@@ -1329,13 +1329,35 @@ function reserveDeploymentBase(metrics) {
   return currentReserve;
 }
 
-function reserveDeploymentAmount(metrics, stage) {
-  const base = reserveDeploymentBase(metrics);
-  const first = Math.round(base * 0.3);
-  const firstTwo = Math.round(base * 0.7);
-  if (stage === 10) return first;
-  if (stage === 20) return Math.max(0, firstTwo - first);
-  return Math.max(0, base - firstTwo);
+function leveragedDeploymentSpent(signal = data.leveragedPullbackSignal || {}) {
+  const cycleStartDate = String(signal.cycleStartDate || "");
+  if (!cycleStartDate) return 0;
+  return data.transactions
+    .filter((transaction) => (
+      String(transaction.market || "").toUpperCase() === "TW"
+      && String(transaction.symbol || "").toUpperCase() === "00685L"
+      && String(transaction.action || "").toUpperCase() === "BUY"
+      && String(transaction.purpose || "").toLowerCase() === "extra"
+      && String(transaction.date || "") >= cycleStartDate
+    ))
+    .reduce((sum, transaction) => sum + transactionInvestmentAmount(transaction), 0);
+}
+
+function reserveDeploymentProgress(metrics, stage) {
+  const signal = data.leveragedPullbackSignal || {};
+  const spent = leveragedDeploymentSpent(signal);
+  const base = Math.max(reserveDeploymentBase(metrics), Math.round((Number(metrics.investmentReserve) || 0) + spent));
+  const targetRatio = stage >= 30 ? 1 : stage >= 20 ? 0.7 : 0.3;
+  const target = Math.round(base * targetRatio);
+  return { spent: Math.round(spent), target, remaining: Math.max(0, target - Math.round(spent)) };
+}
+
+function deploymentAdvice(metrics, stage) {
+  const progress = reserveDeploymentProgress(metrics, stage);
+  if (progress.remaining <= 0) {
+    return `本輪已投入 ${money.format(progress.spent)}，已達本階段累計上限 ${money.format(progress.target)}，不用重複加碼。`;
+  }
+  return `本階段累計應投入 ${money.format(progress.target)}；已投入 ${money.format(progress.spent)}，尚可投入 ${money.format(progress.remaining)}。`;
 }
 
 function leveragedPriceSignalText(metrics) {
@@ -1351,13 +1373,13 @@ function leveragedPriceSignalText(metrics) {
     return `${base} 投資預備金還沒達 15%，不額外加碼。`;
   }
   if (signal.pullback >= 30) {
-    return `${base} 回檔 30%，投入本輪投資預備金的剩餘金額，約 ${money.format(reserveDeploymentAmount(metrics, 30))}。`;
+    return `${base} 回檔 30%。${deploymentAdvice(metrics, 30)}`;
   }
   if (signal.pullback >= 20) {
-    return `${base} 回檔 20%，再動用本輪基準約 40%，約 ${money.format(reserveDeploymentAmount(metrics, 20))}。`;
+    return `${base} 回檔 20%。${deploymentAdvice(metrics, 20)}`;
   }
   if (signal.pullback >= 10) {
-    return `${base} 回檔 10%，可動用本輪基準約 30%，約 ${money.format(reserveDeploymentAmount(metrics, 10))}。`;
+    return `${base} 回檔 10%。${deploymentAdvice(metrics, 10)}`;
   }
   return `${base} 一般震盪，只依目標配置調整。`;
 }
@@ -1375,6 +1397,12 @@ function twseHistoryMonthKeys(reference = new Date()) {
     const month = new Date(reference.getFullYear(), reference.getMonth() - offset, 1);
     return `${month.getFullYear()}${String(month.getMonth() + 1).padStart(2, "0")}01`;
   });
+}
+
+function twseDateToIso(value) {
+  const [year, month, day] = String(value || "").split("/").map(Number);
+  if (!year || !month || !day) return "";
+  return `${year + 1911}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function loadLeveragedPullbackSignal() {
@@ -1399,7 +1427,7 @@ function loadLeveragedPullbackSignal() {
         .filter((row) => Number.isFinite(row.high) && row.high > 0 && Number.isFinite(row.price) && row.price > 0)
         .sort((a, b) => a.date.localeCompare(b.date));
       const latestRaw = rawRows.at(-1);
-      const rows = rawRows.map((row) => (
+      const adjustedRows = rawRows.map((row) => (
         latestRaw?.price > 0 && latestRaw.price < 50 && row.price > latestRaw.price * 10
           ? {
               ...row,
@@ -1407,10 +1435,18 @@ function loadLeveragedPullbackSignal() {
               price: Number((row.price / ETF_00685L_SPLIT_RATIO).toFixed(4)),
             }
           : row
-      )).slice(-20);
+      ));
+      const rows = adjustedRows.slice(-20);
       if (rows.length < 20) throw new Error("TWSE history incomplete");
       const latest = rows[rows.length - 1];
       const high = Math.max(...rows.map((row) => row.high));
+      let cycleStartDate = "";
+      for (let index = 19; index < adjustedRows.length; index += 1) {
+        const windowRows = adjustedRows.slice(index - 19, index + 1);
+        const rollingHigh = Math.max(...windowRows.map((row) => row.high));
+        const rollingPullback = rollingHigh ? ((rollingHigh - adjustedRows[index].price) / rollingHigh) * 100 : 0;
+        cycleStartDate = rollingPullback >= 10 ? (cycleStartDate || twseDateToIso(adjustedRows[index].date)) : "";
+      }
       data.leveragedPullbackSignal = {
         state: "ready",
         checkedKey: today,
@@ -1418,6 +1454,7 @@ function loadLeveragedPullbackSignal() {
         high,
         pullback: high ? ((high - latest.price) / high) * 100 : 0,
         priceDate: latest.date,
+        cycleStartDate,
       };
       renderTodayActions();
       renderHero();
