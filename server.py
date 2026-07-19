@@ -56,13 +56,6 @@ ETF_00685L_DEPLOYMENT_METADATA_KEY = "leveragedDeployment00685L"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
 ETF_00685L_TARGET_AVERAGE_COST = 12.1
-US_SCREENSHOT_SNAPSHOT_METADATA_KEY = "usScreenshotSnapshot20260718v2"
-US_SCREENSHOT_POSITIONS = (
-    {"symbol": "MU", "name": "MICRON TECHNOLOGY INC", "shares": 26.00282, "averageCost": 499.87617, "price": 844.0},
-    {"symbol": "SNDK", "name": "SANDISK CORP", "shares": 3.0, "averageCost": 1670.0, "price": 1350.21},
-    {"symbol": "NVDA", "name": "NVIDIA CORP", "shares": 7.00704, "averageCost": 151.53902, "price": 202.48925},
-    {"symbol": "TSM", "name": "TAIWAN SEMICONDUCTOR", "shares": 2.0074, "averageCost": 340.23114, "price": 397.76},
-)
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -1145,67 +1138,6 @@ def ensure_corporate_action_corrections() -> dict[str, Any]:
         return {"ok": False, "status": "error", "detail": str(error)}
     finally:
         CORPORATE_ACTION_LOCK.release()
-
-
-def apply_us_screenshot_snapshot() -> dict[str, Any]:
-    metadata = db_store.read_metadata()
-    existing = metadata.get(US_SCREENSHOT_SNAPSHOT_METADATA_KEY)
-    if isinstance(existing, dict) and existing.get("status") == "applied":
-        return {"ok": True, "status": "alreadyApplied", **existing}
-
-    transactions, _ = ensure_transaction_ids(read_transactions(use_examples=False))
-    non_us_transactions = [
-        dict(row) for row in transactions
-        if str(row.get("market", "")).upper() != "US"
-    ]
-    opening_transactions = [
-        {
-            "id": f"tx-us-opening-20260718-{position['symbol'].lower()}",
-            "date": "2026-07-18",
-            "market": "US",
-            "symbol": position["symbol"],
-            "name": position["name"],
-            "action": "BUY",
-            "shares": position["shares"],
-            "price": position["averageCost"],
-            "fee": 0,
-            "purpose": "rebalance",
-            "note": "期初持股調整（依 2026-07-18 券商持股畫面建立）",
-        }
-        for position in US_SCREENSHOT_POSITIONS
-    ]
-    adjusted_transactions = [*non_us_transactions, *opening_transactions]
-    validate_positions(adjusted_transactions)
-    backup = write_pre_change_backup("依 2026-07-18 截圖校正美股持股與價格")
-    write_transactions(adjusted_transactions)
-
-    prices = db_store.read_prices({"fxRate": 31.451, "prices": {}})
-    price_book = prices.get("prices") if isinstance(prices.get("prices"), dict) else {}
-    updated_at = "2026-07-18T04:00:00+08:00"
-    for position in US_SCREENSHOT_POSITIONS:
-        key = f"US:{position['symbol']}"
-        price_book[key] = {
-            **(price_book.get(key) if isinstance(price_book.get(key), dict) else {}),
-            "price": position["price"],
-            "updatedAt": updated_at,
-        }
-    db_store.write_prices({**prices, "prices": price_book})
-
-    portfolio = rebuild_portfolio_outputs()
-    applied_at = mark_successful_save()
-    result = {
-        "status": "applied",
-        "appliedAt": applied_at,
-        "backup": backup,
-        "replacedUsTransactionCount": len(transactions) - len(non_us_transactions),
-        "transactionIds": [row["id"] for row in opening_transactions],
-        "portfolioHoldings": [
-            row for row in portfolio.get("holdings", [])
-            if str(row.get("market", "")).upper() == "US"
-        ],
-    }
-    db_store.set_metadata(US_SCREENSHOT_SNAPSHOT_METADATA_KEY, result)
-    return {"ok": True, **result}
 
 
 def build_holding_audit() -> dict[str, Any]:
@@ -2842,7 +2774,6 @@ def update_prices_status() -> dict:
 @app.on_event("startup")
 def startup_data_checks() -> None:
     ensure_corporate_action_corrections()
-    apply_us_screenshot_snapshot()
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
