@@ -595,25 +595,15 @@ function totalDividendIncomeTwd() {
   return Math.round(data.dividends.reduce((sum, dividend) => sum + dividendNetTwd(dividend), 0));
 }
 
-function totalInvestmentCostTwdFromTransactions() {
-  return Math.round(data.transactions
-    .filter((transaction) => String(transaction.action || "").toUpperCase() === "BUY")
-    .reduce((sum, transaction) => sum + transactionInvestmentAmount(transaction), 0));
-}
-
-function cumulativeReturnMetrics(unrealizedGain = 0, currentInvestmentCost = 0) {
+function cumulativeReturnMetrics(unrealizedGain = 0) {
   const realizedGain = realizedGainTwdFromTransactions();
   const dividendIncome = totalDividendIncomeTwd();
   const totalGain = unrealizedGain + realizedGain + dividendIncome;
-  const transactionCost = totalInvestmentCostTwdFromTransactions();
-  const investedCost = transactionCost > 0 ? transactionCost : currentInvestmentCost;
   return {
     unrealizedGain,
     realizedGain,
     dividendIncome,
     totalGain,
-    investedCost,
-    returnRate: percent(totalGain, investedCost, 2),
   };
 }
 
@@ -1126,13 +1116,13 @@ function renderKpis() {
     return;
   }
   const metrics = getPortfolioMetrics();
-  const cumulativeReturn = cumulativeReturnMetrics(metrics.investmentGainTwd, metrics.investmentCostTwd);
+  const cumulativeReturn = cumulativeReturnMetrics(metrics.investmentGainTwd);
   const rows = [
     {
-      label: "總損益",
+      label: "累積總損益",
       value: money.format(cumulativeReturn.totalGain),
       valueTone: gainTone(cumulativeReturn.totalGain),
-      note: `含股息收入 ${money.format(cumulativeReturn.dividendIncome)}`,
+      note: `已實現 ${money.format(cumulativeReturn.realizedGain)}｜股息 ${money.format(cumulativeReturn.dividendIncome)}`,
     },
     {
       label: "未實現損益",
