@@ -1502,6 +1502,7 @@ def login_page(request: Request) -> Response:
     error_html = "<p class=\"error\">帳號或密碼不正確，請再試一次。</p>" if has_error else ""
     return Response(
         media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-store", "X-App-Version": app_version_payload()["label"]},
         content=f"""<!doctype html>
 <html lang="zh-Hant">
   <head>
