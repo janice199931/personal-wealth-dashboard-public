@@ -1658,8 +1658,9 @@ async def save_upload(upload: UploadFile, folder: Path) -> Path:
 
 
 @app.get("/api/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    version = app_version_payload()
+    return {"status": "ok", "version": version["version"], "label": version["label"]}
 
 
 @app.get("/api/app-version")
