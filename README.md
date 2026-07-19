@@ -386,6 +386,7 @@ git check-ignore -v data/transactions.json data/portfolio.json data/backups/exam
   - 股數：`8880`
   - 平均成本：`12.1`
 - 美股持股與平均成本一律由交易、股息再投入與公司行動紀錄重建；程式不得以固定目標值覆蓋。
+- 2026-07-18 依券商持股畫面建立 MU、SNDK、NVDA、TSM 四筆「期初持股調整」交易；部署遷移完成後應移除一次性遷移程式。
 - 00685L 本輪加碼基準保存在伺服器 metadata；瀏覽器快取不得作為基準來源或重建依據。
 
 ### Stability Features Already Added

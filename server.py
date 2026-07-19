@@ -56,6 +56,13 @@ ETF_00685L_DEPLOYMENT_METADATA_KEY = "leveragedDeployment00685L"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
 ETF_00685L_TARGET_AVERAGE_COST = 12.1
+US_OPENING_POSITIONS_METADATA_KEY = "usOpeningPositions20260718"
+US_OPENING_POSITIONS = (
+    {"symbol": "MU", "name": "MICRON TECHNOLOGY INC", "shares": 26.00282, "averageCost": 499.87617},
+    {"symbol": "SNDK", "name": "SANDISK CORP", "shares": 3.0, "averageCost": 1670.0},
+    {"symbol": "NVDA", "name": "NVIDIA CORP", "shares": 7.00704, "averageCost": 151.53902},
+    {"symbol": "TSM", "name": "TAIWAN SEMICONDUCTOR", "shares": 2.0074, "averageCost": 340.23114},
+)
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -193,7 +200,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-07-19 持股資料完整性修正"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-19 美股期初持股調整"),
     }
 
 
@@ -1138,6 +1145,55 @@ def ensure_corporate_action_corrections() -> dict[str, Any]:
         return {"ok": False, "status": "error", "detail": str(error)}
     finally:
         CORPORATE_ACTION_LOCK.release()
+
+
+def apply_us_opening_positions() -> dict[str, Any]:
+    metadata = db_store.read_metadata()
+    existing = metadata.get(US_OPENING_POSITIONS_METADATA_KEY)
+    if isinstance(existing, dict) and existing.get("status") == "applied":
+        return {"ok": True, "status": "alreadyApplied", **existing}
+
+    transactions, _ = ensure_transaction_ids(read_transactions(use_examples=False))
+    tw_transactions = [
+        dict(row) for row in transactions
+        if str(row.get("market", "")).upper() != "US"
+    ]
+    opening_transactions = [
+        {
+            "id": f"tx-us-opening-20260718-{position['symbol'].lower()}",
+            "date": "2026-07-18",
+            "market": "US",
+            "symbol": position["symbol"],
+            "name": position["name"],
+            "action": "BUY",
+            "shares": position["shares"],
+            "price": position["averageCost"],
+            "fee": 0,
+            "purpose": "rebalance",
+            "note": "期初持股調整（依 2026-07-18 券商持股畫面建立）",
+        }
+        for position in US_OPENING_POSITIONS
+    ]
+    adjusted_transactions = [*tw_transactions, *opening_transactions]
+    validate_positions(adjusted_transactions)
+    backup = write_pre_change_backup("建立美股期初持股調整")
+    write_transactions(adjusted_transactions)
+    portfolio = rebuild_portfolio_outputs()
+    applied_at = mark_successful_save()
+    result = {
+        "status": "applied",
+        "appliedAt": applied_at,
+        "backup": backup,
+        "replacedUsTransactionCount": len(transactions) - len(tw_transactions),
+        "transactionIds": [row["id"] for row in opening_transactions],
+        "positions": {
+            position["symbol"]: position_state(adjusted_transactions, "US", position["symbol"])
+            for position in US_OPENING_POSITIONS
+        },
+        "portfolioSummary": portfolio.get("summary", {}),
+    }
+    db_store.set_metadata(US_OPENING_POSITIONS_METADATA_KEY, result)
+    return {"ok": True, **result}
 
 
 def build_holding_audit() -> dict[str, Any]:
@@ -2773,6 +2829,7 @@ def update_prices_status() -> dict:
 @app.on_event("startup")
 def startup_data_checks() -> None:
     ensure_corporate_action_corrections()
+    apply_us_opening_positions()
 
 
 @app.api_route("/", methods=["GET", "HEAD"])
