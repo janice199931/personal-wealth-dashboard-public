@@ -10,7 +10,6 @@ import secrets
 import shutil
 import tempfile
 import time
-from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from datetime import datetime, timedelta, timezone
@@ -57,16 +56,6 @@ ETF_00685L_DEPLOYMENT_METADATA_KEY = "leveragedDeployment00685L"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
 ETF_00685L_TARGET_AVERAGE_COST = 12.1
-US_DRIP_POSITION_METADATA_KEY = "usDripPositionCorrection20260708v3"
-US_DRIP_POSITION_CORRECTION_DATE = "2026-07-08"
-US_DRIP_POSITION_TARGETS = {
-    "MU": {"name": "MICRON TECHNOLOGY INC", "shares": 26.00282, "averageCost": 499.87617},
-    "VOO": {"name": "VANGUARD S&P 500 ETF", "shares": 9.07725, "averageCost": 602.22},
-    "SNDK": {"name": "SANDISK CORP", "shares": 1.0, "averageCost": 1960.0},
-    "NVDA": {"name": "NVIDIA CORP", "shares": 7.00704, "averageCost": 151.53902},
-    "GOOG": {"name": "ALPHABET INC", "shares": 3.00125, "averageCost": 311.63682, "sellPrice": 370.0},
-    "TSM": {"name": "TAIWAN SEMICONDUCTOR", "shares": 2.0074, "averageCost": 340.23114},
-}
 BACKUP_FILES = {
     "transactions.json": DATA_DIR / "transactions.json",
     "dividends.json": DATA_DIR / "dividends.json",
@@ -204,7 +193,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-07-19 00685L 加碼進度雲端保存"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-19 持股資料完整性修正"),
     }
 
 
@@ -491,118 +480,13 @@ def rebuild_portfolio_outputs() -> dict[str, Any]:
         return portfolio
 
 
-def _snapshot_needs_us_drip_overlay(holding: dict[str, Any], target: dict[str, Any]) -> bool:
-    current_shares = float(holding.get("shares") or 0)
-    current_average_cost = float(holding.get("averageCost") or 0)
-    if current_shares <= 0:
-        return False
-    if abs(current_shares - float(target["shares"])) > 0.1:
-        return False
-    return (
-        abs(current_shares - float(target["shares"])) > 0.00001
-        or abs(current_average_cost - float(target["averageCost"])) > 0.00001
-    )
-
-
-def overlay_us_drip_targets_on_portfolio(portfolio: dict[str, Any]) -> dict[str, Any]:
-    holdings = portfolio.get("holdings")
-    if not isinstance(holdings, list):
-        return portfolio
-
-    changed = False
-    output = deepcopy(portfolio)
-    fx_rate = float(output.get("fxRate") or 31.451)
-    for holding in output.get("holdings", []):
-        if str(holding.get("market", "")).upper() != "US":
-            continue
-        symbol = str(holding.get("symbol", "")).upper()
-        target = US_DRIP_POSITION_TARGETS.get(symbol)
-        if not target or not _snapshot_needs_us_drip_overlay(holding, target):
-            continue
-        shares = float(target["shares"])
-        average_cost = float(target["averageCost"])
-        price = float(holding.get("price") or average_cost)
-        total_cost = round(shares * average_cost, 2)
-        market_value = round(shares * price, 2)
-        unrealized_gain = round(market_value - total_cost, 2)
-        holding["shares"] = round(shares, 6)
-        holding["averageCost"] = round(average_cost, 5)
-        holding["totalCost"] = total_cost
-        holding["marketValue"] = market_value
-        holding["unrealizedGain"] = unrealized_gain
-        holding["returnRate"] = round((unrealized_gain / total_cost * 100), 2) if total_cost else 0
-        holding["marketValueTWD"] = round(market_value * fx_rate)
-        holding["totalCostTWD"] = round(total_cost * fx_rate)
-        holding["unrealizedGainTWD"] = round(unrealized_gain * fx_rate)
-        changed = True
-
-    if not changed:
-        return portfolio
-
-    tw_holdings = [row for row in output.get("holdings", []) if row.get("market") == "TW"]
-    us_holdings = [row for row in output.get("holdings", []) if row.get("market") == "US"]
-    tw_market_value = round(sum(float(row.get("marketValueTWD") or 0) for row in tw_holdings))
-    us_market_value = round(sum(float(row.get("marketValueTWD") or 0) for row in us_holdings))
-    tw_cost = round(sum(float(row.get("totalCostTWD") or 0) for row in tw_holdings))
-    us_cost = round(sum(float(row.get("totalCostTWD") or 0) for row in us_holdings))
-    cash_twd = round(float(output.get("summary", {}).get("cash") or output.get("allocation", {}).get("cash") or 0))
-    debt = round(float(output.get("summary", {}).get("debt") or output.get("allocation", {}).get("debt") or 0))
-    stock_assets = tw_market_value + us_market_value
-    total_assets = stock_assets + cash_twd
-    net_worth = total_assets - debt
-
-    def gain(rows: list[dict[str, Any]]) -> int:
-        return round(sum(float(row.get("unrealizedGainTWD") or 0) for row in rows))
-
-    def rate(market_value: int, cost: int) -> float:
-        return round(((market_value - cost) / cost * 100), 2) if cost else 0
-
-    output["summary"] = {
-        **output.get("summary", {}),
-        "totalAssets": total_assets,
-        "stockAssets": stock_assets,
-        "cash": cash_twd,
-        "debt": debt,
-        "netWorth": net_worth,
-    }
-    output["markets"] = {
-        **output.get("markets", {}),
-        "TW": {
-            **output.get("markets", {}).get("TW", {}),
-            "marketValue": tw_market_value,
-            "cost": tw_cost,
-            "unrealizedGain": gain(tw_holdings),
-            "returnRate": rate(tw_market_value, tw_cost),
-        },
-        "US": {
-            **output.get("markets", {}).get("US", {}),
-            "marketValueUSD": round(sum(float(row.get("marketValue") or 0) for row in us_holdings), 2),
-            "marketValue": us_market_value,
-            "costUSD": round(sum(float(row.get("totalCost") or 0) for row in us_holdings), 2),
-            "cost": us_cost,
-            "unrealizedGainUSD": round(sum(float(row.get("unrealizedGain") or 0) for row in us_holdings), 2),
-            "unrealizedGain": gain(us_holdings),
-            "returnRate": rate(us_market_value, us_cost),
-        },
-    }
-    output["allocation"] = {
-        **output.get("allocation", {}),
-        "taiwanStocks": tw_market_value,
-        "usStocks": us_market_value,
-        "cash": cash_twd,
-        "debt": debt,
-    }
-    output["usDripDisplayCorrection"] = {"status": "applied", "symbols": list(US_DRIP_POSITION_TARGETS)}
-    return output
-
-
 def read_portfolio(use_examples: bool = False) -> dict[str, Any]:
     portfolio = db_store.read_latest_portfolio({})
     if not portfolio and db_store.has_private_data():
         portfolio = rebuild_portfolio_outputs()
     if not portfolio and use_examples:
         portfolio = read_json(EXAMPLE_PORTFOLIO_PATH, {})
-    return overlay_us_drip_targets_on_portfolio(portfolio)
+    return portfolio
 
 
 def read_raw_portfolio(use_examples: bool = False) -> dict[str, Any]:
@@ -1243,177 +1127,12 @@ def apply_00685l_split_adjustment() -> dict[str, Any]:
     return {"ok": True, **result}
 
 
-def _is_us_symbol_transaction(row: dict[str, Any], symbol: str) -> bool:
-    return str(row.get("market", "")).upper() == "US" and str(row.get("symbol", "")).upper() == symbol
-
-
-def _target_us_position_cost(target: dict[str, Any]) -> float:
-    return round(float(target["shares"]) * float(target["averageCost"]), 2)
-
-
-def _matches_us_position_target(state: dict[str, Any], target: dict[str, Any]) -> bool:
-    return (
-        abs(float(state.get("shares") or 0) - float(target["shares"])) < 0.00001
-        and abs(float(state.get("averageCost") or 0) - float(target["averageCost"])) < 0.00001
-    )
-
-
-def _has_us_trade_after_position_correction(transactions: list[dict[str, Any]], symbol: str) -> bool:
-    return any(
-        _is_us_symbol_transaction(row, symbol)
-        and str(row.get("date", "")) > US_DRIP_POSITION_CORRECTION_DATE
-        for row in transactions
-    )
-
-
-def _adjust_latest_buy_cost(transactions: list[dict[str, Any]], symbol: str, delta_cost: float) -> bool:
-    if abs(delta_cost) < 0.005:
-        return True
-    buy_rows = [
-        row
-        for row in transactions
-        if _is_us_symbol_transaction(row, symbol) and str(row.get("action", "")).upper() == "BUY"
-    ]
-    buy_rows.sort(key=lambda item: to_float(item.get("shares")), reverse=True)
-    for row in buy_rows:
-        current_fee = to_float(row.get("fee"))
-        next_fee = round(current_fee + delta_cost, 2)
-        if next_fee >= 0:
-            row["fee"] = next_fee
-        else:
-            shares = to_float(row.get("shares"))
-            price = to_float(row.get("price"))
-            next_price = round(price + (delta_cost / shares), 6) if shares else price
-            if next_price <= 0:
-                return False
-            row["price"] = next_price
-        note = str(row.get("note", "")).strip()
-        cost_note = "美股股息再投資後持股成本校正"
-        row["note"] = note if cost_note in note else (f"{note}；{cost_note}" if note else cost_note)
-        return True
-    return False
-
-
-def _append_us_position_correction(
-    transactions: list[dict[str, Any]],
-    symbol: str,
-    target: dict[str, Any],
-    before: dict[str, Any],
-) -> bool:
-    before_shares = float(before.get("shares") or 0)
-    before_cost = float(before.get("totalCost") or 0)
-    target_shares = float(target["shares"])
-    target_cost = _target_us_position_cost(target)
-    share_delta = round(target_shares - before_shares, 6)
-    if abs(share_delta) >= 0.000001:
-        action = "BUY" if share_delta > 0 else "SELL"
-        trade_shares = abs(share_delta)
-        if action == "BUY":
-            price = max(0.0001, round((target_cost - before_cost) / trade_shares, 6))
-        else:
-            price = float(target.get("sellPrice") or target.get("averageCost") or 1)
-        transactions.append({
-            "id": f"tx-us-drip-{symbol.lower()}-{uuid4().hex[:8]}",
-            "date": "2026-07-08",
-            "market": "US",
-            "symbol": symbol,
-            "name": target.get("name", symbol),
-            "action": action,
-            "shares": trade_shares,
-            "price": price,
-            "fee": 0,
-            "purpose": "dividend" if action == "BUY" else "rebalance",
-            "note": "美股股息再投資後持股校正",
-        })
-    after_trade = position_state(transactions, "US", symbol)
-    delta_cost = round(target_cost - float(after_trade.get("totalCost") or 0), 2)
-    return _adjust_latest_buy_cost(transactions, symbol, delta_cost)
-
-
-def apply_us_drip_position_corrections() -> dict[str, Any]:
-    transactions, ids_changed = ensure_transaction_ids(read_transactions(use_examples=False))
-    if ids_changed:
-        write_transactions(transactions)
-
-    current_states = {
-        symbol: position_state(transactions, "US", symbol)
-        for symbol in US_DRIP_POSITION_TARGETS
-    }
-    existing_symbols = [
-        symbol
-        for symbol, state in current_states.items()
-        if float(state.get("shares") or 0) > 0
-    ]
-    if not existing_symbols:
-        return {"ok": True, "status": "skipped", "reason": "noUsHoldings"}
-    target_symbols = [
-        symbol
-        for symbol in US_DRIP_POSITION_TARGETS
-        if not _has_us_trade_after_position_correction(transactions, symbol)
-    ]
-    if not target_symbols:
-        return {"ok": True, "status": "skipped", "reason": "newerTransactionsExist"}
-    if all(_matches_us_position_target(current_states[symbol], US_DRIP_POSITION_TARGETS[symbol]) for symbol in target_symbols):
-        result = {
-            "status": "applied",
-            "reason": "alreadyTargetState",
-            "appliedAt": db_store.now_iso(),
-            "symbols": target_symbols,
-            "before": current_states,
-            "after": current_states,
-        }
-        db_store.set_metadata(US_DRIP_POSITION_METADATA_KEY, result)
-        return {"ok": True, **result}
-
-    adjusted_transactions = [dict(row) for row in transactions]
-    before_states = {
-        symbol: position_state(adjusted_transactions, "US", symbol)
-        for symbol in target_symbols
-    }
-    for symbol in target_symbols:
-        target = US_DRIP_POSITION_TARGETS[symbol]
-        before = position_state(adjusted_transactions, "US", symbol)
-        if _matches_us_position_target(before, target):
-            continue
-        if not _append_us_position_correction(adjusted_transactions, symbol, target, before):
-            return {"ok": True, "status": "skipped", "reason": f"{symbol}CorrectionFailed", "before": before_states}
-
-    after_states = {
-        symbol: position_state(adjusted_transactions, "US", symbol)
-        for symbol in target_symbols
-    }
-    mismatches = {
-        symbol: after_states[symbol]
-        for symbol in target_symbols
-        if not _matches_us_position_target(after_states[symbol], US_DRIP_POSITION_TARGETS[symbol])
-    }
-    if mismatches:
-        return {"ok": True, "status": "skipped", "reason": "targetMismatch", "before": before_states, "after": after_states}
-
-    validate_positions(adjusted_transactions)
-    write_pre_change_backup("美股股息再投資持股校正")
-    write_transactions(adjusted_transactions)
-    portfolio = rebuild_portfolio_outputs()
-    applied_at = mark_successful_save()
-    result = {
-        "status": "applied",
-        "appliedAt": applied_at,
-        "symbols": target_symbols,
-        "before": before_states,
-        "after": after_states,
-        "portfolioSummary": portfolio.get("summary", {}),
-    }
-    db_store.set_metadata(US_DRIP_POSITION_METADATA_KEY, result)
-    return {"ok": True, **result}
-
-
 def ensure_corporate_action_corrections() -> dict[str, Any]:
     if not CORPORATE_ACTION_LOCK.acquire(blocking=False):
         return {"ok": True, "status": "busy"}
     try:
         split_result = apply_00685l_split_adjustment()
-        us_result = apply_us_drip_position_corrections()
-        return {"ok": True, "00685L": split_result, "usDrip": us_result}
+        return {"ok": True, "00685L": split_result}
     except Exception as error:
         print(f"Corporate action correction skipped: {error}")
         return {"ok": False, "status": "error", "detail": str(error)}
@@ -1649,17 +1368,10 @@ def data_consistency_checks(
 def correction_result_summary(correction: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     split = correction.get("00685L", {}) if isinstance(correction, dict) else {}
-    us_drip = correction.get("usDrip", {}) if isinstance(correction, dict) else {}
     rows.append({
         "label": "00685L 分割",
         "ok": bool(split.get("ok", True)) and split.get("status") in {"applied", "skipped", None},
         "detail": split.get("reason") or split.get("status") or "已檢查",
-    })
-    symbols = us_drip.get("symbols") or []
-    rows.append({
-        "label": "美股 DRIP",
-        "ok": bool(us_drip.get("ok", True)) and us_drip.get("status") in {"applied", "skipped", None},
-        "detail": f"{us_drip.get('status') or '已檢查'}，{len(symbols)} 檔" if symbols else (us_drip.get("reason") or us_drip.get("status") or "已檢查"),
     })
     return rows
 
@@ -2053,11 +1765,6 @@ def apply_00685l_split() -> Response:
     return utf8_json(apply_00685l_split_adjustment())
 
 
-@app.post("/api/corporate-actions/us-drip-positions")
-def apply_us_drip_positions() -> Response:
-    return utf8_json(apply_us_drip_position_corrections())
-
-
 @app.post("/api/corporate-actions/recheck-holdings")
 def recheck_holding_corrections() -> Response:
     correction = ensure_corporate_action_corrections()
@@ -2440,6 +2147,14 @@ async def update_leveraged_deployment(request: Request) -> dict[str, Any]:
     current_reserve = max(0, to_float(payload.get("currentReserve")))
     pullback = max(0, to_float(payload.get("pullback")))
     return sync_00685l_deployment(cycle_start_date, current_reserve, pullback)
+
+
+@app.get("/api/leveraged-deployment")
+def get_leveraged_deployment() -> dict[str, Any]:
+    state = db_store.read_metadata().get(ETF_00685L_DEPLOYMENT_METADATA_KEY)
+    if not isinstance(state, dict):
+        return {"ok": True, "active": False, "status": "notStarted"}
+    return {"ok": True, **state}
 
 
 @app.post("/api/transactions/preview")

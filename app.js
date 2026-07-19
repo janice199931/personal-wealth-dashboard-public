@@ -84,15 +84,6 @@ const MILESTONE_ANNUAL_DEPOSIT_INCREASE = 1500 * 0.7;
 const EMERGENCY_FUND_TARGET = 100000;
 const CASH_TARGET_RATIO = 0.15;
 const ETF_00685L_SPLIT_RATIO = 24;
-const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
-const US_DRIP_POSITION_TARGETS = {
-  MU: { shares: 26.00282, averageCost: 499.87617 },
-  VOO: { shares: 9.07725, averageCost: 602.22 },
-  SNDK: { shares: 1, averageCost: 1960 },
-  NVDA: { shares: 7.00704, averageCost: 151.53902 },
-  GOOG: { shares: 3.00125, averageCost: 311.63682 },
-  TSM: { shares: 2.0074, averageCost: 340.23114 },
-};
 const DASHBOARD_CORE_CACHE_KEY = "wealthDashboardLastCore";
 const FINANCE_DATA_CACHE_KEY = "wealthDashboardLastFinanceData";
 const DASHBOARD_REFRESH_REQUIRED_KEY = "wealthDashboardRefreshRequired";
@@ -194,41 +185,6 @@ function clearDashboardCoreCache() {
     window.localStorage?.removeItem(DASHBOARD_REFRESH_REQUIRED_KEY);
   } catch {
     // Cache cleanup is best effort.
-  }
-}
-
-function needsUsDripPositionCorrection(portfolio) {
-  const holdings = Array.isArray(portfolio?.holdings) ? portfolio.holdings : [];
-  const bySymbol = new Map(
-    holdings
-      .filter((holding) => String(holding.market || "").toUpperCase() === "US")
-      .map((holding) => [String(holding.symbol || "").toUpperCase(), holding]),
-  );
-  return Object.entries(US_DRIP_POSITION_TARGETS).some(([symbol, target]) => {
-    const holding = bySymbol.get(symbol);
-    if (!holding) return false;
-    const shares = safeNumber(holding.shares);
-    const averageCost = safeNumber(holding.averageCost);
-    return Math.abs(shares - target.shares) > 0.00001 || Math.abs(averageCost - target.averageCost) > 0.00001;
-  });
-}
-
-async function runUsDripCorrectionIfNeeded(core, fetchJson) {
-  if (!needsUsDripPositionCorrection(core?.portfolio)) return core;
-  try {
-    const response = await fetchWithTimeout(
-      "/api/corporate-actions/us-drip-positions",
-      { method: "POST", cache: "no-store" },
-      20000,
-    );
-    if (!response.ok || handleAuthExpired(response)) return core;
-    const result = await response.json();
-    if (result?.ok === false || result?.status === "skipped") return core;
-    clearDashboardCoreCache();
-    const refreshedCore = await fetchJson("/api/dashboard-core?fast=1&refresh=us-drip", "", null);
-    return refreshedCore?.portfolio ? refreshedCore : core;
-  } catch {
-    return core;
   }
 }
 
@@ -1310,46 +1266,12 @@ function nextActionSummary(metrics) {
   return "維持 50% / 35% / 15% 配置，等待 00685L 回檔條件。";
 }
 
-function reserveDeploymentBase(metrics) {
-  const signal = data.leveragedPullbackSignal || {};
-  const currentReserve = Math.max(0, Math.round(Number(metrics.investmentReserve) || 0));
-  try {
-    if (signal.state === "ready" && signal.pullback < 10) {
-      localStorage.removeItem(LEVERAGED_DEPLOYMENT_BASE_KEY);
-      return currentReserve;
-    }
-    const saved = JSON.parse(localStorage.getItem(LEVERAGED_DEPLOYMENT_BASE_KEY) || "null");
-    if (saved?.amount > 0) return Math.round(saved.amount);
-    if (signal.state === "ready" && signal.pullback >= 10) {
-      localStorage.setItem(LEVERAGED_DEPLOYMENT_BASE_KEY, JSON.stringify({ amount: currentReserve, startedAt: new Date().toISOString() }));
-    }
-  } catch {
-    // Storage is optional; the current reserve remains a safe fallback.
-  }
-  return currentReserve;
-}
-
-function leveragedDeploymentSpent(signal = data.leveragedPullbackSignal || {}) {
-  const cycleStartDate = String(signal.cycleStartDate || "");
-  if (!cycleStartDate) return 0;
-  return data.transactions
-    .filter((transaction) => (
-      String(transaction.market || "").toUpperCase() === "TW"
-      && String(transaction.symbol || "").toUpperCase() === "00685L"
-      && String(transaction.action || "").toUpperCase() === "BUY"
-      && String(transaction.purpose || "").toLowerCase() === "extra"
-      && String(transaction.date || "") >= cycleStartDate
-    ))
-    .reduce((sum, transaction) => sum + transactionInvestmentAmount(transaction), 0);
-}
-
 function reserveDeploymentProgress(metrics, stage) {
   const signal = data.leveragedPullbackSignal || {};
   const stored = signal.deploymentState;
-  const spent = stored?.active ? Number(stored.spentAmount) || 0 : leveragedDeploymentSpent(signal);
-  const base = stored?.active
-    ? Number(stored.baseAmount) || 0
-    : Math.max(reserveDeploymentBase(metrics), Math.round((Number(metrics.investmentReserve) || 0) + spent));
+  if (!stored?.active || !(Number(stored.baseAmount) > 0)) return null;
+  const spent = Number(stored.spentAmount) || 0;
+  const base = Number(stored.baseAmount);
   const targetRatio = stage >= 30 ? 1 : stage >= 20 ? 0.7 : 0.3;
   const target = Math.round(base * targetRatio);
   return { spent: Math.round(spent), target, remaining: Math.max(0, target - Math.round(spent)) };
@@ -1372,6 +1294,7 @@ async function syncLeveragedDeployment(signal, metrics) {
 
 function deploymentAdvice(metrics, stage) {
   const progress = reserveDeploymentProgress(metrics, stage);
+  if (!progress) return "加碼基準尚未從伺服器同步，暫不產生投入金額建議。";
   if (progress.remaining <= 0) {
     return `本輪已投入 ${money.format(progress.spent)}，已達本階段累計上限 ${money.format(progress.target)}，不用重複加碼。`;
   }
@@ -1480,7 +1403,7 @@ function loadLeveragedPullbackSignal() {
           getPortfolioMetrics(),
         );
       } catch {
-        // Keep the transaction-based local fallback when the database is temporarily unavailable.
+        // Without the server baseline, do not calculate a replacement recommendation.
       }
       renderTodayActions();
       renderHero();
@@ -2328,7 +2251,6 @@ async function loadExternalData() {
   let core = await fetchJson("/api/dashboard-core?fast=1", "", null);
   if (!core?.portfolio?.summary) core = null;
   if (core?.portfolio?.summary) {
-    core = await runUsDripCorrectionIfNeeded(core, fetchJson);
     rememberDashboardCore(core);
   } else {
     core = readLastDashboardCore();

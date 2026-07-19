@@ -93,7 +93,6 @@
       const EMERGENCY_FUND_TARGET = 100000;
       const CASH_TARGET_RATIO = 0.15;
       const ETF_00685L_SPLIT_RATIO = 24;
-      const LEVERAGED_DEPLOYMENT_BASE_KEY = "wealthDashboardLeveragedDeploymentBaseV1";
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
       const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
       const strategyGrid = document.getElementById("strategyGrid");
@@ -251,60 +250,30 @@
         }
       }
 
-      function deploymentBase(metrics, signal) {
-        const currentReserve = Math.max(0, Math.round(metrics.investmentReserve));
-        try {
-          if (signal.ok && !signal.cached && signal.pullback < 10) {
-            localStorage.removeItem(LEVERAGED_DEPLOYMENT_BASE_KEY);
-            return currentReserve;
-          }
-          const saved = readCache(LEVERAGED_DEPLOYMENT_BASE_KEY);
-          if (saved?.amount > 0) return Math.round(saved.amount);
-          if (signal.ok && !signal.cached && signal.pullback >= 10) {
-            writeCache(LEVERAGED_DEPLOYMENT_BASE_KEY, { amount: currentReserve, startedAt: new Date().toISOString() });
-          }
-        } catch {
-          // Storage is optional; use the current reserve if unavailable.
-        }
-        return currentReserve;
-      }
-
-      function transactionAmount(transaction) {
-        return numberValue(transaction.shares) * numberValue(transaction.price) + numberValue(transaction.fee);
-      }
-
       function deploymentProgress(metrics, signal, transactions, stage) {
-        const cycleStartDate = String(signal.cycleStartDate || "");
-        const spent = cycleStartDate ? transactions
-          .filter((transaction) => (
-            String(transaction.market || "").toUpperCase() === "TW"
-            && String(transaction.symbol || "").toUpperCase() === "00685L"
-            && String(transaction.action || "").toUpperCase() === "BUY"
-            && String(transaction.purpose || "").toLowerCase() === "extra"
-            && String(transaction.date || "") >= cycleStartDate
-          ))
-          .reduce((sum, transaction) => sum + transactionAmount(transaction), 0) : 0;
         const stored = signal.deploymentState;
-        const storedSpent = stored?.active ? numberValue(stored.spentAmount) : spent;
-        const base = stored?.active
-          ? numberValue(stored.baseAmount)
-          : Math.max(deploymentBase(metrics, signal), Math.round(metrics.investmentReserve + spent));
+        if (!stored?.active || !(numberValue(stored.baseAmount) > 0)) return null;
+        const storedSpent = numberValue(stored.spentAmount);
+        const base = numberValue(stored.baseAmount);
         const targetRatio = stage >= 30 ? 1 : stage >= 20 ? 0.7 : 0.3;
         const target = Math.round(base * targetRatio);
         return { spent: Math.round(storedSpent), target, remaining: Math.max(0, target - Math.round(storedSpent)) };
       }
 
       async function syncDeployment(signal, metrics) {
-        const response = await fetchWithTimeout("/api/leveraged-deployment", {
-          method: "POST",
-          cache: "no-store",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            cycleStartDate: signal.cycleStartDate || "",
-            currentReserve: metrics.investmentReserve,
-            pullback: signal.pullback,
-          }),
-        }, 10000);
+        const options = signal.cached
+          ? { method: "GET", cache: "no-store" }
+          : {
+              method: "POST",
+              cache: "no-store",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                cycleStartDate: signal.cycleStartDate || "",
+                currentReserve: metrics.investmentReserve,
+                pullback: signal.pullback,
+              }),
+            };
+        const response = await fetchWithTimeout("/api/leveraged-deployment", options, 10000);
         const payload = await readJson(response, "加碼進度同步失敗。");
         if (!response.ok) throw new Error(payload.detail || "加碼進度同步失敗。");
         return payload;
@@ -312,6 +281,7 @@
 
       function deploymentAdvice(metrics, signal, transactions, stage) {
         const progress = deploymentProgress(metrics, signal, transactions, stage);
+        if (!progress) return "加碼基準尚未從伺服器同步，暫不產生投入金額建議。";
         if (progress.remaining <= 0) return `本輪已投入 ${money.format(progress.spent)}，已達本階段累計上限 ${money.format(progress.target)}，不用重複加碼。`;
         return `本階段累計應投入 ${money.format(progress.target)}；已投入 ${money.format(progress.spent)}，尚可投入 ${money.format(progress.remaining)}。`;
       }
@@ -405,7 +375,7 @@
           if (!transactionsResponse.ok) throw new Error(transactionPayload.detail || "交易紀錄讀取失敗。");
           const metrics = accountMetrics(payload);
           const transactions = Array.isArray(transactionPayload.transactions) ? transactionPayload.transactions : [];
-          if (!signal.cached) signal.deploymentState = await syncDeployment(signal, metrics);
+          signal.deploymentState = await syncDeployment(signal, metrics);
           renderStrategy(metrics, signal, transactions);
           writeCache(STRATEGY_CACHE_KEY, { metrics, signal, savedAt: new Date().toISOString() });
         } catch (error) {
