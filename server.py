@@ -712,7 +712,7 @@ def write_database_backup(prefix: str = "wealth-dashboard-auto") -> dict[str, An
     BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
     payload = db_store.export_backup()
     target = BACKUPS_DIR / backup_file_name(prefix)
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     info = {
         "name": target.name,
         "path": str(target),
