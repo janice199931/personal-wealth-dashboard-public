@@ -284,10 +284,30 @@
             && String(transaction.date || "") >= cycleStartDate
           ))
           .reduce((sum, transaction) => sum + transactionAmount(transaction), 0) : 0;
-        const base = Math.max(deploymentBase(metrics, signal), Math.round(metrics.investmentReserve + spent));
+        const stored = signal.deploymentState;
+        const storedSpent = stored?.active ? numberValue(stored.spentAmount) : spent;
+        const base = stored?.active
+          ? numberValue(stored.baseAmount)
+          : Math.max(deploymentBase(metrics, signal), Math.round(metrics.investmentReserve + spent));
         const targetRatio = stage >= 30 ? 1 : stage >= 20 ? 0.7 : 0.3;
         const target = Math.round(base * targetRatio);
-        return { spent: Math.round(spent), target, remaining: Math.max(0, target - Math.round(spent)) };
+        return { spent: Math.round(storedSpent), target, remaining: Math.max(0, target - Math.round(storedSpent)) };
+      }
+
+      async function syncDeployment(signal, metrics) {
+        const response = await fetchWithTimeout("/api/leveraged-deployment", {
+          method: "POST",
+          cache: "no-store",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cycleStartDate: signal.cycleStartDate || "",
+            currentReserve: metrics.investmentReserve,
+            pullback: signal.pullback,
+          }),
+        }, 10000);
+        const payload = await readJson(response, "加碼進度同步失敗。");
+        if (!response.ok) throw new Error(payload.detail || "加碼進度同步失敗。");
+        return payload;
       }
 
       function deploymentAdvice(metrics, signal, transactions, stage) {
@@ -385,6 +405,7 @@
           if (!transactionsResponse.ok) throw new Error(transactionPayload.detail || "交易紀錄讀取失敗。");
           const metrics = accountMetrics(payload);
           const transactions = Array.isArray(transactionPayload.transactions) ? transactionPayload.transactions : [];
+          if (!signal.cached) signal.deploymentState = await syncDeployment(signal, metrics);
           renderStrategy(metrics, signal, transactions);
           writeCache(STRATEGY_CACHE_KEY, { metrics, signal, savedAt: new Date().toISOString() });
         } catch (error) {

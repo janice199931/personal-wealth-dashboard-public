@@ -1345,11 +1345,29 @@ function leveragedDeploymentSpent(signal = data.leveragedPullbackSignal || {}) {
 
 function reserveDeploymentProgress(metrics, stage) {
   const signal = data.leveragedPullbackSignal || {};
-  const spent = leveragedDeploymentSpent(signal);
-  const base = Math.max(reserveDeploymentBase(metrics), Math.round((Number(metrics.investmentReserve) || 0) + spent));
+  const stored = signal.deploymentState;
+  const spent = stored?.active ? Number(stored.spentAmount) || 0 : leveragedDeploymentSpent(signal);
+  const base = stored?.active
+    ? Number(stored.baseAmount) || 0
+    : Math.max(reserveDeploymentBase(metrics), Math.round((Number(metrics.investmentReserve) || 0) + spent));
   const targetRatio = stage >= 30 ? 1 : stage >= 20 ? 0.7 : 0.3;
   const target = Math.round(base * targetRatio);
   return { spent: Math.round(spent), target, remaining: Math.max(0, target - Math.round(spent)) };
+}
+
+async function syncLeveragedDeployment(signal, metrics) {
+  const response = await fetchWithTimeout("/api/leveraged-deployment", {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cycleStartDate: signal.cycleStartDate || "",
+      currentReserve: Math.max(0, Number(metrics.investmentReserve) || 0),
+      pullback: Math.max(0, Number(signal.pullback) || 0),
+    }),
+  }, 10000);
+  if (!response.ok) throw new Error("deployment sync unavailable");
+  return response.json();
 }
 
 function deploymentAdvice(metrics, stage) {
@@ -1417,7 +1435,7 @@ function loadLeveragedPullbackSignal() {
       return response.json();
     });
   }))
-    .then((payloads) => {
+    .then(async (payloads) => {
       const rawRows = payloads.flatMap((payload) => payload.data || [])
         .map((row) => ({
           date: row[0],
@@ -1456,6 +1474,14 @@ function loadLeveragedPullbackSignal() {
         priceDate: latest.date,
         cycleStartDate,
       };
+      try {
+        data.leveragedPullbackSignal.deploymentState = await syncLeveragedDeployment(
+          data.leveragedPullbackSignal,
+          getPortfolioMetrics(),
+        );
+      } catch {
+        // Keep the transaction-based local fallback when the database is temporarily unavailable.
+      }
       renderTodayActions();
       renderHero();
     })

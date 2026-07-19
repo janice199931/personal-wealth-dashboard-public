@@ -53,6 +53,7 @@ AUTH_COOKIE_NAME = "wealth_dashboard_session"
 AUTH_COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 EMERGENCY_FUND_TARGET = 100000
 ETF_00685L_SPLIT_METADATA_KEY = "corporateAction00685LSplit202607"
+ETF_00685L_DEPLOYMENT_METADATA_KEY = "leveragedDeployment00685L"
 ETF_00685L_SPLIT_RATIO = 24
 ETF_00685L_TARGET_SHARES = 8880
 ETF_00685L_TARGET_AVERAGE_COST = 12.1
@@ -203,7 +204,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-07-19 00685L 加碼額度追蹤"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-19 00685L 加碼進度雲端保存"),
     }
 
 
@@ -1085,6 +1086,53 @@ def position_state(transactions: list[dict[str, Any]], market: str, symbol: str)
 
 def _is_00685l_transaction(row: dict[str, Any]) -> bool:
     return str(row.get("market", "")).upper() == "TW" and str(row.get("symbol", "")).upper() == "00685L"
+
+
+def _00685l_extra_deployment_spent(transactions: list[dict[str, Any]], cycle_start_date: str) -> float:
+    return round(sum(
+        max(0, to_float(row.get("shares")) * to_float(row.get("price")) + to_float(row.get("fee")))
+        for row in transactions
+        if _is_00685l_transaction(row)
+        and str(row.get("action", "")).upper() == "BUY"
+        and str(row.get("purpose", "")).lower() == "extra"
+        and str(row.get("date", "")) >= cycle_start_date
+    ), 2)
+
+
+def sync_00685l_deployment(cycle_start_date: str, current_reserve: float, pullback: float) -> dict[str, Any]:
+    metadata = db_store.read_metadata()
+    existing = metadata.get(ETF_00685L_DEPLOYMENT_METADATA_KEY)
+    existing = existing if isinstance(existing, dict) else {}
+    now = db_store.now_iso()
+
+    if pullback < 10 or not cycle_start_date:
+        state = {**existing, "active": False, "closedAt": now, "updatedAt": now}
+        db_store.set_metadata(ETF_00685L_DEPLOYMENT_METADATA_KEY, state)
+        return {"ok": True, **state, "spentAmount": 0}
+
+    transactions = read_transactions(use_examples=False)
+    spent = _00685l_extra_deployment_spent(transactions, cycle_start_date)
+    if (
+        existing.get("active")
+        and existing.get("cycleStartDate") == cycle_start_date
+        and to_float(existing.get("baseAmount")) > 0
+    ):
+        base_amount = to_float(existing.get("baseAmount"))
+        created_at = existing.get("createdAt") or now
+    else:
+        base_amount = max(0, round(current_reserve + spent, 2))
+        created_at = now
+
+    state = {
+        "active": True,
+        "cycleStartDate": cycle_start_date,
+        "baseAmount": base_amount,
+        "spentAmount": spent,
+        "createdAt": created_at,
+        "updatedAt": now,
+    }
+    db_store.set_metadata(ETF_00685L_DEPLOYMENT_METADATA_KEY, state)
+    return {"ok": True, **state}
 
 
 def _is_target_00685l_state(state: dict[str, Any]) -> bool:
@@ -2372,6 +2420,26 @@ def get_transactions() -> dict:
     if changed:
         write_transactions(transactions)
     return {"ok": True, "transactions": transactions, "source": db_store.active_backend() if transactions else "empty"}
+
+
+@app.post("/api/leveraged-deployment")
+async def update_leveraged_deployment(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="加碼進度資料格式錯誤。") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="加碼進度資料格式錯誤。")
+
+    cycle_start_date = str(payload.get("cycleStartDate", "")).strip()
+    if cycle_start_date:
+        try:
+            datetime.fromisoformat(cycle_start_date)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="本輪開始日期格式錯誤。") from error
+    current_reserve = max(0, to_float(payload.get("currentReserve")))
+    pullback = max(0, to_float(payload.get("pullback")))
+    return sync_00685l_deployment(cycle_start_date, current_reserve, pullback)
 
 
 @app.post("/api/transactions/preview")
