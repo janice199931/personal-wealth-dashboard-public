@@ -2218,15 +2218,6 @@ canvas {
     gap: 8px;
   }
 
-  .sidebar-nav a:nth-child(2),
-  .sidebar-nav a:nth-child(3),
-  .sidebar-nav a:nth-child(5),
-  .sidebar-nav a:nth-child(6),
-  .sidebar-nav a:nth-child(8),
-  .sidebar-nav a:nth-child(9) {
-    display: none;
-  }
-
   .sidebar-nav a {
     min-height: 42px;
     justify-content: center;
