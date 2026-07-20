@@ -193,7 +193,7 @@ def app_version_payload() -> dict[str, Any]:
     return {
         "ok": True,
         "version": version,
-        "label": os.getenv("APP_VERSION_LABEL", "2026-07-20 資產配置規則更新"),
+        "label": os.getenv("APP_VERSION_LABEL", "2026-07-20 配置規則與再平衡選單更新"),
     }
 
 
