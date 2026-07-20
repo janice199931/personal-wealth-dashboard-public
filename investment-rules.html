@@ -40,9 +40,9 @@
           <span>Target Allocation</span>
           <h2>目標資產配置</h2>
           <div class="rule-steps">
-            <div><strong>全部台股 50%</strong><p>計入投資組合內的全部台股市值。</p></div>
-            <div><strong>全部美股 35%</strong><p>計入投資組合內的全部美股市值。</p></div>
-            <div><strong>全部現金 15%</strong><p>現金目標為投資資產 × 15%。</p></div>
+            <div><strong>全部台股 55%</strong><p>計入投資組合內的全部台股市值。</p></div>
+            <div><strong>全部美股 25%</strong><p>計入投資組合內的全部美股市值。</p></div>
+            <div><strong>全部現金 20%</strong><p>現金目標為投資資產 × 20%。</p></div>
           </div>
         </article>
 
@@ -65,8 +65,8 @@
           <h2>資金優先順序</h2>
           <ol>
             <li>先補滿緊急預備金。</li>
-            <li>再把全部現金補到投資配置資產的 15%；其中扣除 10 萬緊急預備金後，才是投資預備金目標。</li>
-            <li>新增資金依 50% / 35% / 15% 配置差距優先投入。</li>
+            <li>再把全部現金補到投資配置資產的 20%；其中扣除 10 萬緊急預備金後，才是投資預備金目標。</li>
+            <li>新增資金依 55% / 25% / 20% 配置差距優先投入。</li>
             <li>最後再看 00685L 是否達額外加碼條件。</li>
           </ol>
         </article>
@@ -85,13 +85,13 @@
         <article class="card rule-card wide">
           <span>Do Not Touch</span>
           <h2>不動用原則</h2>
-          <p>不要為了加碼動到緊急預備金。50／35／15 統一計算全部台股、全部美股與全部現金；若可動用投資預備金尚未達目標，首頁的加碼提醒只作觀察。</p>
+          <p>不要為了加碼動到緊急預備金。55／25／20 統一計算全部台股、全部美股與全部現金；若可動用投資預備金尚未達目標，首頁的加碼提醒只作觀察。</p>
         </article>
       </section>
     </main>
     <script>
       const EMERGENCY_FUND_TARGET = 100000;
-      const CASH_TARGET_RATIO = 0.15;
+      const CASH_TARGET_RATIO = 0.20;
       const ETF_00685L_SPLIT_RATIO = 24;
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
       const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
@@ -297,7 +297,7 @@
         if (metrics.investmentReserve < metrics.investmentReserveTarget) {
           return {
             tone: "",
-            title: "先把投資預備金補到 15%",
+            title: "先把投資預備金補到 20%",
             text: `投資預備金還差 ${money.format(metrics.investmentReserveTarget - metrics.investmentReserve)}，00685L 訊號先作觀察。`,
           };
         }
@@ -338,7 +338,7 @@
           : "先維持固定投入";
         strategyGrid.innerHTML = [
           resultBox("緊急預備金", money.format(metrics.emergencyFund), `${pct.format((metrics.emergencyFund / EMERGENCY_FUND_TARGET) * 100)}% / 目標 ${money.format(EMERGENCY_FUND_TARGET)}`),
-          resultBox("投資預備金", money.format(metrics.investmentReserve), `${pct.format((metrics.investmentReserve / Math.max(1, metrics.investmentReserveTarget)) * 100)}% / 15% 目標 ${money.format(metrics.investmentReserveTarget)}`),
+          resultBox("投資預備金", money.format(metrics.investmentReserve), `${pct.format((metrics.investmentReserve / Math.max(1, metrics.investmentReserveTarget)) * 100)}% / 20% 目標 ${money.format(metrics.investmentReserveTarget)}`),
           resultBox("配置範圍", "全部台股＋全部美股＋全部現金", `現金目標 ${money.format(metrics.cashTarget)}｜在途交割款 ${money.format(metrics.pendingSettlement)}`),
           resultBox("00685L 較20日高點回檔", signal.ok ? `${pct.format(signal.pullback)}%` : "讀取失敗", signalNote),
         ].join("");

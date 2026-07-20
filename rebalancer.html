@@ -11,7 +11,7 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入全部台股、全部美股與全部現金，依 50% / 35% / 15% 檢查配置。</p>
+          <p>自動帶入全部台股、全部美股與全部現金，依 55% / 25% / 20% 檢查配置。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
@@ -41,15 +41,15 @@
         </label>
         <label>
           台股目標比例
-          <input name="twTarget" type="number" step="1" min="0" max="100" value="50" required />
+          <input name="twTarget" type="number" step="1" min="0" max="100" value="55" required />
         </label>
         <label>
           美股目標比例
-          <input name="usTarget" type="number" step="1" min="0" max="100" value="35" required />
+          <input name="usTarget" type="number" step="1" min="0" max="100" value="25" required />
         </label>
         <label>
           現金目標比例
-          <input name="cashTarget" type="number" step="1" min="0" max="100" value="15" required />
+          <input name="cashTarget" type="number" step="1" min="0" max="100" value="20" required />
         </label>
         <label class="full">
           容許偏移
@@ -93,7 +93,7 @@
       const cashBar = document.getElementById("cashBar");
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
       const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
-      const STORAGE_KEY = "wealthDashboardRebalanceDraftV3Allocation503515";
+      const STORAGE_KEY = "wealthDashboardRebalanceDraftV4Allocation552520";
       const EMERGENCY_FUND_TARGET = 100000;
 
       function numberValue(name) {
@@ -116,9 +116,9 @@
           resultBox("目前現金比例", "0%"),
           resultBox("建議調整金額", money.format(0)),
         ].join("");
-        twBar.style.width = "50%";
-        usBar.style.width = "35%";
-        cashBar.style.width = "15%";
+        twBar.style.width = "55%";
+        usBar.style.width = "25%";
+        cashBar.style.width = "20%";
         adviceBox.innerHTML = "<span><strong>等待資料</strong> 帶入首頁資料後，這裡會顯示再平衡建議。</span>";
         nextContributionBox.innerHTML = "";
       }
@@ -225,7 +225,7 @@
         const needsRebalance = targets.some((item) => Math.abs(item.drift) > band);
         const nextContribution = needsRebalance
           ? `目前 ${mostUnderweight.name} 最低於目標，下一筆投入可優先補足。`
-          : "目前比例接近目標，下一筆新增資金可依台股 50% / 美股 35% / 現金 15% 分配。";
+          : "目前比例接近目標，下一筆新增資金可依台股 55% / 美股 25% / 現金 20% 分配。";
         const advice = needsRebalance
           ? `${largestDrift.name} 偏移 ${pct.format(Math.abs(largestDrift.drift))}%，可先用新資金調整，不必立即賣出持倉。`
           : `三類資產的偏移都在 ${band}% 容許範圍內，可先維持。`;

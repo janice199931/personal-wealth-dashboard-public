@@ -326,9 +326,9 @@ git check-ignore -v data/transactions.json data/portfolio.json data/backups/exam
 ### Current Financial Logic
 
 - 目標資產配置：
-  - 全部台股：`50%`
-  - 全部美股：`35%`
-  - 全部現金：`15%`
+  - 全部台股：`55%`
+  - 全部美股：`25%`
+  - 全部現金：`20%`
 - 緊急預備金：
   - 目標：`100000`
   - 目前：`100000`
@@ -336,7 +336,7 @@ git check-ignore -v data/transactions.json data/portfolio.json data/backups/exam
   - 狀態：「充足」
   - 不得用於股票加碼。
 - 投資預備金：
-  - 現金目標為「投資資產 × `15%`」。
+  - 現金目標為「投資資產 × `20%`」。
   - 目前投資預備金＝全部現金 − `100000` 緊急預備金 − 在途交割款。
   - 不再設定固定 `150000` 的投資預備金目標或上限。
 - 首頁不再追蹤「生活金庫（郵局）」、日常流水與信用卡費，也不再進行郵局、現金與信用卡的加減計算。
