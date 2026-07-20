@@ -188,9 +188,10 @@
           : {};
         const totalCash = numberValue(payload.portfolio?.allocation?.cash ?? payload.portfolio?.summary?.cash ?? accounts.cashTWD);
         const sinopac = numberValue(breakdown.sinopacBalance);
-        const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, totalCash);
-        const pendingSettlement = numberValue(payload.pendingSettlement);
-        const investmentReserve = Math.max(0, totalCash - emergencyFund - pendingSettlement);
+        const pendingSettlement = Math.max(0, numberValue(payload.pendingSettlement));
+        const availableCash = Math.max(0, totalCash - pendingSettlement);
+        const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, availableCash);
+        const investmentReserve = Math.max(0, availableCash - emergencyFund);
         const totalAssets = numberValue(payload.portfolio?.summary?.totalAssets)
           || numberValue(payload.portfolio?.summary?.stockAssets) + totalCash;
         const cashTarget = Math.round(totalAssets * CASH_TARGET_RATIO);

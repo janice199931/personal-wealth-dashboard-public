@@ -688,9 +688,10 @@ function applyCurrentMonthFinance(month = null) {
 
 function cashBuckets(totalCash = 0) {
   const cash = Math.max(0, Math.round(Number(totalCash) || 0));
-  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, cash);
   const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement));
-  return { emergencyFund, investmentReserve: Math.max(0, cash - emergencyFund - pendingSettlement) };
+  const availableCash = Math.max(0, cash - pendingSettlement);
+  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, availableCash);
+  return { emergencyFund, investmentReserve: Math.max(0, availableCash - emergencyFund) };
 }
 
 function actualBankBalance() {
@@ -1121,11 +1122,17 @@ function renderVaults() {
   const actualBankBalanceCurrent = actualBankBalance();
   const usBrokerCash = Math.max(0, Math.round(safeNumber(data.usBrokerCash)));
   const totalCashCurrent = actualBankBalanceCurrent + usBrokerCash;
-  const emergencyFund = Math.min(EMERGENCY_FUND_TARGET, actualBankBalanceCurrent);
-  const baseInvestmentReserve = actualBankBalanceCurrent - emergencyFund;
   const pendingSettlement = Math.max(0, safeNumber(data.pendingSettlement, 0));
-  const yongfengCash = Math.max(0, baseInvestmentReserve - pendingSettlement);
-  const pureInvestmentReserveCurrent = yongfengCash + usBrokerCash;
+  const availableBankCash = Math.max(0, actualBankBalanceCurrent - pendingSettlement);
+  const emergencyFundFromBank = Math.min(EMERGENCY_FUND_TARGET, availableBankCash);
+  const emergencyFundFromBroker = Math.min(
+    Math.max(0, EMERGENCY_FUND_TARGET - emergencyFundFromBank),
+    usBrokerCash,
+  );
+  const emergencyFund = emergencyFundFromBank + emergencyFundFromBroker;
+  const yongfengCash = Math.max(0, availableBankCash - emergencyFundFromBank);
+  const brokerInvestmentReserve = Math.max(0, usBrokerCash - emergencyFundFromBroker);
+  const pureInvestmentReserveCurrent = yongfengCash + brokerInvestmentReserve;
   const cashProgress = safeProgress(totalCashCurrent, metrics.cashTargetAmount);
   const rows = [
     {
@@ -1157,7 +1164,7 @@ function renderVaults() {
           </div>
           <div class="vault-reserve-accounts">
             <div><span>├ 永豐現金</span><strong>${money.format(yongfengCash)}</strong></div>
-            <div><span>└ Firstrade 現金</span><strong>${money.format(usBrokerCash)}</strong></div>
+            <div><span>└ Firstrade 現金</span><strong>${money.format(brokerInvestmentReserve)}</strong></div>
           </div>
         </div>
       </div>`,
