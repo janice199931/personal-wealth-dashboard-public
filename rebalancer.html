@@ -11,34 +11,39 @@
       <section class="card hero-card">
         <div>
           <h1>再平衡檢查</h1>
-          <p>自動帶入全部台股、全部美股與全部現金，依 55% / 25% / 20% 檢查配置。</p>
+          <p>全資產一體化指揮中心：自動依 55% / 25% / 20% 戰略目標進行動態再平衡檢查。</p>
         </div>
         <div class="page-actions">
           <a href="./index.html">← 回到首頁</a>
         </div>
       </section>
 
-      <form id="rebalanceForm">
-        <label>
-          全部台股市值
-          <input name="twStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
-        </label>
-        <label>
-          全部美股市值（台幣）
-          <input name="usStocks" type="number" step="1" min="0" placeholder="例如 400000" required />
-        </label>
-        <label>
-          全部現金
-          <input name="cash" type="number" step="1" min="0" placeholder="例如 200000" required />
-        </label>
-        <label>
-          已保留緊急預備金
-          <input name="protectedCash" type="number" step="1" min="0" value="0" readonly />
-        </label>
-        <label>
-          在途交割款
-          <input name="pendingSettlement" type="number" step="1" min="0" value="0" readonly />
-        </label>
+      <form id="rebalanceForm" class="rebalance-form">
+        <div class="form-section full">
+          <div class="form-section-heading">
+            <div><span>資產大池</span><h2>目前全資產</h2></div>
+            <small>由首頁自動帶入，也可手動微調</small>
+          </div>
+          <div class="rebalance-input-grid">
+            <label>
+              全部台股市值
+              <input name="taiwanStockValue" type="number" step="1" min="0" placeholder="例如 550000" required />
+            </label>
+            <label>
+              全部美股市值（台幣）
+              <input name="usStockValue" type="number" step="1" min="0" placeholder="例如 250000" required />
+            </label>
+            <label>
+              全部現金總額
+              <input name="totalCash" type="number" step="1" min="0" placeholder="例如 200000" required />
+            </label>
+          </div>
+        </div>
+        <div class="form-section full">
+          <div class="form-section-heading">
+            <div><span>戰略設定</span><h2>目標與容許偏移</h2></div>
+          </div>
+          <div class="rebalance-target-grid">
         <label>
           台股目標比例
           <input name="twTarget" type="number" step="1" min="0" max="100" value="55" required />
@@ -51,7 +56,7 @@
           現金目標比例
           <input name="cashTarget" type="number" step="1" min="0" max="100" value="20" required />
         </label>
-        <label class="full">
+        <label>
           容許偏移
           <select name="band">
             <option value="3">超過 3% 才提示參考調整</option>
@@ -59,6 +64,8 @@
             <option value="10">超過 10% 才提示參考調整</option>
           </select>
         </label>
+          </div>
+        </div>
         <div class="actions full">
           <span class="status" id="statusText">正在讀取首頁資料...</span>
           <div class="row-actions">
@@ -69,6 +76,11 @@
       </form>
 
       <section class="card" id="resultCard">
+        <div class="rebalance-total">
+          <span>全資產總市值</span>
+          <strong id="totalAssetValue">$0</strong>
+          <small>全部台股市值 + 全部美股市值 + 全部現金</small>
+        </div>
         <div class="result-grid rebalance-result-grid" id="resultGrid"></div>
         <div class="rebalance-visual" aria-label="目前配置比例">
           <span id="twBar"></span>
@@ -94,7 +106,6 @@
       const money = new Intl.NumberFormat("zh-TW", { style: "currency", currency: "TWD", maximumFractionDigits: 0 });
       const pct = new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 1 });
       const STORAGE_KEY = "wealthDashboardRebalanceDraftV4Allocation552520";
-      const EMERGENCY_FUND_TARGET = 100000;
 
       function numberValue(name) {
         return Number(form.elements[name].value) || 0;
@@ -105,17 +116,32 @@
         statusText.className = `status${tone ? ` ${tone}` : ""}`;
       }
 
-      function resultBox(label, value) {
-        return `<article class="result-box"><span>${label}</span><strong>${value}</strong></article>`;
+      const totalAssetValue = document.getElementById("totalAssetValue");
+
+      function assetColumn(item) {
+        const difference = item.targetAmount - item.current;
+        const isUnder = difference > 0;
+        const status = Math.abs(difference) < 0.5
+          ? `<div class="allocation-status balanced"><strong>【達標】</strong><span>目前金額符合目標</span></div>`
+          : `<div class="allocation-status ${isUnder ? "under" : "over"}">
+              <strong>【${isUnder ? "補貼" : "溢出"} ${pct.format(Math.abs(item.drift))}%】</strong>
+              <span>${isUnder ? "需再投入" : "可釋出"} ${money.format(Math.round(Math.abs(difference)))}</span>
+            </div>`;
+        return `<article class="allocation-column ${item.key}">
+          <header><span>${item.name}</span><small>目標 ${pct.format(item.target)}%</small></header>
+          <div class="allocation-current"><span>目前比例</span><strong>${pct.format(item.ratio)}%</strong><small>${money.format(Math.round(item.current))}</small></div>
+          <div class="allocation-target"><span>目標金額</span><strong>${money.format(Math.round(item.targetAmount))}</strong></div>
+          ${status}
+        </article>`;
       }
 
       function renderEmpty() {
+        totalAssetValue.textContent = money.format(0);
         resultGrid.innerHTML = [
-          resultBox("目前台股比例", "0%"),
-          resultBox("目前美股比例", "0%"),
-          resultBox("目前現金比例", "0%"),
-          resultBox("建議調整金額", money.format(0)),
-        ].join("");
+          { key: "tw", name: "台股", current: 0, ratio: 0, target: 55, targetAmount: 0, drift: -55 },
+          { key: "us", name: "美股", current: 0, ratio: 0, target: 25, targetAmount: 0, drift: -25 },
+          { key: "cash", name: "現金", current: 0, ratio: 0, target: 20, targetAmount: 0, drift: -20 },
+        ].map(assetColumn).join("");
         twBar.style.width = "55%";
         usBar.style.width = "25%";
         cashBar.style.width = "20%";
@@ -132,33 +158,15 @@
         }
       }
 
-      function accountBreakdown(accounts, portfolioCash = 0) {
-        const totalCash = Math.max(0, Math.round(Number(portfolioCash ?? accounts?.cashTWD ?? 0) || 0));
-        const protectedCash = Math.min(EMERGENCY_FUND_TARGET, totalCash);
-        return {
-          totalCash,
-          protectedCash,
-          allocationCash: Math.max(0, totalCash - protectedCash),
-        };
-      }
-
-      function applyPortfolio(portfolio, accounts = null, pendingSettlement = 0) {
+      function applyPortfolio(portfolio) {
         const allocation = portfolio?.allocation || {};
         const summary = portfolio?.summary || {};
         const twValue = Math.round(Number(allocation.taiwanStocks ?? portfolio?.markets?.TW?.marketValue ?? 0) || 0);
         const usValue = Math.round(Number(allocation.usStocks ?? portfolio?.markets?.US?.marketValue ?? 0) || 0);
-        const cashInfo = accounts
-          ? accountBreakdown(accounts, allocation.cash ?? summary.cash)
-          : {
-              totalCash: Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0),
-              protectedCash: Math.min(Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0), EMERGENCY_FUND_TARGET),
-              allocationCash: Math.max(0, Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0) - Math.min(Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0), EMERGENCY_FUND_TARGET)),
-            };
-        form.elements.twStocks.value = twValue;
-        form.elements.usStocks.value = usValue;
-        form.elements.cash.value = cashInfo.totalCash;
-        form.elements.protectedCash.value = cashInfo.protectedCash;
-        form.elements.pendingSettlement.value = Math.max(0, Math.round(Number(pendingSettlement) || 0));
+        const cashValue = Math.max(0, Math.round(Number(allocation.cash ?? summary.cash ?? 0) || 0));
+        form.elements.taiwanStockValue.value = twValue;
+        form.elements.usStockValue.value = usValue;
+        form.elements.totalCash.value = cashValue;
         calculate();
         setStatus(
           twValue || usValue
@@ -176,7 +184,7 @@
           const payload = await readApiPayload(response, "首頁資料讀取失敗，請重新整理或確認登入狀態。");
           if (!response.ok) throw new Error(payload.detail || "首頁資料讀取失敗，請重新整理或確認登入狀態。");
           if (!payload.portfolio) throw new Error("目前沒有可帶入的首頁資料。");
-          applyPortfolio(payload.portfolio, payload.accounts || null, payload.pendingSettlement);
+          applyPortfolio(payload.portfolio);
         } catch (error) {
           setStatus(error.message || "首頁資料讀取失敗，可先手動輸入。", "error");
           loadDraft();
@@ -187,12 +195,9 @@
       }
 
       function calculate() {
-        const twStocks = numberValue("twStocks");
-        const usStocks = numberValue("usStocks");
-        const cash = numberValue("cash");
-        const protectedCash = Math.max(0, Math.min(EMERGENCY_FUND_TARGET, Number(form.elements.protectedCash.value) || 0));
-        const pendingSettlement = Math.max(0, Number(form.elements.pendingSettlement.value) || 0);
-        const investmentReserve = Math.max(0, cash - protectedCash - pendingSettlement);
+        const twStocks = numberValue("taiwanStockValue");
+        const usStocks = numberValue("usStockValue");
+        const cash = numberValue("totalCash");
         const twTarget = numberValue("twTarget");
         const usTarget = numberValue("usTarget");
         const cashTarget = numberValue("cashTarget");
@@ -216,30 +221,23 @@
         const usRatio = (usStocks / total) * 100;
         const cashRatio = (cash / total) * 100;
         const targets = [
-          { name: "全部台股", current: twStocks, ratio: twRatio, target: twTarget },
-          { name: "全部美股", current: usStocks, ratio: usRatio, target: usTarget },
-          { name: "全部現金", current: cash, ratio: cashRatio, target: cashTarget },
+          { key: "tw", name: "台股", current: twStocks, ratio: twRatio, target: twTarget },
+          { key: "us", name: "美股", current: usStocks, ratio: usRatio, target: usTarget },
+          { key: "cash", name: "現金", current: cash, ratio: cashRatio, target: cashTarget },
         ].map((item) => ({ ...item, targetAmount: total * item.target / 100, drift: item.ratio - item.target }));
         const largestDrift = targets.reduce((largest, item) => Math.abs(item.drift) > Math.abs(largest.drift) ? item : largest, targets[0]);
         const mostUnderweight = targets.reduce((lowest, item) => item.drift < lowest.drift ? item : lowest, targets[0]);
         const needsRebalance = targets.some((item) => Math.abs(item.drift) > band);
-        const nextContribution = needsRebalance
-          ? `目前 ${mostUnderweight.name} 最低於目標，下一筆投入可優先補足。`
-          : "目前比例接近目標，下一筆新增資金可依台股 55% / 美股 25% / 現金 20% 分配。";
+        const baseContribution = `基礎分配：台股 ${pct.format(twTarget)}% / 美股 ${pct.format(usTarget)}% / 現金 ${pct.format(cashTarget)}%。`;
+        const dynamicContribution = needsRebalance
+          ? `動態調整：${mostUnderweight.name}低於目標 ${pct.format(Math.abs(mostUnderweight.drift))}%，下一筆資金優先投入 ${mostUnderweight.name}；高於目標的部位暫緩加碼。`
+          : `目前三類資產偏差皆未超過 ${pct.format(band)}%，下一筆資金可維持基礎分配。`;
         const advice = needsRebalance
           ? `${largestDrift.name} 偏移 ${pct.format(Math.abs(largestDrift.drift))}%，可先用新資金調整，不必立即賣出持倉。`
           : `三類資產的偏移都在 ${band}% 容許範圍內，可先維持。`;
 
-        resultGrid.innerHTML = [
-          resultBox("目前台股比例", `${pct.format(twRatio)}%`),
-          resultBox("目前美股比例", `${pct.format(usRatio)}%`),
-          resultBox("目前現金比例", `${pct.format(cashRatio)}%`),
-          ...targets.map((item) => resultBox(`${item.name}目標金額`, money.format(Math.round(item.targetAmount)))),
-          resultBox("已保留緊急預備金", money.format(protectedCash)),
-          resultBox("在途交割款", money.format(pendingSettlement)),
-          resultBox("投資預備金", money.format(investmentReserve)),
-          resultBox("總檢查金額", money.format(total)),
-        ].join("");
+        totalAssetValue.textContent = money.format(Math.round(total));
+        resultGrid.innerHTML = targets.map(assetColumn).join("");
         twBar.style.width = `${Math.min(100, Math.max(0, twRatio))}%`;
         usBar.style.width = `${Math.min(100, Math.max(0, usRatio))}%`;
         cashBar.style.width = `${Math.min(100, Math.max(0, cashRatio))}%`;
@@ -247,16 +245,17 @@
         adviceBox.innerHTML = `<span><strong>${needsRebalance ? "參考調整" : "目前可維持"}</strong> ${advice}</span>`;
         nextContributionBox.innerHTML = `
           <span>下一筆投入建議</span>
-          <strong>${nextContribution}</strong>
+          <strong>${baseContribution}</strong>
+          <p class="${needsRebalance ? "dynamic-alert" : "within-band"}">${dynamicContribution}</p>
         `;
         setStatus("這是檢查與決策建議，不會自動交易。", "success");
       }
 
       function saveDraft() {
         const payload = {
-          twStocks: form.elements.twStocks.value,
-          usStocks: form.elements.usStocks.value,
-          cash: form.elements.cash.value,
+          taiwanStockValue: form.elements.taiwanStockValue.value,
+          usStockValue: form.elements.usStockValue.value,
+          totalCash: form.elements.totalCash.value,
           twTarget: form.elements.twTarget.value,
           usTarget: form.elements.usTarget.value,
           cashTarget: form.elements.cashTarget.value,
